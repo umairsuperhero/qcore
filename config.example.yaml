@@ -1,0 +1,23 @@
+hss:
+  name: "qcore-hss"
+  bind_address: "0.0.0.0"
+  api_port: 8080
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "qcore"
+  user: "qcore"
+  password: "qcore"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime_seconds: 300
+
+logging:
+  level: "info"
+  format: "console"
+
+metrics:
+  enabled: true
+  port: 9090

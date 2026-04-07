@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "qcore-stack",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "-f", "deployments/docker/docker-compose.yml", "up"],
+      "port": 8080
+    },
+    {
+      "name": "qcore-hss-local",
+      "runtimeExecutable": "./bin/qcore-hss.exe",
+      "runtimeArgs": ["start", "--config", "config.example.yaml"],
+      "port": 8080
+    },
+    {
+      "name": "qcore-metrics",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "-f", "deployments/docker/docker-compose.yml", "up"],
+      "port": 9090
+    }
+  ]
+}

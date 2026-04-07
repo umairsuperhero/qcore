@@ -1,0 +1,23 @@
+hss:
+  name: "test-hss"
+  bind_address: "127.0.0.1"
+  api_port: 9999
+
+database:
+  host: "db.example.com"
+  port: 5433
+  name: "testdb"
+  user: "testuser"
+  password: "testpass"
+  ssl_mode: "require"
+  max_open_conns: 10
+  max_idle_conns: 2
+  conn_max_lifetime_seconds: 60
+
+logging:
+  level: "debug"
+  format: "json"
+
+metrics:
+  enabled: false
+  port: 9191

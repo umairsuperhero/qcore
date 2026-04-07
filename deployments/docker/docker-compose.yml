@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: qcore
+      POSTGRES_USER: qcore
+      POSTGRES_PASSWORD: qcore
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  hss:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.hss
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      QCORE_DATABASE_HOST: postgres
+      QCORE_DATABASE_PORT: "5432"
+      QCORE_DATABASE_USER: qcore
+      QCORE_DATABASE_PASSWORD: qcore
+      QCORE_DATABASE_NAME: qcore
+      QCORE_DATABASE_SSL_MODE: disable
+      QCORE_LOGGING_FORMAT: json
+
+volumes:
+  pgdata:
