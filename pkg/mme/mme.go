@@ -149,12 +149,6 @@ func (m *MME) handleAssociation(ctx context.Context, enb *EnbContext) {
 	}
 }
 
-// handleS1APMessage dispatches a raw S1AP message. Placeholder until S1AP codec is ready.
-func (m *MME) handleS1APMessage(ctx context.Context, enb *EnbContext, data []byte, streamID uint16) {
-	// TODO(session-3): decode S1AP PDU and dispatch to procedure handlers
-	m.log.Debugf("S1AP message (%d bytes) — decoding not yet implemented", len(data))
-}
-
 // allocateUEID returns a new unique MME-UE-S1AP-ID.
 func (m *MME) allocateUEID() uint32 {
 	return atomic.AddUint32(&m.nextUEID, 1)
