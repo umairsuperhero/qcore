@@ -35,6 +35,9 @@ func (m *MME) handleS1APMessage(ctx context.Context, enb *EnbContext, data []byt
 	case s1ap.ProcUplinkNASTransport:
 		m.handleUplinkNASTransport(ctx, enb, ies, streamID)
 
+	case s1ap.ProcUEContextReleaseRequest:
+		m.handleUEContextReleaseRequest(ctx, enb, ies, streamID)
+
 	default:
 		m.log.Warnf("Unhandled S1AP procedure: %s (%d)", pdu.ProcedureCode, pdu.ProcedureCode)
 	}
@@ -172,8 +175,27 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 	}
 
 	if attachReq.IMSI == "" {
-		// GUTI attach: we'd need to look up IMSI from stored GUTI. Not yet implemented.
-		m.log.Warnf("ATTACH REQUEST does not contain IMSI (GUTI attach not yet supported)")
+		// GUTI attach: allocate UE context and send IDENTITY REQUEST for IMSI.
+		m.log.Infof("ATTACH REQUEST: no IMSI (GUTI/TMSI attach), sending IDENTITY REQUEST")
+		mmeUEID := m.allocateUEID()
+		ue := &UEContext{
+			MMEUES1APID: mmeUEID,
+			ENBUES1APID: msg.ENBUES1APID,
+			EMMState:    EMMRegisterInitiated,
+			ECMState:    ECMConnected,
+			ENB:         enb,
+			NASStreamID: streamID,
+			TAI:         TAI{PLMN: msg.TAI.PLMN, TAC: msg.TAI.TAC},
+			ECGI:        ECGI{PLMN: msg.ECGI.PLMN, CellID: msg.ECGI.CellID},
+		}
+		m.ues.Store(mmeUEID, ue)
+		if m.metrics != nil {
+			m.metrics.ActiveUEs.WithLabelValues().Inc()
+		}
+		idReq := nas.EncodeIdentityRequest(1) // request IMSI
+		if err := m.sendDownlinkNAS(enb, mmeUEID, msg.ENBUES1APID, idReq, streamID); err != nil {
+			m.log.Errorf("Failed to send IDENTITY REQUEST: %v", err)
+		}
 		return
 	}
 
@@ -304,6 +326,8 @@ func (m *MME) handleUplinkNASTransport(ctx context.Context, enb *EnbContext, ies
 	m.log.Infof("Uplink NAS %s from MME-UE-S1AP-ID=%d", h.MessageType, msg.MMEUES1APID)
 
 	switch h.MessageType {
+	case nas.MsgTypeIdentityResponse:
+		m.handleIdentityResponse(ue, msg.NASPDU[bodyOff:], streamID)
 	case nas.MsgTypeAuthenticationResponse:
 		m.handleAuthResponse(ue, msg.NASPDU[bodyOff:], streamID)
 	case nas.MsgTypeAuthenticationFailure:
@@ -311,7 +335,7 @@ func (m *MME) handleUplinkNASTransport(ctx context.Context, enb *EnbContext, ies
 		if m.metrics != nil {
 			m.metrics.AttachFailures.WithLabelValues("auth_failure").Inc()
 		}
-		m.ues.Delete(msg.MMEUES1APID)
+		m.cleanupUE(ue)
 	case nas.MsgTypeSecurityModeComplete:
 		m.handleSecurityModeComplete(ue, msg.NASPDU[bodyOff:], streamID)
 	case nas.MsgTypeAttachComplete:
@@ -472,6 +496,144 @@ func (m *MME) handleAttachComplete(ue *UEContext) {
 	m.log.Infof("ATTACH COMPLETE from UE=%d (IMSI=%s) — UE is now registered", ue.MMEUES1APID, ue.IMSI)
 	// State is already EMMRegistered; ATTACH COMPLETE confirms the UE is done.
 	// In a full implementation, this triggers bearer activation on the SGW.
+}
+
+// handleIdentityResponse processes a NAS Identity Response (sent in response to our Identity Request).
+// It extracts the IMSI, updates the UE context, fetches an auth vector, and sends AUTH REQUEST.
+func (m *MME) handleIdentityResponse(ue *UEContext, body []byte, streamID uint16) {
+	resp, err := nas.DecodeIdentityResponse(body)
+	if err != nil {
+		m.log.Errorf("Failed to decode IDENTITY RESPONSE for UE=%d: %v", ue.MMEUES1APID, err)
+		m.cleanupUE(ue)
+		return
+	}
+	if resp.IdentityType != 1 || resp.IMSI == "" {
+		m.log.Warnf("IDENTITY RESPONSE from UE=%d did not contain IMSI (type=%d)", ue.MMEUES1APID, resp.IdentityType)
+		m.cleanupUE(ue)
+		return
+	}
+
+	ue.mu.Lock()
+	ue.IMSI = resp.IMSI
+	ue.mu.Unlock()
+
+	m.log.Infof("IDENTITY RESPONSE: UE=%d IMSI=%s", ue.MMEUES1APID, resp.IMSI)
+	if m.metrics != nil {
+		m.metrics.AttachRequests.WithLabelValues().Inc()
+	}
+
+	// Fetch auth vector from HSS
+	av, err := m.s6a.AuthenticationInformationRequest(resp.IMSI)
+	if err != nil {
+		m.log.Errorf("HSS auth vector request failed for IMSI=%s: %v", resp.IMSI, err)
+		if m.metrics != nil {
+			m.metrics.AttachFailures.WithLabelValues("hss_error").Inc()
+		}
+		m.cleanupUE(ue)
+		return
+	}
+
+	rand16, err := nas.HexToBytes(av.RAND)
+	if err != nil || len(rand16) != 16 {
+		m.log.Errorf("Invalid RAND from HSS: %v", err)
+		m.cleanupUE(ue)
+		return
+	}
+	xres, err := nas.HexToBytes(av.XRES)
+	if err != nil {
+		m.log.Errorf("Invalid XRES from HSS: %v", err)
+		m.cleanupUE(ue)
+		return
+	}
+	autn16, err := nas.HexToBytes(av.AUTN)
+	if err != nil || len(autn16) != 16 {
+		m.log.Errorf("Invalid AUTN from HSS: %v", err)
+		m.cleanupUE(ue)
+		return
+	}
+	kasme, err := nas.HexToBytes(av.KASME)
+	if err != nil || len(kasme) != 32 {
+		m.log.Errorf("Invalid KASME from HSS: %v", err)
+		m.cleanupUE(ue)
+		return
+	}
+
+	ue.mu.Lock()
+	ue.RAND = rand16
+	ue.XRES = xres
+	ue.AUTN = autn16
+	ue.KASME = kasme
+	ue.UENetworkCapability = nil // not available for GUTI attach without ATTACH REQUEST UE cap
+	ue.mu.Unlock()
+
+	if m.metrics != nil {
+		m.metrics.AuthRequests.WithLabelValues("sent").Inc()
+	}
+
+	authReq := &nas.AuthenticationRequest{NASKeySetIdentifier: 0}
+	copy(authReq.RAND[:], rand16)
+	copy(authReq.AUTN[:], autn16)
+
+	authReqNAS, err := nas.EncodeAuthenticationRequest(authReq)
+	if err != nil {
+		m.log.Errorf("Failed to encode AUTH REQUEST for UE=%d: %v", ue.MMEUES1APID, err)
+		return
+	}
+
+	enb := ue.ENB
+	if err := m.sendDownlinkNAS(enb, ue.MMEUES1APID, ue.ENBUES1APID, authReqNAS, streamID); err != nil {
+		m.log.Errorf("Failed to send AUTH REQUEST to eNB for UE=%d: %v", ue.MMEUES1APID, err)
+		return
+	}
+
+	m.log.Infof("Sent AUTH REQUEST to UE=%d (IMSI=%s)", ue.MMEUES1APID, resp.IMSI)
+}
+
+// handleUEContextReleaseRequest handles an eNB-initiated UE Context Release Request.
+// The eNB sends this when the RRC connection is released. We respond with a UE Context
+// Release Command and clean up the UE state.
+func (m *MME) handleUEContextReleaseRequest(ctx context.Context, enb *EnbContext, ies []s1ap.ProtocolIE, streamID uint16) {
+	_ = ctx
+
+	req, err := s1ap.DecodeUEContextReleaseRequest(ies)
+	if err != nil {
+		m.log.Errorf("Failed to decode UEContextReleaseRequest: %v", err)
+		return
+	}
+
+	m.log.Infof("UE Context Release Request: MME-UE-S1AP-ID=%d, cause=%d/%d",
+		req.MMEUES1APID, req.CauseGroup, req.CauseValue)
+
+	// Send UE Context Release Command back to eNB
+	cmd := &s1ap.UEContextReleaseCommand{
+		MMEUES1APID: req.MMEUES1APID,
+		ENBUES1APID: req.ENBUES1APID,
+		CauseGroup:  req.CauseGroup,
+		CauseValue:  req.CauseValue,
+	}
+	encoded, err := s1ap.EncodeUEContextReleaseCommand(cmd)
+	if err != nil {
+		m.log.Errorf("Failed to encode UEContextReleaseCommand: %v", err)
+		return
+	}
+	if err := enb.Assoc.Write(encoded, streamID); err != nil {
+		m.log.Errorf("Failed to send UEContextReleaseCommand: %v", err)
+	}
+
+	// Clean up UE context
+	ueVal, ok := m.ues.Load(req.MMEUES1APID)
+	if ok {
+		m.cleanupUE(ueVal.(*UEContext))
+	}
+}
+
+// cleanupUE removes a UE context from the map and updates metrics.
+func (m *MME) cleanupUE(ue *UEContext) {
+	m.ues.Delete(ue.MMEUES1APID)
+	if m.metrics != nil {
+		m.metrics.ActiveUEs.WithLabelValues().Dec()
+	}
+	m.log.Infof("Cleaned up UE context for MME-UE-S1AP-ID=%d (IMSI=%s)", ue.MMEUES1APID, ue.IMSI)
 }
 
 // sendDownlinkNAS wraps a NAS PDU in a DownlinkNASTransport S1AP message and sends it.
