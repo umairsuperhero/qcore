@@ -1,5 +1,7 @@
 # QCore
 
+[![CI](https://github.com/umairsuperhero/qcore/actions/workflows/ci.yml/badge.svg)](https://github.com/umairsuperhero/qcore/actions/workflows/ci.yml)
+
 **The open-source 4G/5G core network that's actually easy to use.**
 
 QCore is a mobile core network designed around developer experience. Start a complete LTE core with a single command, no tribal knowledge required.
