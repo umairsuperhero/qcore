@@ -1,7 +1,9 @@
 package s1ap
 
 import (
+	"encoding/binary"
 	"fmt"
+	"net"
 )
 
 // S1SetupRequest represents the S1 SETUP REQUEST message from eNB to MME.
@@ -287,6 +289,322 @@ func DecodeInitialUEMessage(ies []ProtocolIE) (*InitialUEMessage, error) {
 	}
 
 	return msg, nil
+}
+
+// UEContextReleaseRequest is sent by the eNB to ask the MME to release a UE context.
+// TS 36.413 Section 9.1.4.4 (Procedure Code 18)
+type UEContextReleaseRequest struct {
+	MMEUES1APID uint32
+	ENBUES1APID uint32
+	CauseGroup  CauseGroup
+	CauseValue  uint8
+}
+
+// UEContextReleaseCommand is sent by the MME to instruct the eNB to release a UE context.
+// TS 36.413 Section 9.1.4.5 (Procedure Code 23)
+type UEContextReleaseCommand struct {
+	MMEUES1APID uint32
+	ENBUES1APID uint32
+	CauseGroup  CauseGroup
+	CauseValue  uint8
+}
+
+// DecodeUEContextReleaseRequest decodes a UE Context Release Request from its ProtocolIE list.
+func DecodeUEContextReleaseRequest(ies []ProtocolIE) (*UEContextReleaseRequest, error) {
+	req := &UEContextReleaseRequest{}
+	for _, ie := range ies {
+		switch ie.ID {
+		case IEID_MME_UE_S1AP_ID:
+			dec := NewPERDecoder(ie.Value)
+			v, err := dec.GetConstrainedInt(0, 0xFFFFFFFF)
+			if err != nil {
+				return nil, fmt.Errorf("decoding MME-UE-S1AP-ID: %w", err)
+			}
+			req.MMEUES1APID = uint32(v)
+		case IEID_ENB_UE_S1AP_ID:
+			dec := NewPERDecoder(ie.Value)
+			v, err := dec.GetConstrainedInt(0, 0x00FFFFFF)
+			if err != nil {
+				return nil, fmt.Errorf("decoding eNB-UE-S1AP-ID: %w", err)
+			}
+			req.ENBUES1APID = uint32(v)
+		case IEID_Cause:
+			// Cause: CHOICE { radioNetwork, transport, nas, protocol, misc }
+			// Encoded as choice index (2 bits aligned) + cause value (1 byte aligned)
+			if len(ie.Value) >= 2 {
+				dec := NewPERDecoder(ie.Value)
+				group, err := dec.GetChoiceIndex(5)
+				if err == nil {
+					req.CauseGroup = CauseGroup(group)
+					dec.align()
+					if b, e := dec.GetBytes(1); e == nil {
+						req.CauseValue = b[0]
+					}
+				}
+			}
+		}
+	}
+	return req, nil
+}
+
+// EncodeUEContextReleaseCommand encodes a UE Context Release Command PDU.
+// The UE is identified by the MME-UE-S1AP-ID + eNB-UE-S1AP-ID pair.
+func EncodeUEContextReleaseCommand(cmd *UEContextReleaseCommand) ([]byte, error) {
+	// UE-S1AP-IDs IE: encode as the pair (choice index 0)
+	idsEnc := NewPEREncoder()
+	if err := idsEnc.PutChoiceIndex(0, 2); err != nil { // 0 = UE-S1AP-ID-pair
+		return nil, err
+	}
+	idsEnc.align()
+	// mME-UE-S1AP-ID
+	mmeIDEnc := NewPEREncoder()
+	if err := mmeIDEnc.PutConstrainedInt(int64(cmd.MMEUES1APID), 0, 0xFFFFFFFF); err != nil {
+		return nil, err
+	}
+	// eNB-UE-S1AP-ID
+	enbIDEnc := NewPEREncoder()
+	if err := enbIDEnc.PutConstrainedInt(int64(cmd.ENBUES1APID), 0, 0x00FFFFFF); err != nil {
+		return nil, err
+	}
+	// Pack both IDs together
+	pairEnc := NewPEREncoder()
+	if err := pairEnc.PutConstrainedInt(int64(cmd.MMEUES1APID), 0, 0xFFFFFFFF); err != nil {
+		return nil, err
+	}
+	if err := pairEnc.PutConstrainedInt(int64(cmd.ENBUES1APID), 0, 0x00FFFFFF); err != nil {
+		return nil, err
+	}
+
+	// Cause IE
+	causeEnc := NewPEREncoder()
+	if err := causeEnc.PutChoiceIndex(int(cmd.CauseGroup), 5); err != nil {
+		return nil, err
+	}
+	causeEnc.align()
+	causeEnc.PutBytes([]byte{cmd.CauseValue})
+
+	ies := []ProtocolIE{
+		{ID: IEID_UE_S1AP_IDs, Criticality: CriticalityReject, Value: pairEnc.Bytes()},
+		{ID: IEID_Cause, Criticality: CriticalityIgnore, Value: causeEnc.Bytes()},
+	}
+
+	containerBytes, err := EncodeProtocolIEContainer(ies)
+	if err != nil {
+		return nil, err
+	}
+
+	pdu := &PDU{
+		Type:          PDUInitiatingMessage,
+		ProcedureCode: ProcUEContextRelease,
+		Criticality:   CriticalityReject,
+		Value:         containerBytes,
+	}
+	return EncodePDU(pdu)
+}
+
+// InitialContextSetupRequest is sent by the MME to the eNB to establish a UE context
+// and activate radio bearers. It carries the KeNB and the NAS ATTACH ACCEPT.
+// TS 36.413 Section 9.1.4.1 (Procedure Code 9)
+type InitialContextSetupRequest struct {
+	MMEUES1APID       uint32
+	ENBUES1APID       uint32
+	UEAggMaxBitRateDL uint64 // bits/sec
+	UEAggMaxBitRateUL uint64 // bits/sec
+	ERABs             []ERABToSetup
+	UESecEncAlgs      [2]byte  // 16-bit encryption algorithm bitmap (MSB first)
+	UESecIntAlgs      [2]byte  // 16-bit integrity algorithm bitmap (MSB first)
+	SecurityKey       [32]byte // KeNB (256 bits)
+}
+
+// ERABToSetup describes one E-RAB in an INITIAL CONTEXT SETUP REQUEST.
+type ERABToSetup struct {
+	ERABID             uint8  // typically 5 for the default bearer
+	QCI                uint8  // QCI (e.g., 9 for internet non-GBR)
+	ARPLevel           uint8  // Allocation & Retention Priority level (0–15)
+	TransportLayerAddr net.IP // S-GW S1-U IP (IPv4)
+	GTPTEID            [4]byte
+	NASPDU             []byte // optional NAS PDU (ATTACH ACCEPT) embedded for UE
+}
+
+// EncodeInitialContextSetupRequest encodes an INITIAL CONTEXT SETUP REQUEST PDU.
+func EncodeInitialContextSetupRequest(req *InitialContextSetupRequest) ([]byte, error) {
+	var ies []ProtocolIE
+
+	// MME-UE-S1AP-ID
+	mmeEnc := NewPEREncoder()
+	if err := mmeEnc.PutConstrainedInt(int64(req.MMEUES1APID), 0, 0xFFFFFFFF); err != nil {
+		return nil, err
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_MME_UE_S1AP_ID, Criticality: CriticalityReject, Value: mmeEnc.Bytes()})
+
+	// eNB-UE-S1AP-ID
+	enbEnc := NewPEREncoder()
+	if err := enbEnc.PutConstrainedInt(int64(req.ENBUES1APID), 0, 0x00FFFFFF); err != nil {
+		return nil, err
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_ENB_UE_S1AP_ID, Criticality: CriticalityReject, Value: enbEnc.Bytes()})
+
+	// UEAggregateMaximumBitrate: SEQUENCE { dl BitRate(0..10000000000), ul BitRate(0..10000000000) }
+	// Each BitRate is a constrained INTEGER with range > 65536 → unconstrained encoding
+	aggEnc := NewPEREncoder()
+	aggEnc.PutSequenceHeader(true, 0, 0)
+	if err := aggEnc.PutConstrainedInt(int64(req.UEAggMaxBitRateDL), 0, 10000000000); err != nil {
+		return nil, fmt.Errorf("encoding DL bit rate: %w", err)
+	}
+	if err := aggEnc.PutConstrainedInt(int64(req.UEAggMaxBitRateUL), 0, 10000000000); err != nil {
+		return nil, fmt.Errorf("encoding UL bit rate: %w", err)
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_UEAggMaxBitRate, Criticality: CriticalityReject, Value: aggEnc.Bytes()})
+
+	// E-RABToBeSetupListCtxtSUReq
+	erabListVal, err := encodeERABSetupList(req.ERABs)
+	if err != nil {
+		return nil, fmt.Errorf("encoding E-RAB list: %w", err)
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_E_RABToBeSetupListCtxtSUReq, Criticality: CriticalityReject, Value: erabListVal})
+
+	// UESecurityCapabilities: SEQUENCE { encAlgs BIT STRING(16), intAlgs BIT STRING(16), ... }
+	secCapEnc := NewPEREncoder()
+	secCapEnc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Extensions), not present
+	secCapEnc.PutFixedOctetString(req.UESecEncAlgs[:])
+	secCapEnc.PutFixedOctetString(req.UESecIntAlgs[:])
+	ies = append(ies, ProtocolIE{ID: IEID_UESecurityCapabilities, Criticality: CriticalityReject, Value: secCapEnc.Bytes()})
+
+	// SecurityKey: BIT STRING(256) — KeNB, fixed 32 bytes, no length determinant
+	keyEnc := NewPEREncoder()
+	keyEnc.PutBitString(req.SecurityKey[:], 256)
+	ies = append(ies, ProtocolIE{ID: IEID_SecurityKey, Criticality: CriticalityReject, Value: keyEnc.Bytes()})
+
+	containerBytes, err := EncodeProtocolIEContainer(ies)
+	if err != nil {
+		return nil, err
+	}
+
+	pdu := &PDU{
+		Type:          PDUInitiatingMessage,
+		ProcedureCode: ProcInitialContextSetup,
+		Criticality:   CriticalityReject,
+		Value:         containerBytes,
+	}
+	return EncodePDU(pdu)
+}
+
+// encodeERABSetupList encodes a E-RABToBeSetupListCtxtSUReq IE value.
+// This is a SEQUENCE (SIZE(1..256)) OF ProtocolIE-SingleContainer items.
+func encodeERABSetupList(erabs []ERABToSetup) ([]byte, error) {
+	enc := NewPEREncoder()
+	// Count: constrained int 1..256 (range 256 → 1 aligned byte)
+	if err := enc.PutConstrainedInt(int64(len(erabs)), 1, 256); err != nil {
+		return nil, err
+	}
+	for _, erab := range erabs {
+		itemVal, err := encodeERABSetupItem(erab)
+		if err != nil {
+			return nil, err
+		}
+		// Each element is a ProtocolIE-SingleContainer
+		// id(2) + criticality(1 byte, aligned) + length + value
+		idBytes := make([]byte, 2)
+		binary.BigEndian.PutUint16(idBytes, uint16(IEID_E_RABToBeSetupItemCtxtSUReq))
+		enc.PutBytes(idBytes)
+		// criticality = reject = 0 (2 bits, then align)
+		if err := enc.PutConstrainedInt(int64(CriticalityReject), 0, 2); err != nil {
+			return nil, err
+		}
+		enc.align()
+		if err := enc.PutLengthDeterminant(len(itemVal)); err != nil {
+			return nil, err
+		}
+		enc.PutBytes(itemVal)
+	}
+	return enc.Bytes(), nil
+}
+
+// encodeERABSetupItem encodes an E-RABToBeSetupItemCtxtSUReq value (the OPEN TYPE contents).
+func encodeERABSetupItem(erab ERABToSetup) ([]byte, error) {
+	enc := NewPEREncoder()
+
+	// SEQUENCE { e-RAB-ID, qosParams, transportAddr, gtpTEID, nAS-PDU OPTIONAL, iE-Ext OPTIONAL, ... }
+	// Extension bit = 0; optional bitmap: [nAS-PDU present, iE-Ext present]
+	nasPDUPresent := len(erab.NASPDU) > 0
+	optBits := uint64(0)
+	if nasPDUPresent {
+		optBits |= 1 // bit 0 = nAS-PDU
+	}
+	enc.PutSequenceHeader(true, optBits, 2) // extensible, 2 optionals
+
+	// e-RAB-ID: INTEGER (0..15), 4 bits
+	if err := enc.PutConstrainedInt(int64(erab.ERABID), 0, 15); err != nil {
+		return nil, fmt.Errorf("encoding E-RAB-ID: %w", err)
+	}
+
+	// E-RABLevelQoSParameters: SEQUENCE { qCI(0..255), arp, gbrQos OPTIONAL, iE-Ext OPTIONAL, ... }
+	enc.PutSequenceHeader(true, 0, 2) // extensible, 2 optionals, none present
+	// QCI: INTEGER (0..255), 1 byte (range 256)
+	if err := enc.PutConstrainedInt(int64(erab.QCI), 0, 255); err != nil {
+		return nil, fmt.Errorf("encoding QCI: %w", err)
+	}
+	// AllocationAndRetentionPriority: SEQUENCE { level(0..15), preemptCap(0..1), preemptVuln(0..1), iE-Ext OPTIONAL, ... }
+	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional, not present
+	if err := enc.PutConstrainedInt(int64(erab.ARPLevel), 0, 15); err != nil {
+		return nil, fmt.Errorf("encoding ARP level: %w", err)
+	}
+	enc.putBits(0, 1) // pre-emption-capability: shall-not-trigger (0)
+	enc.putBits(1, 1) // pre-emption-vulnerability: pre-emptable (1)
+
+	// TransportLayerAddress: BIT STRING (SIZE(1..160))
+	// For IPv4: 32 bits; length determinant = constrained int(1..160) for value 32
+	ipv4 := erab.TransportLayerAddr.To4()
+	if ipv4 == nil {
+		return nil, fmt.Errorf("only IPv4 transport layer addresses supported")
+	}
+	enc.align()
+	if err := enc.PutConstrainedInt(32, 1, 160); err != nil { // 32 bits for IPv4
+		return nil, fmt.Errorf("encoding transport addr length: %w", err)
+	}
+	enc.PutBytes(ipv4)
+
+	// GTP-TEID: OCTET STRING (SIZE(4)) — fixed, no length prefix
+	enc.PutFixedOctetString(erab.GTPTEID[:])
+
+	// nAS-PDU (optional)
+	if nasPDUPresent {
+		if err := enc.PutOctetString(erab.NASPDU); err != nil {
+			return nil, fmt.Errorf("encoding NAS PDU: %w", err)
+		}
+	}
+
+	return enc.Bytes(), nil
+}
+
+// DecodeInitialContextSetupResponse decodes the eNB's response to the INITIAL CONTEXT SETUP.
+// We only need the MME-UE-S1AP-ID to match it to a UE; the rest (E-RAB setup results) are ignored.
+type InitialContextSetupResponse struct {
+	MMEUES1APID uint32
+	ENBUES1APID uint32
+}
+
+func DecodeInitialContextSetupResponse(ies []ProtocolIE) (*InitialContextSetupResponse, error) {
+	resp := &InitialContextSetupResponse{}
+	for _, ie := range ies {
+		switch ie.ID {
+		case IEID_MME_UE_S1AP_ID:
+			dec := NewPERDecoder(ie.Value)
+			v, err := dec.GetConstrainedInt(0, 0xFFFFFFFF)
+			if err != nil {
+				return nil, fmt.Errorf("decoding MME-UE-S1AP-ID: %w", err)
+			}
+			resp.MMEUES1APID = uint32(v)
+		case IEID_ENB_UE_S1AP_ID:
+			dec := NewPERDecoder(ie.Value)
+			v, err := dec.GetConstrainedInt(0, 0x00FFFFFF)
+			if err != nil {
+				return nil, fmt.Errorf("decoding eNB-UE-S1AP-ID: %w", err)
+			}
+			resp.ENBUES1APID = uint32(v)
+		}
+	}
+	return resp, nil
 }
 
 // DecodeUplinkNASTransport decodes an UplinkNASTransport from its ProtocolIE list.

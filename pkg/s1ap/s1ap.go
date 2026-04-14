@@ -104,10 +104,12 @@ const (
 	IEID_ServedGUMMEIs            ProtocolIEID = 105
 	IEID_RelativeMMECapacity      ProtocolIEID = 87
 	IEID_Cause                    ProtocolIEID = 2
-	IEID_UESecurityCapabilities   ProtocolIEID = 107
-	IEID_SecurityKey              ProtocolIEID = 73
+	IEID_UESecurityCapabilities      ProtocolIEID = 107
+	IEID_SecurityKey                 ProtocolIEID = 73
 	IEID_E_RABToBeSetupListCtxtSUReq ProtocolIEID = 24
-	IEID_UEAggMaxBitRate          ProtocolIEID = 66
+	IEID_UEAggMaxBitRate             ProtocolIEID = 66
+	IEID_UE_S1AP_IDs                 ProtocolIEID = 99
+	IEID_E_RABToBeSetupItemCtxtSUReq ProtocolIEID = 52
 )
 
 // Cause values (TS 36.413 Section 9.2.1.3)

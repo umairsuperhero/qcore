@@ -38,6 +38,11 @@ func (m *MME) handleS1APMessage(ctx context.Context, enb *EnbContext, data []byt
 	case s1ap.ProcUEContextReleaseRequest:
 		m.handleUEContextReleaseRequest(ctx, enb, ies, streamID)
 
+	case s1ap.ProcInitialContextSetup:
+		if pdu.Type == s1ap.PDUSuccessfulOutcome {
+			m.handleInitialContextSetupResponse(ctx, enb, ies, streamID)
+		}
+
 	default:
 		m.log.Warnf("Unhandled S1AP procedure: %s (%d)", pdu.ProcedureCode, pdu.ProcedureCode)
 	}
@@ -479,13 +484,16 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 		return
 	}
 
+	// Send INITIAL CONTEXT SETUP REQUEST (carries the ATTACH ACCEPT as embedded NAS PDU).
+	// This is the correct S1AP procedure: the eNB delivers the NAS to the UE via RRC and
+	// simultaneously sets up the radio bearer and GTP tunnel.
 	enb := ue.ENB
-	if err := m.sendDownlinkNAS(enb, ue.MMEUES1APID, ue.ENBUES1APID, wrappedAccept, streamID); err != nil {
-		m.log.Errorf("Failed to send ATTACH ACCEPT to UE=%d: %v", ue.MMEUES1APID, err)
+	if err := m.sendInitialContextSetup(enb, ue, wrappedAccept, streamID); err != nil {
+		m.log.Errorf("Failed to send INITIAL CONTEXT SETUP to eNB for UE=%d: %v", ue.MMEUES1APID, err)
 		return
 	}
 
-	m.log.Infof("Sent ATTACH ACCEPT to UE=%d (IMSI=%s, IP=%s)", ue.MMEUES1APID, ue.IMSI, pdnAddr)
+	m.log.Infof("Sent INITIAL CONTEXT SETUP REQUEST to eNB for UE=%d (IMSI=%s, IP=%s)", ue.MMEUES1APID, ue.IMSI, pdnAddr)
 	if m.metrics != nil {
 		m.metrics.AttachSuccess.WithLabelValues().Inc()
 	}
@@ -634,6 +642,81 @@ func (m *MME) cleanupUE(ue *UEContext) {
 		m.metrics.ActiveUEs.WithLabelValues().Dec()
 	}
 	m.log.Infof("Cleaned up UE context for MME-UE-S1AP-ID=%d (IMSI=%s)", ue.MMEUES1APID, ue.IMSI)
+}
+
+// sendInitialContextSetup sends an INITIAL CONTEXT SETUP REQUEST to the eNB.
+// The NAS ATTACH ACCEPT is embedded in the first E-RAB item so the eNB can deliver
+// it to the UE during RRC reconfiguration (radio bearer setup).
+// A dummy GTP TEID and loopback SGW address are used since we have no real S-GW yet.
+func (m *MME) sendInitialContextSetup(enb *EnbContext, ue *UEContext, attachAcceptNAS []byte, streamID uint16) error {
+	ue.mu.RLock()
+	secCtx := ue.SecurityCtx
+	ue.mu.RUnlock()
+
+	// Build UE security capability bitmaps from what the UE reported in Attach Request.
+	// Format (TS 36.413 §9.2.1.35): 16-bit BIT STRING, MSB = EEA0/EIA0, etc.
+	// If we don't have the UE capabilities, advertise EEA0+EIA2 (our selected algorithms).
+	var encAlgs, intAlgs [2]byte
+	ue.mu.RLock()
+	ueCap := ue.UENetworkCapability
+	ue.mu.RUnlock()
+	if len(ueCap) >= 2 {
+		// NAS UENetworkCapability byte 0 = EPS encryption support
+		// NAS UENetworkCapability byte 1 = EPS integrity support
+		// Both are in the same bit ordering as the S1AP 16-bit bitmaps (MSB = alg 0)
+		encAlgs[0] = ueCap[0]
+		intAlgs[0] = ueCap[1]
+	} else {
+		// Fallback: advertise EEA0 (null cipher) + EIA2 (AES-CMAC)
+		encAlgs[0] = 0x80 // EEA0 bit set
+		intAlgs[0] = 0x20 // EIA2 bit set (bit 3 from MSB)
+	}
+
+	var keNB [32]byte
+	copy(keNB[:], secCtx.KeNB)
+
+	req := &s1ap.InitialContextSetupRequest{
+		MMEUES1APID:       ue.MMEUES1APID,
+		ENBUES1APID:       ue.ENBUES1APID,
+		UEAggMaxBitRateDL: 50000000, // 50 Mbps — placeholder; real value from HSS subscription
+		UEAggMaxBitRateUL: 25000000, // 25 Mbps
+		ERABs: []s1ap.ERABToSetup{
+			{
+				ERABID:             5, // default bearer EPS bearer ID
+				QCI:                9, // internet non-GBR
+				ARPLevel:           8, // mid-priority
+				TransportLayerAddr: net.ParseIP("127.0.0.1"), // placeholder SGW S1-U address
+				GTPTEID:            [4]byte{0x00, 0x00, 0x00, 0x01}, // placeholder TEID
+				NASPDU:             attachAcceptNAS,
+			},
+		},
+		UESecEncAlgs: encAlgs,
+		UESecIntAlgs: intAlgs,
+		SecurityKey:  keNB,
+	}
+
+	encoded, err := s1ap.EncodeInitialContextSetupRequest(req)
+	if err != nil {
+		return fmt.Errorf("encoding INITIAL CONTEXT SETUP REQUEST: %w", err)
+	}
+	if err := enb.Assoc.Write(encoded, streamID); err != nil {
+		return fmt.Errorf("writing INITIAL CONTEXT SETUP REQUEST: %w", err)
+	}
+	return nil
+}
+
+// handleInitialContextSetupResponse logs the eNB's confirmation of bearer setup.
+func (m *MME) handleInitialContextSetupResponse(ctx context.Context, enb *EnbContext, ies []s1ap.ProtocolIE, streamID uint16) {
+	_ = ctx
+	_ = enb
+	_ = streamID
+
+	resp, err := s1ap.DecodeInitialContextSetupResponse(ies)
+	if err != nil {
+		m.log.Errorf("Failed to decode INITIAL CONTEXT SETUP RESPONSE: %v", err)
+		return
+	}
+	m.log.Infof("INITIAL CONTEXT SETUP RESPONSE: MME-UE-S1AP-ID=%d — radio bearer established", resp.MMEUES1APID)
 }
 
 // sendDownlinkNAS wraps a NAS PDU in a DownlinkNASTransport S1AP message and sends it.

@@ -399,24 +399,17 @@ func TestFullAttachFlow(t *testing.T) {
 	ue.mu.RUnlock()
 	assert.True(t, hasSecCtx, "security context should be established after AUTH RESPONSE")
 
-	// Step 3: SECURITY MODE COMPLETE → triggers ATTACH ACCEPT
+	// Step 3: SECURITY MODE COMPLETE → triggers INITIAL CONTEXT SETUP REQUEST (with ATTACH ACCEPT embedded)
 	mme.handleSecurityModeComplete(ue, nil, 0)
 
-	// Should now have sent ATTACH ACCEPT
-	require.Equal(t, 3, assoc.writtenCount(), "ATTACH ACCEPT not sent")
+	// Should now have sent INITIAL CONTEXT SETUP REQUEST
+	require.Equal(t, 3, assoc.writtenCount(), "INITIAL CONTEXT SETUP REQUEST not sent")
 
 	pdu3, err := s1ap.DecodePDU(assoc.lastWritten())
 	require.NoError(t, err)
-	assert.Equal(t, s1ap.ProcDownlinkNASTransport, pdu3.ProcedureCode)
-
-	pduIEs3, err := s1ap.DecodeProtocolIEContainer(pdu3.Value)
-	require.NoError(t, err)
-	dlMsg3, err := s1ap.DecodeUplinkNASTransport(pduIEs3)
-	require.NoError(t, err)
-
-	acceptH, _, err := nas.ParseHeader(dlMsg3.NASPDU)
-	require.NoError(t, err)
-	assert.Equal(t, nas.MsgTypeAttachAccept, acceptH.MessageType)
+	// The correct procedure for radio bearer activation + NAS delivery is Initial Context Setup
+	assert.Equal(t, s1ap.ProcInitialContextSetup, pdu3.ProcedureCode)
+	assert.Equal(t, s1ap.PDUInitiatingMessage, pdu3.Type)
 
 	// UE should be marked registered with a PDN address
 	ue.mu.RLock()
