@@ -420,10 +420,14 @@ func TestFullAttachFlow(t *testing.T) {
 	assert.NotEmpty(t, pdnAddr)
 	assert.NotEqual(t, "0.0.0.0", pdnAddr)
 
-	// Step 4: ATTACH COMPLETE
+	// Step 4: ATTACH COMPLETE → MME sends EMM INFORMATION (network name + time)
 	mme.handleAttachComplete(ue)
-	// No new message sent, just state acknowledgment
-	assert.Equal(t, 3, assoc.writtenCount())
+	assert.Equal(t, 4, assoc.writtenCount(), "EMM INFORMATION should be sent after Attach Complete")
+
+	// Verify the EMM INFORMATION is an integrity-protected NAS DL message
+	pdu4, err := s1ap.DecodePDU(assoc.lastWritten())
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcDownlinkNASTransport, pdu4.ProcedureCode)
 }
 
 func TestAllocatePDNAddress(t *testing.T) {

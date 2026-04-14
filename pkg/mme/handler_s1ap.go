@@ -499,11 +499,41 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 	}
 }
 
-// handleAttachComplete acknowledges the UE's ATTACH COMPLETE.
+// handleAttachComplete acknowledges the UE's ATTACH COMPLETE and sends EMM INFORMATION.
 func (m *MME) handleAttachComplete(ue *UEContext) {
 	m.log.Infof("ATTACH COMPLETE from UE=%d (IMSI=%s) — UE is now registered", ue.MMEUES1APID, ue.IMSI)
-	// State is already EMMRegistered; ATTACH COMPLETE confirms the UE is done.
-	// In a full implementation, this triggers bearer activation on the SGW.
+
+	// Send EMM INFORMATION (optional) so the UE displays the network name and syncs time.
+	emmInfo := nas.EncodeEMMInformation(m.cfg.Name)
+
+	ue.mu.Lock()
+	kNASint := []byte(nil)
+	dlCount := uint32(0)
+	if ue.SecurityCtx != nil {
+		kNASint = ue.SecurityCtx.KNASint
+		dlCount = ue.NASdlCount
+		ue.NASdlCount++
+	}
+	ue.mu.Unlock()
+
+	var wrapped []byte
+	var err error
+	if kNASint != nil {
+		wrapped, err = nas.WrapNASWithIntegrity(kNASint, dlCount, nas.SecurityHeaderIntegrityProtectedCiphered, emmInfo)
+		if err != nil {
+			m.log.Warnf("Failed to wrap EMM INFORMATION for UE=%d: %v", ue.MMEUES1APID, err)
+			return
+		}
+	} else {
+		wrapped = emmInfo
+	}
+
+	enb := ue.ENB
+	if err := m.sendDownlinkNAS(enb, ue.MMEUES1APID, ue.ENBUES1APID, wrapped, ue.NASStreamID); err != nil {
+		m.log.Warnf("Failed to send EMM INFORMATION to UE=%d: %v", ue.MMEUES1APID, err)
+	} else {
+		m.log.Infof("Sent EMM INFORMATION to UE=%d (network name: %q)", ue.MMEUES1APID, m.cfg.Name)
+	}
 }
 
 // handleIdentityResponse processes a NAS Identity Response (sent in response to our Identity Request).

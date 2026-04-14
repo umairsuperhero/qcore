@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"time"
+	"unicode/utf16"
 )
 
 // AttachRequest represents a NAS Attach Request (TS 24.301 Section 8.2.4).
@@ -187,6 +189,54 @@ func HexToBytes(s string) ([]byte, error) {
 	return hex.DecodeString(s)
 }
 
+// EncodeIdentityRequest encodes a NAS Identity Request (TS 24.301 §8.2.10).
+// identityType: 1=IMSI, 2=IMEI, 3=IMEISV, 4=TMSI, 6=GUTI
+func EncodeIdentityRequest(identityType uint8) []byte {
+	return []byte{
+		uint8(SecurityHeaderPlainNAS<<4) | uint8(EPSMobilityManagement),
+		uint8(MsgTypeIdentityRequest),
+		identityType & 0x0F, // low nibble = type, high nibble = spare/KSI = 0
+	}
+}
+
+// IdentityResponse holds the identity returned by the UE.
+type IdentityResponse struct {
+	IdentityType uint8
+	IMSI         string // populated if IdentityType == 1 (IMSI)
+	RawIdentity  []byte // raw BCD bytes for other types
+}
+
+// DecodeIdentityResponse decodes a NAS Identity Response body (after the header).
+// data starts after the NAS header bytes.
+func DecodeIdentityResponse(data []byte) (*IdentityResponse, error) {
+	if len(data) < 2 {
+		return nil, fmt.Errorf("Identity Response too short: %d bytes", len(data))
+	}
+	resp := &IdentityResponse{}
+
+	// Mobile identity (LV): length + identity bytes
+	idLen := int(data[0])
+	if len(data) < 1+idLen {
+		return nil, fmt.Errorf("Identity Response mobile identity truncated: need %d, have %d", idLen, len(data)-1)
+	}
+	rawID := data[1 : 1+idLen]
+	resp.RawIdentity = rawID
+
+	if len(rawID) == 0 {
+		return resp, nil
+	}
+	resp.IdentityType = rawID[0] & 0x07
+
+	if resp.IdentityType == 1 { // IMSI
+		imsi, err := DecodeIMSI(rawID)
+		if err != nil {
+			return nil, fmt.Errorf("decoding IMSI from Identity Response: %w", err)
+		}
+		resp.IMSI = imsi
+	}
+	return resp, nil
+}
+
 // EncodeAttachAccept encodes a NAS ATTACH ACCEPT message (TS 24.301 §8.2.1).
 // It embeds an Activate Default EPS Bearer Context Request as the ESM container.
 // plmn is the serving PLMN, tac is the tracking area code, bearerID is the
@@ -259,6 +309,59 @@ func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn n
 	msg = append(msg, pdn4...)
 
 	return msg
+}
+
+// EncodeEMMInformation encodes a NAS EMM INFORMATION message (TS 24.301 §8.2.13).
+// It carries the network full name, short name, and local time to the UE. All IEs
+// are optional; we send full name, short name, and universal time/local time zone.
+// networkName should be the human-readable operator name (e.g., "QCore").
+func EncodeEMMInformation(networkName string) []byte {
+	msg := make([]byte, 0, 32)
+
+	// NAS EMM plain header
+	msg = append(msg, uint8(SecurityHeaderPlainNAS<<4)|uint8(EPSMobilityManagement))
+	msg = append(msg, uint8(MsgTypeEMMInformation))
+
+	// Full Name for Network (IEI=0x43, TLV): TS 24.301 §9.9.3.24
+	// Value: [coding=UCS2(0x90)|spare_CI=0] + UCS-2 encoded name
+	if networkName != "" {
+		ucs2 := encodeUCS2(networkName)
+		nameVal := make([]byte, 1+len(ucs2))
+		nameVal[0] = 0x90 // coding scheme = UCS2 (0b1001_0000), CI=0
+		copy(nameVal[1:], ucs2)
+		msg = append(msg, 0x43, uint8(len(nameVal)))
+		msg = append(msg, nameVal...)
+	}
+
+	// Universal Time and Local Time Zone (IEI=0x46, TV, 7 bytes): TS 24.301 §9.9.3.32
+	// Format: YY MM DD HH mm SS TZ — each byte is 2 BCD digits (digit1<<4|digit0)
+	now := time.Now().UTC()
+	bcd := func(v int) byte { return byte((v/10)<<4 | v%10) }
+	msg = append(msg, 0x46)
+	msg = append(msg,
+		bcd(now.Year()%100),
+		bcd(int(now.Month())),
+		bcd(now.Day()),
+		bcd(now.Hour()),
+		bcd(now.Minute()),
+		bcd(now.Second()),
+		0x00, // time zone: UTC+0 (encoded as quarter-hours offset, 0=UTC)
+	)
+
+	return msg
+}
+
+// encodeUCS2 encodes a UTF-8 string as UCS-2 big-endian.
+func encodeUCS2(s string) []byte {
+	runes := []rune(s)
+	// Convert runes to UTF-16, then take only the BMP code points (UCS-2 subset).
+	utf16Runes := utf16.Encode(runes)
+	out := make([]byte, 2*len(utf16Runes))
+	for i, r := range utf16Runes {
+		out[2*i] = byte(r >> 8)
+		out[2*i+1] = byte(r)
+	}
+	return out
 }
 
 // encodeAPN encodes an APN string as DNS labels per 3GPP TS 23.003 §9.1.

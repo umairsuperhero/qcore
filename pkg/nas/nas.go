@@ -48,6 +48,7 @@ const (
 	MsgTypeSecurityModeComplete   MessageType = 0x5E
 	MsgTypeSecurityModeReject     MessageType = 0x5F
 	MsgTypeEMMStatus              MessageType = 0x60
+	MsgTypeEMMInformation         MessageType = 0x61
 	MsgTypeServiceRequest         MessageType = 0x4C
 )
 
