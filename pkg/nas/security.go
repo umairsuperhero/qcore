@@ -1,0 +1,186 @@
+package nas
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+)
+
+// NAS key derivation per 3GPP TS 33.401 Annex A.
+// All KDF functions use HMAC-SHA-256 with KASME as key and a specific S parameter.
+// However, 3GPP actually specifies a simpler KDF based on AES for NAS keys:
+// KDF(key, FC, P0, L0, P1, L1, ...) where FC is the function code.
+
+// DeriveKNASenc derives the NAS encryption key from KASME.
+// TS 33.401 Annex A.7: FC=0x15, P0=algorithm type distinguisher (0x01 for NAS-enc),
+// P1=algorithm identity (0=EEA0, 1=EEA1, 2=EEA2)
+func DeriveKNASenc(kasme []byte, algID uint8) ([]byte, error) {
+	return deriveNASKey(kasme, 0x01, algID)
+}
+
+// DeriveKNASint derives the NAS integrity key from KASME.
+// TS 33.401 Annex A.7: FC=0x15, P0=algorithm type distinguisher (0x02 for NAS-int),
+// P1=algorithm identity (0=EIA0, 1=EIA1, 2=EIA2)
+func DeriveKNASint(kasme []byte, algID uint8) ([]byte, error) {
+	return deriveNASKey(kasme, 0x02, algID)
+}
+
+// DeriveKeNB derives the eNodeB key from KASME and uplink NAS COUNT.
+// TS 33.401 Annex A.3: FC=0x11, P0=uplink NAS COUNT (4 bytes)
+func DeriveKeNB(kasme []byte, ulNASCount uint32) ([]byte, error) {
+	if len(kasme) != 32 {
+		return nil, fmt.Errorf("KASME must be 32 bytes, got %d", len(kasme))
+	}
+
+	// S = FC || P0 || L0
+	s := make([]byte, 0, 7)
+	s = append(s, 0x11) // FC
+	countBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(countBytes, ulNASCount)
+	s = append(s, countBytes...) // P0
+	s = append(s, 0x00, 0x04)   // L0 = 4
+
+	return kdf(kasme, s), nil
+}
+
+// deriveNASKey implements the common NAS key derivation.
+func deriveNASKey(kasme []byte, algTypeDist, algID uint8) ([]byte, error) {
+	if len(kasme) != 32 {
+		return nil, fmt.Errorf("KASME must be 32 bytes, got %d", len(kasme))
+	}
+
+	// S = FC || P0 || L0 || P1 || L1
+	// FC = 0x15
+	// P0 = algorithm type distinguisher (1 byte), L0 = 0x0001
+	// P1 = algorithm identity (1 byte), L1 = 0x0001
+	s := make([]byte, 0, 7)
+	s = append(s, 0x15)               // FC
+	s = append(s, algTypeDist)         // P0
+	s = append(s, 0x00, 0x01)         // L0
+	s = append(s, algID)              // P1
+	s = append(s, 0x00, 0x01)         // L1
+
+	derived := kdf(kasme, s)
+	// Return last 16 bytes as the key
+	return derived[16:], nil
+}
+
+// kdf implements the 3GPP KDF (Key Derivation Function) per TS 33.220 Annex B.
+// output = HMAC-SHA-256(key, S)
+func kdf(key, s []byte) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(s)
+	return mac.Sum(nil)
+}
+
+// AES-CMAC implementation for EIA2 (NAS integrity protection).
+// Per NIST SP 800-38B / RFC 4493.
+
+// AESCMAC computes AES-CMAC over the given message with the given key.
+func AESCMAC(key, message []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("AES-CMAC key error: %w", err)
+	}
+
+	// Generate subkeys
+	k1, k2 := generateSubkeys(block)
+
+	// Number of blocks
+	n := (len(message) + aes.BlockSize - 1) / aes.BlockSize
+	if n == 0 {
+		n = 1
+	}
+
+	var lastBlock [aes.BlockSize]byte
+	isComplete := len(message) > 0 && len(message)%aes.BlockSize == 0
+
+	if isComplete {
+		// XOR last block with K1
+		copy(lastBlock[:], message[len(message)-aes.BlockSize:])
+		xorBlock(&lastBlock, k1)
+	} else {
+		// Pad and XOR with K2
+		remaining := len(message) % aes.BlockSize
+		if remaining == 0 && len(message) == 0 {
+			remaining = 0
+		}
+		start := (n - 1) * aes.BlockSize
+		if start < len(message) {
+			copy(lastBlock[:], message[start:])
+		}
+		lastBlock[len(message)-start] = 0x80 // padding
+		xorBlock(&lastBlock, k2)
+	}
+
+	// CBC-MAC
+	var x [aes.BlockSize]byte
+	for i := 0; i < n-1; i++ {
+		var blk [aes.BlockSize]byte
+		copy(blk[:], message[i*aes.BlockSize:])
+		xorBlock(&x, blk)
+		block.Encrypt(x[:], x[:])
+	}
+	xorBlock(&x, lastBlock)
+	block.Encrypt(x[:], x[:])
+
+	return x[:], nil
+}
+
+func generateSubkeys(block cipher.Block) (k1, k2 [aes.BlockSize]byte) {
+	var zero [aes.BlockSize]byte
+	var l [aes.BlockSize]byte
+	block.Encrypt(l[:], zero[:])
+
+	k1 = shiftLeft(l)
+	if l[0]&0x80 != 0 {
+		k1[aes.BlockSize-1] ^= 0x87 // Rb for AES-128
+	}
+
+	k2 = shiftLeft(k1)
+	if k1[0]&0x80 != 0 {
+		k2[aes.BlockSize-1] ^= 0x87
+	}
+
+	return
+}
+
+func shiftLeft(input [aes.BlockSize]byte) [aes.BlockSize]byte {
+	var output [aes.BlockSize]byte
+	for i := 0; i < aes.BlockSize-1; i++ {
+		output[i] = (input[i] << 1) | (input[i+1] >> 7)
+	}
+	output[aes.BlockSize-1] = input[aes.BlockSize-1] << 1
+	return output
+}
+
+func xorBlock(dst *[aes.BlockSize]byte, src [aes.BlockSize]byte) {
+	for i := range dst {
+		dst[i] ^= src[i]
+	}
+}
+
+// NASIntegrityProtect computes NAS integrity (EIA2 = AES-CMAC based).
+// Input: integrity key, count, bearer, direction, message
+// Output: 4-byte MAC
+func NASIntegrityProtect(kNASint []byte, count uint32, bearer uint8, direction uint8, message []byte) ([]byte, error) {
+	// Build the input per TS 33.401 Annex B.2:
+	// COUNT (4 bytes) || BEARER (5 bits) || DIRECTION (1 bit) || 0..0 (26 bits) || MESSAGE
+	header := make([]byte, 8)
+	binary.BigEndian.PutUint32(header[0:4], count)
+	header[4] = (bearer << 3) | (direction << 2) // bearer(5 bits) | direction(1 bit) | spare(2 bits)
+	// bytes 5-7 are zero (remaining spare bits)
+
+	input := append(header, message...)
+
+	mac, err := AESCMAC(kNASint, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return first 4 bytes as NAS-MAC
+	return mac[:4], nil
+}
