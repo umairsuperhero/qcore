@@ -1,6 +1,7 @@
 package nas
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -135,4 +136,127 @@ func TestMessageTypeStrings(t *testing.T) {
 	assert.Equal(t, "AttachRequest", MsgTypeAttachRequest.String())
 	assert.Equal(t, "AuthenticationRequest", MsgTypeAuthenticationRequest.String())
 	assert.Equal(t, "SecurityModeCommand", MsgTypeSecurityModeCommand.String())
+}
+
+// --- ParseHeader with security-protected NAS ---
+
+func TestParseHeaderSecurityProtected(t *testing.T) {
+	// Build a security-protected NAS wrapping a SECURITY MODE COMPLETE.
+	// Layout: [sec_type|PD] [MAC 4 bytes] [SN] [inner plain NAS: PD msg_type]
+	inner := []byte{
+		uint8(SecurityHeaderPlainNAS<<4) | uint8(EPSMobilityManagement), // 0x07
+		uint8(MsgTypeSecurityModeComplete),                               // 0x5E
+	}
+	pdu := make([]byte, 0, 8)
+	pdu = append(pdu, uint8(SecurityHeaderIntegrityProtectedNewCtx<<4)|uint8(EPSMobilityManagement)) // 0x37
+	pdu = append(pdu, 0x01, 0x02, 0x03, 0x04) // MAC (fake)
+	pdu = append(pdu, 0x00)                    // SN
+	pdu = append(pdu, inner...)
+
+	h, off, err := ParseHeader(pdu)
+	require.NoError(t, err)
+	assert.Equal(t, MsgTypeSecurityModeComplete, h.MessageType)
+	assert.Equal(t, EPSMobilityManagement, h.Protocol)
+	assert.Equal(t, SecurityHeaderIntegrityProtectedNewCtx, h.SecurityHeader)
+	// Body starts after: 1 (outer) + 4 (MAC) + 1 (SN) + 2 (inner header) = 8
+	assert.Equal(t, 8, off)
+}
+
+// --- EncodeAttachAccept ---
+
+func TestEncodeAttachAccept(t *testing.T) {
+	plmn := [3]byte{0x00, 0xF1, 0x10}
+	pdn := net.ParseIP("10.45.0.2")
+	require.NotNil(t, pdn)
+
+	msg, err := EncodeAttachAccept(plmn, 0x0001, 5, "internet", pdn)
+	require.NoError(t, err)
+	require.Greater(t, len(msg), 10)
+
+	// Header
+	assert.Equal(t, uint8(0x07), msg[0]) // plain NAS + EMM PD
+	assert.Equal(t, uint8(MsgTypeAttachAccept), msg[1])
+
+	// EPS attach result = 1 (EPS only)
+	assert.Equal(t, uint8(0x01), msg[2])
+
+	// T3412 timer = 0x21 (1 hour)
+	assert.Equal(t, uint8(0x21), msg[3])
+}
+
+func TestEncodeAttachAccept_IPv6Rejected(t *testing.T) {
+	plmn := [3]byte{0x00, 0xF1, 0x10}
+	pdn := net.ParseIP("2001:db8::1") // IPv6 should be rejected
+	_, err := EncodeAttachAccept(plmn, 0x0001, 5, "internet", pdn)
+	assert.Error(t, err)
+}
+
+func TestEncodeAPN(t *testing.T) {
+	// "internet" → [0x08][i n t e r n e t]
+	out := encodeAPN("internet")
+	assert.Equal(t, []byte{0x08, 'i', 'n', 't', 'e', 'r', 'n', 'e', 't'}, out)
+
+	// "foo.bar" → [0x03 f o o][0x03 b a r]
+	out2 := encodeAPN("foo.bar")
+	assert.Equal(t, []byte{0x03, 'f', 'o', 'o', 0x03, 'b', 'a', 'r'}, out2)
+}
+
+// --- WrapNASWithIntegrity ---
+
+func TestWrapNASWithIntegrity(t *testing.T) {
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = byte(i + 1)
+	}
+	inner := []byte{0x07, 0x5D, 0x02, 0x00, 0x02, 0xE0, 0xE0} // SEC MODE CMD
+
+	wrapped, err := WrapNASWithIntegrity(kNASint, 0, SecurityHeaderIntegrityProtectedNewCtx, inner)
+	require.NoError(t, err)
+
+	// Check outer header byte
+	assert.Equal(t, uint8(SecurityHeaderIntegrityProtectedNewCtx<<4)|uint8(EPSMobilityManagement), wrapped[0])
+	// MAC = 4 bytes at [1:5]
+	assert.Len(t, wrapped[1:5], 4)
+	// SN = 0 at [5]
+	assert.Equal(t, uint8(0), wrapped[5])
+	// Inner NAS starts at [6]
+	assert.Equal(t, inner, wrapped[6:])
+}
+
+func TestWrapNASWithIntegrity_DeterministicMAC(t *testing.T) {
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = byte(i + 5)
+	}
+	inner := []byte{0x07, 0x42, 0x01} // Fake ATTACH ACCEPT
+
+	w1, err := WrapNASWithIntegrity(kNASint, 1, SecurityHeaderIntegrityProtectedCiphered, inner)
+	require.NoError(t, err)
+	w2, err := WrapNASWithIntegrity(kNASint, 1, SecurityHeaderIntegrityProtectedCiphered, inner)
+	require.NoError(t, err)
+	assert.Equal(t, w1, w2, "same inputs must produce same MAC")
+
+	// Different count → different MAC
+	w3, err := WrapNASWithIntegrity(kNASint, 2, SecurityHeaderIntegrityProtectedCiphered, inner)
+	require.NoError(t, err)
+	assert.NotEqual(t, w1[1:5], w3[1:5], "different count must produce different MAC")
+}
+
+func TestWrapNASWithIntegrity_ParseableByParseHeader(t *testing.T) {
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = byte(i + 1)
+	}
+	inner := []byte{
+		uint8(SecurityHeaderPlainNAS<<4) | uint8(EPSMobilityManagement),
+		uint8(MsgTypeSecurityModeComplete),
+	}
+
+	wrapped, err := WrapNASWithIntegrity(kNASint, 0, SecurityHeaderIntegrityProtectedNewCtx, inner)
+	require.NoError(t, err)
+
+	h, off, err := ParseHeader(wrapped)
+	require.NoError(t, err)
+	assert.Equal(t, MsgTypeSecurityModeComplete, h.MessageType)
+	assert.Equal(t, 8, off) // body offset past both headers
 }

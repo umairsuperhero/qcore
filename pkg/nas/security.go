@@ -163,6 +163,34 @@ func xorBlock(dst *[aes.BlockSize]byte, src [aes.BlockSize]byte) {
 	}
 }
 
+// WrapNASWithIntegrity adds a NAS security header with MAC to a plain NAS PDU.
+// Use SecurityHeaderIntegrityProtectedNewCtx (3) for SECURITY MODE COMMAND
+// (first message with new security context) and SecurityHeaderIntegrityProtectedCiphered (2)
+// for subsequent messages once the security context is active.
+// With EEA0 (null cipher), ciphering is a no-op so only integrity protection applies.
+func WrapNASWithIntegrity(kNASint []byte, count uint32, secHeaderType SecurityHeaderType, plainNAS []byte) ([]byte, error) {
+	sn := uint8(count & 0xFF) // Sequence Number = NAS COUNT mod 256
+
+	// MAC input is [SN][plain NAS] per TS 24.301 §4.4.4.3
+	macInput := make([]byte, 1+len(plainNAS))
+	macInput[0] = sn
+	copy(macInput[1:], plainNAS)
+
+	// direction = 1 (downlink), bearer = 0 (NAS)
+	mac, err := NASIntegrityProtect(kNASint, count, 0, 1, macInput)
+	if err != nil {
+		return nil, fmt.Errorf("computing NAS MAC: %w", err)
+	}
+
+	// Build: [sec_type|PD][MAC 4 bytes][SN][plain NAS...]
+	result := make([]byte, 0, 6+len(plainNAS))
+	result = append(result, uint8(secHeaderType<<4)|uint8(EPSMobilityManagement))
+	result = append(result, mac...)
+	result = append(result, sn)
+	result = append(result, plainNAS...)
+	return result, nil
+}
+
 // NASIntegrityProtect computes NAS integrity (EIA2 = AES-CMAC based).
 // Input: integrity key, count, bearer, direction, message
 // Output: 4-byte MAC

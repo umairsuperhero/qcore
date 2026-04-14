@@ -35,6 +35,11 @@ type MME struct {
 	enbs     sync.Map // map[string]*EnbContext (key: remote addr)
 	ues      sync.Map // map[uint32]*UEContext  (key: MME-UE-S1AP-ID)
 	nextUEID uint32   // atomic counter for MME-UE-S1AP-ID allocation
+
+	// IP address pool for PDN (no real PGW yet — placeholder)
+	// Start at 10.45.0.2; 10.45.0.1 is the "gateway".
+	// Stored as host-order offset from base (10.45.0.0).
+	nextPDNOffset uint32 // atomic; first UE gets offset 2 → 10.45.0.2
 }
 
 // New creates a new MME instance.
@@ -152,6 +157,21 @@ func (m *MME) handleAssociation(ctx context.Context, enb *EnbContext) {
 // allocateUEID returns a new unique MME-UE-S1AP-ID.
 func (m *MME) allocateUEID() uint32 {
 	return atomic.AddUint32(&m.nextUEID, 1)
+}
+
+// allocatePDNAddress allocates the next IPv4 address from the 10.45.0.0/16 pool.
+// Returns a dotted-notation string. Not persistent across restarts.
+func (m *MME) allocatePDNAddress() string {
+	// Start from offset 2 (10.45.0.2); wrap at /24 boundary for simplicity
+	offset := atomic.AddUint32(&m.nextPDNOffset, 1) + 1 // +1 so first offset = 2
+	a := uint8(10)
+	b := uint8(45)
+	c := uint8((offset >> 8) & 0xFF)
+	d := uint8(offset & 0xFF)
+	if d == 0 {
+		d = 1 // skip .0 addresses
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", a, b, c, d)
 }
 
 // GetENBCount returns the number of connected eNodeBs.

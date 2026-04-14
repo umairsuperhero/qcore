@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"net"
 )
 
 // AttachRequest represents a NAS Attach Request (TS 24.301 Section 8.2.4).
@@ -184,4 +185,97 @@ func VerifyAuthResponse(res, xres []byte) bool {
 // HexToBytes is a convenience for decoding hex strings from the HSS API.
 func HexToBytes(s string) ([]byte, error) {
 	return hex.DecodeString(s)
+}
+
+// EncodeAttachAccept encodes a NAS ATTACH ACCEPT message (TS 24.301 §8.2.1).
+// It embeds an Activate Default EPS Bearer Context Request as the ESM container.
+// plmn is the serving PLMN, tac is the tracking area code, bearerID is the
+// EPS bearer ID (typically 5), apn is the access point name, and pdn is the
+// allocated IPv4 address for the UE.
+func EncodeAttachAccept(plmn [3]byte, tac uint16, bearerID uint8, apn string, pdn net.IP) ([]byte, error) {
+	pdn4 := pdn.To4()
+	if pdn4 == nil {
+		return nil, fmt.Errorf("EncodeAttachAccept: only IPv4 PDN addresses supported")
+	}
+
+	// NAS plain EMM header
+	msg := make([]byte, 0, 64)
+	msg = append(msg, uint8(SecurityHeaderPlainNAS<<4)|uint8(EPSMobilityManagement))
+	msg = append(msg, uint8(MsgTypeAttachAccept))
+
+	// EPS attach result (3 bits) in low nibble; high nibble spare
+	// 1 = EPS only attach
+	msg = append(msg, 0x01)
+
+	// T3412 timer value: 1 hour = timer unit 001 (1 hr) + value 1 → 0x21
+	msg = append(msg, 0x21)
+
+	// TAI list (LV): one TAI, type 0 (list of TACs, one PLMN), 1 element
+	taiList := encodeTAIList(plmn, tac)
+	msg = append(msg, uint8(len(taiList)))
+	msg = append(msg, taiList...)
+
+	// ESM message container (LV-E: 2-byte big-endian length + value)
+	esm := encodeActivateDefaultBearerContextRequest(bearerID, apn, pdn4)
+	esmLenBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(esmLenBytes, uint16(len(esm)))
+	msg = append(msg, esmLenBytes...)
+	msg = append(msg, esm...)
+
+	return msg, nil
+}
+
+// encodeTAIList encodes a TAI list with a single TAI (type 0: one PLMN, one TAC).
+// TS 24.301 §9.9.3.33: type 00, n-1=0 elements, PLMN, TAC
+func encodeTAIList(plmn [3]byte, tac uint16) []byte {
+	b := make([]byte, 6)
+	b[0] = 0x00 // type=00 (list of TACs, one PLMN), num-1=0 (one element)
+	copy(b[1:4], plmn[:])
+	binary.BigEndian.PutUint16(b[4:6], tac)
+	return b
+}
+
+// encodeActivateDefaultBearerContextRequest encodes an ESM Activate Default EPS
+// Bearer Context Request (TS 24.301 §8.3.6). Minimum fields for IPv4 bearer.
+func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn net.IP) []byte {
+	msg := make([]byte, 0, 24)
+
+	// ESM header: [bearerID|PD=0x02][PTI=0x01][msg_type=0xC1]
+	msg = append(msg, (bearerID<<4)|uint8(EPSSessionManagement))
+	msg = append(msg, 0x01)   // PTI = 1 (arbitrary, network-initiated)
+	msg = append(msg, 0xC1)   // Activate Default EPS Bearer Context Request
+
+	// EPS QoS (mandatory LV): QCI=9 (internet, non-GBR default)
+	msg = append(msg, 0x01, 0x09) // length=1, QCI=9
+
+	// Access Point Name (mandatory LV): DNS label format
+	apnEncoded := encodeAPN(apn)
+	msg = append(msg, uint8(len(apnEncoded)))
+	msg = append(msg, apnEncoded...)
+
+	// PDN Address (mandatory LV): type=IPv4(0x01) + 4-byte address
+	pdn4 := pdn.To4()
+	msg = append(msg, 0x05, 0x01) // length=5, type=IPv4
+	msg = append(msg, pdn4...)
+
+	return msg
+}
+
+// encodeAPN encodes an APN string as DNS labels per 3GPP TS 23.003 §9.1.
+// e.g., "internet" → [0x08, 'i', 'n', 't', 'e', 'r', 'n', 'e', 't']
+func encodeAPN(apn string) []byte {
+	if apn == "" {
+		return []byte{0x00}
+	}
+	out := make([]byte, 0, len(apn)+2)
+	start := 0
+	for i := 0; i <= len(apn); i++ {
+		if i == len(apn) || apn[i] == '.' {
+			label := apn[start:i]
+			out = append(out, uint8(len(label)))
+			out = append(out, []byte(label)...)
+			start = i + 1
+		}
+	}
+	return out
 }

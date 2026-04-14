@@ -98,16 +98,17 @@ func ParseHeader(data []byte) (Header, int, error) {
 	if h.SecurityHeader != SecurityHeaderPlainNAS {
 		// Security-protected NAS message: byte 0 = security header + PD,
 		// bytes 1-4 = MAC, byte 5 = sequence number, bytes 6+ = plain NAS
-		if len(data) < 7 {
+		if len(data) < 8 {
 			return Header{}, 0, fmt.Errorf("security-protected NAS too short: %d bytes", len(data))
 		}
-		// For now, skip MAC and SQN, parse the inner plain NAS
-		innerH, _, err := ParseHeader(data[6:])
+		// Skip the 6-byte outer security wrapper and parse the inner plain NAS
+		innerH, innerOff, err := ParseHeader(data[6:])
 		if err != nil {
 			return Header{}, 0, fmt.Errorf("parsing inner NAS: %w", err)
 		}
 		innerH.SecurityHeader = h.SecurityHeader
-		return innerH, 7, nil // 6 bytes security header + 1 byte inner PD+security
+		// Offset = 6 (outer sec wrapper) + innerOff (inner plain header = 2)
+		return innerH, 6 + innerOff, nil
 	}
 
 	// Plain NAS: byte 0 = PD, byte 1 = message type

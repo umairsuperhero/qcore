@@ -84,17 +84,23 @@ type UEContext struct {
 
 	// Security
 	SecurityCtx *SecurityContext
+	KASME       []byte // raw KASME bytes before keys are derived
 
 	// Auth
 	RAND []byte
 	XRES []byte
 	AUTN []byte
 
+	// NAS layer
+	NASStreamID        uint16 // SCTP stream for NAS transport
+	NASdlCount         uint32 // NAS downlink count (for MAC computation)
+	UENetworkCapability []byte // replayed in Security Mode Command
+
 	// Network
 	ENB     *EnbContext
 	TAI     TAI
 	ECGI    ECGI
-	PDNAddr string // Allocated IP address
+	PDNAddr string // Allocated IPv4 address (dotted notation)
 }
 
 // TAI is a Tracking Area Identity.
