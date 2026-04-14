@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	HSS      HSSConfig      `mapstructure:"hss"`
+	MME      MMEConfig      `mapstructure:"mme"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 	Metrics  MetricsConfig  `mapstructure:"metrics"`
@@ -18,6 +19,21 @@ type HSSConfig struct {
 	Name        string `mapstructure:"name"`
 	BindAddress string `mapstructure:"bind_address"`
 	APIPort     int    `mapstructure:"api_port"`
+}
+
+type MMEConfig struct {
+	Name        string   `mapstructure:"name"`
+	BindAddress string   `mapstructure:"bind_address"`
+	S1APPort    int      `mapstructure:"s1ap_port"`
+	APIPort     int      `mapstructure:"api_port"`
+	SCTPMode    string   `mapstructure:"sctp_mode"` // "tcp" (dev) or "sctp" (production)
+	PLMN        string   `mapstructure:"plmn"`      // e.g. "00101"
+	HSSURL      string   `mapstructure:"hss_url"`   // HSS REST API base URL
+	TAC         uint16   `mapstructure:"tac"`        // Tracking Area Code
+	MMEGroupID  uint16   `mapstructure:"mme_group_id"`
+	MMECode     uint8    `mapstructure:"mme_code"`
+	RelCapacity uint8    `mapstructure:"relative_capacity"` // 0-255, for load balancing
+	TAIList     []string `mapstructure:"tai_list"`           // e.g. ["00101:0001"]
 }
 
 type DatabaseConfig struct {
@@ -46,6 +62,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("hss.name", "qcore-hss")
 	v.SetDefault("hss.bind_address", "0.0.0.0")
 	v.SetDefault("hss.api_port", 8080)
+
+	v.SetDefault("mme.name", "qcore-mme")
+	v.SetDefault("mme.bind_address", "0.0.0.0")
+	v.SetDefault("mme.s1ap_port", 36412)
+	v.SetDefault("mme.api_port", 8081)
+	v.SetDefault("mme.sctp_mode", "tcp")
+	v.SetDefault("mme.plmn", "00101")
+	v.SetDefault("mme.hss_url", "http://localhost:8080")
+	v.SetDefault("mme.tac", 1)
+	v.SetDefault("mme.mme_group_id", 1)
+	v.SetDefault("mme.mme_code", 1)
+	v.SetDefault("mme.relative_capacity", 127)
 
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)

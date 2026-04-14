@@ -80,6 +80,63 @@ type HSSMetrics struct {
 	AuthVectors     *prometheus.CounterVec
 }
 
+type MMEMetrics struct {
+	S1SetupRequests   *prometheus.CounterVec
+	AttachRequests    *prometheus.CounterVec
+	AttachSuccess     *prometheus.CounterVec
+	AttachFailures    *prometheus.CounterVec
+	AuthRequests      *prometheus.CounterVec
+	ActiveUEs         *prometheus.GaugeVec
+	ConnectedENBs     *prometheus.GaugeVec
+	S1APLatency       *prometheus.HistogramVec
+}
+
+func RegisterMMEMetrics(m *Metrics) *MMEMetrics {
+	return &MMEMetrics{
+		S1SetupRequests: m.NewCounter(
+			"mme_s1_setup_requests_total",
+			"Total S1 Setup requests from eNodeBs",
+			[]string{"result"},
+		),
+		AttachRequests: m.NewCounter(
+			"mme_attach_requests_total",
+			"Total attach requests from UEs",
+			[]string{},
+		),
+		AttachSuccess: m.NewCounter(
+			"mme_attach_success_total",
+			"Total successful attaches",
+			[]string{},
+		),
+		AttachFailures: m.NewCounter(
+			"mme_attach_failures_total",
+			"Total failed attaches",
+			[]string{"reason"},
+		),
+		AuthRequests: m.NewCounter(
+			"mme_auth_requests_total",
+			"Total authentication requests sent to HSS",
+			[]string{"result"},
+		),
+		ActiveUEs: m.NewGauge(
+			"mme_active_ues",
+			"Number of UEs in connected state",
+			[]string{},
+		),
+		ConnectedENBs: m.NewGauge(
+			"mme_connected_enbs",
+			"Number of connected eNodeBs",
+			[]string{},
+		),
+		S1APLatency: m.NewHistogram(
+			"mme_s1ap_message_duration_seconds",
+			"S1AP message processing duration",
+			[]string{"procedure"},
+			[]float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0},
+		),
+	}
+}
+
 func RegisterHSSMetrics(m *Metrics) *HSSMetrics {
 	return &HSSMetrics{
 		APIRequests: m.NewCounter(
