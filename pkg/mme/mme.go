@@ -35,7 +35,9 @@ type MME struct {
 	listener sctp.Listener
 	enbs     sync.Map // map[string]*EnbContext (key: remote addr)
 	ues      sync.Map // map[uint32]*UEContext  (key: MME-UE-S1AP-ID)
+	tmsis    sync.Map // map[uint32]*UEContext  (key: M-TMSI) — secondary index for Service Request
 	nextUEID uint32   // atomic counter for MME-UE-S1AP-ID allocation
+	nextTMSI uint32   // atomic counter for M-TMSI allocation (wraps; 0 is reserved)
 
 	// IP address pool for PDN (no real PGW yet — placeholder)
 	// Start at 10.45.0.2; 10.45.0.1 is the "gateway".
@@ -158,6 +160,15 @@ func (m *MME) handleAssociation(ctx context.Context, enb *EnbContext) {
 // allocateUEID returns a new unique MME-UE-S1AP-ID.
 func (m *MME) allocateUEID() uint32 {
 	return atomic.AddUint32(&m.nextUEID, 1)
+}
+
+// allocateTMSI returns a new unique M-TMSI (non-zero).
+func (m *MME) allocateTMSI() uint32 {
+	tmsi := atomic.AddUint32(&m.nextTMSI, 1)
+	if tmsi == 0 {
+		tmsi = atomic.AddUint32(&m.nextTMSI, 1) // skip 0
+	}
+	return tmsi
 }
 
 // allocatePDNAddress allocates the next IPv4 address from the 10.45.0.0/16 pool.

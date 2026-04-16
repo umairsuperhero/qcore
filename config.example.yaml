@@ -3,6 +3,19 @@ hss:
   bind_address: "0.0.0.0"
   api_port: 8080
 
+mme:
+  name: "qcore-mme"
+  bind_address: "0.0.0.0"
+  s1ap_port: 36412
+  api_port: 8081
+  sctp_mode: "tcp"        # "sctp" for native SCTP, "tcp" for length-prefixed fallback (dev)
+  plmn: "00101"           # MCC=001, MNC=01 (test PLMN)
+  hss_url: "http://localhost:8080"
+  tac: 1                  # Tracking Area Code
+  mme_group_id: 1
+  mme_code: 1
+  relative_capacity: 127
+
 database:
   host: "localhost"
   port: 5432

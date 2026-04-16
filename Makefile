@@ -33,8 +33,13 @@ run: build-hss
 run-mme: build-mme
 	./bin/qcore-mme start --config config.example.yaml
 
-docker-build:
+docker-build: docker-build-hss docker-build-mme
+
+docker-build-hss:
 	docker build -f deployments/docker/Dockerfile.hss -t qcore-hss:latest .
+
+docker-build-mme:
+	docker build -f deployments/docker/Dockerfile.mme -t qcore-mme:latest .
 
 docker-up:
 	docker compose -f deployments/docker/docker-compose.yml up -d

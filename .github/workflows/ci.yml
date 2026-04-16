@@ -52,11 +52,14 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Build
+      - name: Build HSS
         run: go build -o bin/qcore-hss ./cmd/hss
 
-      - name: Upload binary
+      - name: Build MME
+        run: go build -o bin/qcore-mme ./cmd/mme
+
+      - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: qcore-hss
-          path: bin/qcore-hss
+          name: qcore-binaries
+          path: bin/

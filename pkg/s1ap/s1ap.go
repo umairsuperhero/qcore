@@ -114,6 +114,7 @@ const (
 	IEID_UEPagingID                  ProtocolIEID = 43
 	IEID_CNDomain                    ProtocolIEID = 3
 	IEID_TAIList                     ProtocolIEID = 69
+	IEID_S_TMSI                      ProtocolIEID = 96
 )
 
 // Cause values (TS 36.413 Section 9.2.1.3)

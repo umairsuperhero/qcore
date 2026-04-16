@@ -33,6 +33,29 @@ services:
       QCORE_DATABASE_NAME: qcore
       QCORE_DATABASE_SSL_MODE: disable
       QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mme:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.mme
+    ports:
+      - "36412:36412"
+      - "8081:8081"
+      - "9091:9091"
+    depends_on:
+      hss:
+        condition: service_healthy
+    environment:
+      QCORE_MME_HSS_URL: http://hss:8080
+      QCORE_MME_BIND_ADDRESS: 0.0.0.0
+      QCORE_MME_SCTP_MODE: tcp
+      QCORE_METRICS_PORT: "9091"
+      QCORE_LOGGING_FORMAT: json
 
 volumes:
   pgdata:

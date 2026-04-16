@@ -33,11 +33,16 @@ type S1SetupFailure struct {
 // InitialUEMessage represents the INITIAL UE MESSAGE from eNB to MME.
 // TS 36.413 Section 9.1.7.1
 type InitialUEMessage struct {
-	ENBUES1APID     uint32
-	NASPDU          []byte
-	TAI             TAI
-	ECGI            ECGI
-	RRCCause        RRCEstablishmentCause
+	ENBUES1APID uint32
+	NASPDU      []byte
+	TAI         TAI
+	ECGI        ECGI
+	RRCCause    RRCEstablishmentCause
+	// S-TMSI (optional): present when UE sends Service Request using its stored GUTI.
+	// The eNB extracts it from the RRC UE identity and includes it here.
+	STMSIPresent bool
+	MMEC         uint8  // from S-TMSI
+	MTMSI        uint32 // M-TMSI from S-TMSI
 }
 
 // DownlinkNASTransport carries a NAS PDU from MME to eNB.
@@ -285,6 +290,23 @@ func DecodeInitialUEMessage(ies []ProtocolIE) (*InitialUEMessage, error) {
 				return nil, fmt.Errorf("decoding RRC cause: %w", err)
 			}
 			msg.RRCCause = RRCEstablishmentCause(v)
+
+		case IEID_S_TMSI:
+			// S-TMSI ::= SEQUENCE { mMEC MME-Code(1 byte), m-TMSI BIT STRING(32) }
+			// With extension marker and no optionals
+			if len(ie.Value) >= 6 {
+				dec := NewPERDecoder(ie.Value)
+				_, _, _ = dec.GetSequenceHeader(true, 0)
+				mmec, err := dec.GetFixedOctetString(1)
+				if err == nil {
+					tmsiBytes, err := dec.GetFixedOctetString(4)
+					if err == nil {
+						msg.STMSIPresent = true
+						msg.MMEC = mmec[0]
+						msg.MTMSI = binary.BigEndian.Uint32(tmsiBytes)
+					}
+				}
+			}
 		}
 	}
 

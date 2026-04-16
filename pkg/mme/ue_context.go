@@ -71,7 +71,8 @@ type UEContext struct {
 
 	// Identity
 	IMSI    string
-	GUTI    string // allocated by MME
+	GUTI    string // allocated by MME (e.g., "001-01-1-01-00000001")
+	TMSI    uint32 // M-TMSI component of GUTI (non-zero once allocated)
 	MSISDN  string
 
 	// S1AP IDs

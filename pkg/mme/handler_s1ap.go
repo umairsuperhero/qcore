@@ -168,6 +168,10 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 		m.log.Errorf("Failed to parse NAS header: %v", err)
 		return
 	}
+	if h.MessageType == nas.MsgTypeServiceRequest {
+		m.handleServiceRequest(ctx, enb, msg, streamID)
+		return
+	}
 	if h.MessageType != nas.MsgTypeAttachRequest {
 		m.log.Warnf("Unexpected NAS message in Initial UE Message: %s", h.MessageType)
 		return
@@ -300,6 +304,63 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 	}
 
 	m.log.Infof("Sent AUTH REQUEST to UE (IMSI=%s, MME-UE-S1AP-ID=%d)", attachReq.IMSI, mmeUEID)
+}
+
+// handleServiceRequest handles a NAS Service Request arriving in an InitialUEMessage.
+// Called when an ECM-IDLE UE wakes up (e.g., in response to paging) and re-connects.
+// The eNB should provide the UE's S-TMSI in the InitialUEMessage so we can look up
+// the existing context and re-establish the S1 connection.
+func (m *MME) handleServiceRequest(ctx context.Context, enb *EnbContext, msg *s1ap.InitialUEMessage, streamID uint16) {
+	_ = ctx
+
+	m.log.Infof("Service Request from eNB: eNB-UE-S1AP-ID=%d, S-TMSI present=%v",
+		msg.ENBUES1APID, msg.STMSIPresent)
+
+	var ue *UEContext
+
+	// Try to find UE by S-TMSI
+	if msg.STMSIPresent {
+		if v, ok := m.tmsis.Load(msg.MTMSI); ok {
+			ue = v.(*UEContext)
+		}
+	}
+
+	if ue == nil {
+		// UE context not found — ask UE to re-attach
+		m.log.Warnf("Service Request: UE context not found (TMSI=%x), requesting re-attach", msg.MTMSI)
+		// Send SERVICE REJECT: cause=0x09 (implicitly detached)
+		serviceReject := []byte{
+			uint8(nas.SecurityHeaderPlainNAS<<4) | uint8(nas.EPSMobilityManagement),
+			0x4E, // Service Reject
+			0x09, // cause: implicitly detached
+		}
+		// Allocate a temporary MME ID to send the rejection
+		tmpUEID := m.allocateUEID()
+		_ = m.sendDownlinkNAS(enb, tmpUEID, msg.ENBUES1APID, serviceReject, streamID)
+		return
+	}
+
+	// Found UE — re-establish S1 context with new eNB-UE-S1AP-ID
+	ue.mu.Lock()
+	oldENBUEID := ue.ENBUES1APID
+	ue.ENBUES1APID = msg.ENBUES1APID
+	ue.ENB = enb
+	ue.ECMState = ECMConnected
+	ue.NASStreamID = streamID
+	// Update location if TAI changed
+	if msg.TAI.TAC != 0 {
+		ue.TAI = TAI{PLMN: msg.TAI.PLMN, TAC: msg.TAI.TAC}
+	}
+	ue.mu.Unlock()
+
+	m.log.Infof("Service Request: found UE=%d (IMSI=%s), old eNB-UE-ID=%d, new eNB-UE-ID=%d",
+		ue.MMEUES1APID, ue.IMSI, oldENBUEID, msg.ENBUES1APID)
+
+	// Re-establish radio bearer via Initial Context Setup (no NAS PDU this time)
+	if err := m.sendInitialContextSetup(enb, ue, nil, streamID); err != nil {
+		m.log.Errorf("Failed to send INITIAL CONTEXT SETUP for Service Request UE=%d: %v",
+			ue.MMEUES1APID, err)
+	}
 }
 
 // handleUplinkNASTransport dispatches uplink NAS messages during the attach flow.
@@ -479,24 +540,39 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 
 	m.log.Infof("Security Mode Complete from UE=%d (IMSI=%s)", ue.MMEUES1APID, ue.IMSI)
 
-	// Allocate PDN address and update UE state
+	// Allocate PDN address and TMSI, then update UE state
 	pdnAddr := m.allocatePDNAddress()
+	tmsi := m.allocateTMSI()
 	ue.mu.Lock()
 	ue.PDNAddr = pdnAddr
+	ue.TMSI = tmsi
 	ue.EMMState = EMMRegistered
 	kNASint := ue.SecurityCtx.KNASint
 	dlCount := ue.NASdlCount
 	ue.NASdlCount++
 	ue.mu.Unlock()
 
-	// Build ATTACH ACCEPT with embedded default bearer activation
+	// Register in TMSI index for Service Request lookup
+	m.tmsis.Store(tmsi, ue)
+
+	// Build ATTACH ACCEPT with embedded default bearer activation and GUTI
 	pdn := net.ParseIP(pdnAddr)
 	if pdn == nil {
 		m.log.Errorf("Invalid PDN address allocated: %s", pdnAddr)
 		return
 	}
 
-	attachAcceptNAS, err := nas.EncodeAttachAccept(m.plmn, m.cfg.TAC, 5, "internet", pdn)
+	attachAcceptNAS, err := nas.EncodeAttachAcceptFull(nas.AttachAcceptParams{
+		PLMN:        m.plmn,
+		TAC:         m.cfg.TAC,
+		BearerID:    5,
+		APN:         "internet",
+		PDN:         pdn,
+		GUTIPresent: true,
+		MMEGroupID:  m.mmeGroupID,
+		MMECode:     m.mmeCode,
+		TMSI:        tmsi,
+	})
 	if err != nil {
 		m.log.Errorf("Failed to encode ATTACH ACCEPT for UE=%d: %v", ue.MMEUES1APID, err)
 		return
@@ -748,9 +824,15 @@ func (m *MME) handleDetachRequest(ue *UEContext, body []byte, streamID uint16) {
 	m.cleanupUE(ue)
 }
 
-// cleanupUE removes a UE context from the map and updates metrics.
+// cleanupUE removes a UE context from the main map, the TMSI index, and updates metrics.
 func (m *MME) cleanupUE(ue *UEContext) {
 	m.ues.Delete(ue.MMEUES1APID)
+	ue.mu.RLock()
+	tmsi := ue.TMSI
+	ue.mu.RUnlock()
+	if tmsi != 0 {
+		m.tmsis.Delete(tmsi)
+	}
 	if m.metrics != nil {
 		m.metrics.ActiveUEs.WithLabelValues().Dec()
 	}
@@ -783,6 +865,10 @@ func (m *MME) sendInitialContextSetup(enb *EnbContext, ue *UEContext, attachAcce
 		// Fallback: advertise EEA0 (null cipher) + EIA2 (AES-CMAC)
 		encAlgs[0] = 0x80 // EEA0 bit set
 		intAlgs[0] = 0x20 // EIA2 bit set (bit 3 from MSB)
+	}
+
+	if secCtx == nil {
+		return fmt.Errorf("sendInitialContextSetup: no security context for UE=%d", ue.MMEUES1APID)
 	}
 
 	var keNB [32]byte

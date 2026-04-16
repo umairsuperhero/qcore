@@ -571,6 +571,74 @@ func TestTriggerPaging_UnknownIMSI(t *testing.T) {
 	assert.Error(t, err, "should return error for unknown IMSI")
 }
 
+func TestHandleServiceRequest_FoundUE(t *testing.T) {
+	mme, assoc := newTestMME(t, "http://localhost:9999")
+
+	kNASint := make([]byte, 16)
+	keNB := make([]byte, 32)
+	tmsi := uint32(0xDEADBEEF)
+
+	// Registered ECM-IDLE UE with a security context and TMSI
+	ue := &UEContext{
+		MMEUES1APID: 5,
+		ENBUES1APID: 10,
+		IMSI:        "001010000000001",
+		TMSI:        tmsi,
+		EMMState:    EMMRegistered,
+		ECMState:    ECMIdle,
+		ENB:         &EnbContext{Assoc: assoc},
+		SecurityCtx: &SecurityContext{
+			KNASint: kNASint,
+			KeNB:    keNB,
+		},
+	}
+	mme.ues.Store(ue.MMEUES1APID, ue)
+	mme.tmsis.Store(tmsi, ue)
+
+	enb := &EnbContext{Assoc: assoc}
+
+	// Build a minimal InitialUEMessage with Service Request NAS + S-TMSI
+	msg := &s1ap.InitialUEMessage{
+		ENBUES1APID:  20,
+		STMSIPresent: true,
+		MMEC:         mme.mmeCode,
+		MTMSI:        tmsi,
+	}
+
+	mme.handleServiceRequest(context.Background(), enb, msg, 0)
+
+	// Should send INITIAL CONTEXT SETUP REQUEST (procedure 9)
+	require.Equal(t, 1, assoc.writtenCount(), "INITIAL CONTEXT SETUP should be sent")
+	pdu, err := s1ap.DecodePDU(assoc.lastWritten())
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcInitialContextSetup, pdu.ProcedureCode)
+
+	// UE should be reconnected with new eNB-UE-S1AP-ID
+	ue.mu.RLock()
+	assert.Equal(t, uint32(20), ue.ENBUES1APID, "eNB-UE-S1AP-ID should be updated")
+	assert.Equal(t, ECMConnected, ue.ECMState, "UE should be ECM-Connected again")
+	ue.mu.RUnlock()
+}
+
+func TestHandleServiceRequest_UnknownTMSI(t *testing.T) {
+	mme, assoc := newTestMME(t, "http://localhost:9999")
+	enb := &EnbContext{Assoc: assoc}
+
+	msg := &s1ap.InitialUEMessage{
+		ENBUES1APID:  99,
+		STMSIPresent: true,
+		MMEC:         mme.mmeCode,
+		MTMSI:        0xCAFEBABE, // unknown TMSI
+	}
+	mme.handleServiceRequest(context.Background(), enb, msg, 0)
+
+	// Should send a SERVICE REJECT via DownlinkNASTransport
+	require.Equal(t, 1, assoc.writtenCount(), "SERVICE REJECT should be sent")
+	pdu, err := s1ap.DecodePDU(assoc.lastWritten())
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcDownlinkNASTransport, pdu.ProcedureCode)
+}
+
 func TestGetUEENBCounts(t *testing.T) {
 	mme, _ := newTestMME(t, "http://localhost:9999")
 

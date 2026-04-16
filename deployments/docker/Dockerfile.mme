@@ -1,0 +1,29 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+    -o /qcore-mme ./cmd/mme
+
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates
+
+COPY --from=builder /qcore-mme /usr/local/bin/qcore-mme
+COPY config.example.yaml /etc/qcore/config.yaml
+
+# 36412 = S1AP (SCTP/TCP fallback), 8081 = debug API, 9091 = metrics
+EXPOSE 36412 8081 9091
+
+ENTRYPOINT ["qcore-mme"]
+CMD ["start", "--config", "/etc/qcore/config.yaml"]

@@ -96,8 +96,8 @@ QCore's thesis: **developer experience is the differentiator**.
 | Phase | Component | Status |
 |-------|-----------|--------|
 | 1 | HSS + subscriber provisioning | ✅ Shipped |
-| 2 | MME + S1AP protocol stack | 🔜 Next |
-| 3 | SGW/PGW + GTP tunneling | Planned |
+| 2 | MME + S1AP/NAS attach (auth, security, attach accept) | ✅ Shipped — see [docs/UERANSIM.md](docs/UERANSIM.md) |
+| 3 | SGW/PGW + GTP tunneling | 🔜 Next |
 | 4 | Web dashboard (Next.js) | Planned |
 | 5 | 5G SA (AMF/SMF/UPF) | Planned |
 | 6 | Polish, docs, v1.0 release | Planned |
@@ -108,13 +108,25 @@ QCore's thesis: **developer experience is the differentiator**.
 
 ```bash
 # Prerequisites: Go 1.23+
-make build        # Build binary to bin/qcore-hss
+make build        # Build both binaries to bin/qcore-hss and bin/qcore-mme
 make test         # Run all tests with race detector
 make lint         # Run golangci-lint
 
-# Start with local PostgreSQL
+# Start the HSS with local PostgreSQL
 ./bin/qcore-hss start --config config.example.yaml
+
+# Start the MME (in another terminal)
+./bin/qcore-mme start --config config.example.yaml
 ```
+
+End-to-end attach over the wire (real MME, mock HSS, Go-based mock eNB):
+
+```bash
+go test -v -run TestEndToEndAttachOverWire ./pkg/mme/
+```
+
+For driving QCore with [UERANSIM](https://github.com/aligungr/UERANSIM),
+see [docs/UERANSIM.md](docs/UERANSIM.md).
 
 ---
 

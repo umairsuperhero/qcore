@@ -237,6 +237,67 @@ func DecodeIdentityResponse(data []byte) (*IdentityResponse, error) {
 	return resp, nil
 }
 
+// AttachAcceptParams holds parameters for EncodeAttachAccept.
+type AttachAcceptParams struct {
+	PLMN     [3]byte
+	TAC      uint16
+	BearerID uint8
+	APN      string
+	PDN      net.IP
+	// GUTI (optional): if non-nil, a GUTI IE (0x50) is appended. The GUTI is
+	// formed from PLMN + MMEGroupID + MMECode + TMSI.
+	GUTIPresent bool
+	MMEGroupID  uint16
+	MMECode     uint8
+	TMSI        uint32
+}
+
+// EncodeAttachAcceptFull encodes a NAS ATTACH ACCEPT with optional GUTI.
+func EncodeAttachAcceptFull(p AttachAcceptParams) ([]byte, error) {
+	pdn4 := p.PDN.To4()
+	if pdn4 == nil {
+		return nil, fmt.Errorf("EncodeAttachAccept: only IPv4 PDN addresses supported")
+	}
+
+	msg := make([]byte, 0, 96)
+	msg = append(msg, uint8(SecurityHeaderPlainNAS<<4)|uint8(EPSMobilityManagement))
+	msg = append(msg, uint8(MsgTypeAttachAccept))
+	msg = append(msg, 0x01) // EPS attach result: EPS only
+	msg = append(msg, 0x21) // T3412: 1 hour
+
+	taiList := encodeTAIList(p.PLMN, p.TAC)
+	msg = append(msg, uint8(len(taiList)))
+	msg = append(msg, taiList...)
+
+	esm := encodeActivateDefaultBearerContextRequest(p.BearerID, p.APN, pdn4)
+	esmLenBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(esmLenBytes, uint16(len(esm)))
+	msg = append(msg, esmLenBytes...)
+	msg = append(msg, esm...)
+
+	// GUTI (optional IE, IEI=0x50): TS 24.301 §9.9.3.12
+	if p.GUTIPresent {
+		gutiVal := encodeGUTI(p.PLMN, p.MMEGroupID, p.MMECode, p.TMSI)
+		msg = append(msg, 0x50)                // IEI
+		msg = append(msg, uint8(len(gutiVal))) // length
+		msg = append(msg, gutiVal...)
+	}
+
+	return msg, nil
+}
+
+// encodeGUTI encodes the value part of a GUTI mobile identity (TS 24.301 §9.9.3.12).
+// Returns 11 bytes: [0xF6][PLMN 3B][MMEGI 2B][MMEC 1B][TMSI 4B]
+func encodeGUTI(plmn [3]byte, mmegi uint16, mmec uint8, tmsi uint32) []byte {
+	b := make([]byte, 11)
+	b[0] = 0xF6 // spare(4) = 1111, identity type = 6 (GUTI), odd = 0
+	copy(b[1:4], plmn[:])
+	binary.BigEndian.PutUint16(b[4:6], mmegi)
+	b[6] = mmec
+	binary.BigEndian.PutUint32(b[7:11], tmsi)
+	return b
+}
+
 // EncodeAttachAccept encodes a NAS ATTACH ACCEPT message (TS 24.301 §8.2.1).
 // It embeds an Activate Default EPS Bearer Context Request as the ESM container.
 // plmn is the serving PLMN, tac is the tracking area code, bearerID is the
@@ -309,6 +370,29 @@ func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn n
 	msg = append(msg, pdn4...)
 
 	return msg
+}
+
+// ServiceRequest represents a NAS Service Request (TS 24.301 §8.2.16).
+// This is a special format: [0x67 sec-hdr][KSI&SeqNum][short-MAC 2B].
+// The UE sends this when transitioning from ECM-IDLE to ECM-CONNECTED.
+type ServiceRequest struct {
+	KSI     uint8  // NAS key set identifier (3 bits)
+	SeqNum  uint8  // NAS SN low 5 bits
+	MTMSI   uint32 // extracted from EUTRAN CGI or InitialUEMessage S-TMSI (if present)
+}
+
+// DecodeServiceRequest decodes a NAS Service Request body.
+// data starts at the KSI&SeqNum byte (byte after 0x67 security header).
+func DecodeServiceRequest(data []byte) (*ServiceRequest, error) {
+	if len(data) < 3 {
+		return nil, fmt.Errorf("Service Request too short: %d bytes", len(data))
+	}
+	req := &ServiceRequest{}
+	// Byte 0: KSI (high 3 bits) | SeqNum (low 5 bits)
+	req.KSI = (data[0] >> 5) & 0x07
+	req.SeqNum = data[0] & 0x1F
+	// Bytes 1-2: short MAC (we don't verify here — done by caller)
+	return req, nil
 }
 
 // DetachRequest represents a UE-initiated NAS Detach Request (TS 24.301 §8.2.11).
