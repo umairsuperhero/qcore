@@ -311,6 +311,32 @@ func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn n
 	return msg
 }
 
+// DetachRequest represents a UE-initiated NAS Detach Request (TS 24.301 §8.2.11).
+type DetachRequest struct {
+	DetachType uint8 // 3 bits: 001=EPS detach, 010=IMSI detach, 011=combined
+	SwitchOff  bool  // true if UE is powering off (no Detach Accept expected)
+}
+
+// DecodeDetachRequest decodes a NAS Detach Request body (after the header).
+func DecodeDetachRequest(data []byte) (*DetachRequest, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("Detach Request too short: %d bytes", len(data))
+	}
+	req := &DetachRequest{}
+	// Byte 0: detachType (low 3 bits) | switchOff (bit 3) | spare
+	req.DetachType = data[0] & 0x07
+	req.SwitchOff = (data[0]>>3)&0x01 == 1
+	return req, nil
+}
+
+// EncodeDetachAccept encodes a NAS Detach Accept (TS 24.301 §8.2.12).
+func EncodeDetachAccept() []byte {
+	return []byte{
+		uint8(SecurityHeaderPlainNAS<<4) | uint8(EPSMobilityManagement),
+		uint8(MsgTypeDetachAccept),
+	}
+}
+
 // EncodeEMMInformation encodes a NAS EMM INFORMATION message (TS 24.301 §8.2.13).
 // It carries the network full name, short name, and local time to the UE. All IEs
 // are optional; we send full name, short name, and universal time/local time zone.

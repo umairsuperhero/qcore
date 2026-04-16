@@ -443,6 +443,89 @@ func TestAllocatePDNAddress(t *testing.T) {
 	}
 }
 
+func TestHandleDetachRequest_SwitchOff(t *testing.T) {
+	mme, assoc := newTestMME(t, "http://localhost:9999")
+
+	// Build a UE in registered state with a security context
+	kNASint := make([]byte, 16) // all-zero key for testing
+	ue := &UEContext{
+		MMEUES1APID: 10,
+		ENBUES1APID: 20,
+		IMSI:        "001010000000001",
+		EMMState:    EMMRegistered,
+		ECMState:    ECMConnected,
+		ENB:         &EnbContext{Assoc: assoc},
+		NASStreamID: 0,
+		SecurityCtx: &SecurityContext{
+			KNASint: kNASint,
+			DLCount: 2,
+			ULCount: 3,
+		},
+		NASdlCount: 2,
+	}
+	mme.ues.Store(ue.MMEUES1APID, ue)
+
+	initialWrites := assoc.writtenCount()
+
+	// Switch-off detach: UE is powering off, no Detach Accept expected
+	// Detach Request body: [detachType=1 (EPS) | switchOff=1 (bit3)]
+	body := []byte{0x09} // detachType=1, switchOff=1
+	mme.handleDetachRequest(ue, body, 0)
+
+	// No Detach Accept sent for switch-off, but UE Context Release Command is sent
+	assert.Equal(t, initialWrites+1, assoc.writtenCount(), "UE Context Release Command should be sent")
+	pdu, err := s1ap.DecodePDU(assoc.lastWritten())
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcUEContextRelease, pdu.ProcedureCode)
+
+	// UE context should be cleaned up
+	_, ok := mme.ues.Load(ue.MMEUES1APID)
+	assert.False(t, ok, "UE context should be removed after detach")
+}
+
+func TestHandleDetachRequest_Normal(t *testing.T) {
+	mme, assoc := newTestMME(t, "http://localhost:9999")
+
+	kNASint := make([]byte, 16)
+	ue := &UEContext{
+		MMEUES1APID: 11,
+		ENBUES1APID: 21,
+		IMSI:        "001010000000002",
+		EMMState:    EMMRegistered,
+		ENB:         &EnbContext{Assoc: assoc},
+		SecurityCtx: &SecurityContext{KNASint: kNASint},
+	}
+	mme.ues.Store(ue.MMEUES1APID, ue)
+
+	initialWrites := assoc.writtenCount()
+
+	// Normal detach: switchOff=0 → Detach Accept + UE Context Release Command
+	body := []byte{0x01} // detachType=1, switchOff=0
+	mme.handleDetachRequest(ue, body, 0)
+
+	// Two messages: Detach Accept (DownlinkNASTransport) + UE Context Release Command
+	assert.Equal(t, initialWrites+2, assoc.writtenCount(), "Detach Accept + UEContextReleaseCmd expected")
+
+	// First: Detach Accept via DownlinkNASTransport
+	written := assoc.written
+	assoc.mu.Lock()
+	msg1 := written[initialWrites]
+	msg2 := written[initialWrites+1]
+	assoc.mu.Unlock()
+
+	pdu1, err := s1ap.DecodePDU(msg1)
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcDownlinkNASTransport, pdu1.ProcedureCode)
+
+	// Second: UE Context Release Command
+	pdu2, err := s1ap.DecodePDU(msg2)
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcUEContextRelease, pdu2.ProcedureCode)
+
+	_, ok := mme.ues.Load(ue.MMEUES1APID)
+	assert.False(t, ok, "UE context should be removed after detach")
+}
+
 func TestGetUEENBCounts(t *testing.T) {
 	mme, _ := newTestMME(t, "http://localhost:9999")
 

@@ -38,6 +38,7 @@ func (a *API) registerRoutes() {
 	api := a.router.PathPrefix("/api/v1").Subrouter()
 	api.HandleFunc("/health", a.health).Methods("GET")
 	api.HandleFunc("/status", a.status).Methods("GET")
+	api.HandleFunc("/ues", a.listUEs).Methods("GET")
 }
 
 func (a *API) health(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +53,42 @@ func (a *API) status(w http.ResponseWriter, r *http.Request) {
 		"connected_enbs": a.mme.GetENBCount(),
 		"active_ues":     a.mme.GetUECount(),
 	})
+}
+
+// ueInfo is the JSON representation of a registered UE for the /ues endpoint.
+type ueInfo struct {
+	MMEUES1APID uint32 `json:"mme_ue_s1ap_id"`
+	ENBUES1APID uint32 `json:"enb_ue_s1ap_id"`
+	IMSI        string `json:"imsi,omitempty"`
+	EMMState    string `json:"emm_state"`
+	ECMState    string `json:"ecm_state"`
+	PDNAddr     string `json:"pdn_addr,omitempty"`
+}
+
+func (a *API) listUEs(w http.ResponseWriter, r *http.Request) {
+	var ues []ueInfo
+	a.mme.ues.Range(func(_, value any) bool {
+		ue, ok := value.(*UEContext)
+		if !ok {
+			return true
+		}
+		ue.mu.RLock()
+		info := ueInfo{
+			MMEUES1APID: ue.MMEUES1APID,
+			ENBUES1APID: ue.ENBUES1APID,
+			IMSI:        ue.IMSI,
+			EMMState:    ue.EMMState.String(),
+			ECMState:    ue.ECMState.String(),
+			PDNAddr:     ue.PDNAddr,
+		}
+		ue.mu.RUnlock()
+		ues = append(ues, info)
+		return true
+	})
+	if ues == nil {
+		ues = []ueInfo{} // return [] not null
+	}
+	respondJSON(w, http.StatusOK, ues)
 }
 
 func respondJSON(w http.ResponseWriter, status int, data any) {

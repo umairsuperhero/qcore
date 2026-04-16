@@ -212,3 +212,43 @@ func NASIntegrityProtect(kNASint []byte, count uint32, bearer uint8, direction u
 	// Return first 4 bytes as NAS-MAC
 	return mac[:4], nil
 }
+
+// VerifyNASUplinkIntegrity verifies the MAC on an uplink NAS PDU that carries
+// a security header. rawNAS is the complete security-protected NAS PDU (starting
+// with the security header byte). ulCount is the expected uplink NAS COUNT.
+//
+// Wire format (TS 24.301 §4.4.4): [sec_hdr|PD][MAC 4B][SN][inner NAS...]
+// MAC is computed over [SN][inner NAS] with COUNT, bearer=0, direction=0 (UL).
+func VerifyNASUplinkIntegrity(kNASint []byte, ulCount uint32, rawNAS []byte) (bool, error) {
+	if len(rawNAS) < 6 {
+		return false, fmt.Errorf("security-protected NAS too short: %d bytes", len(rawNAS))
+	}
+	// Byte 0: security header | PD
+	// Bytes 1-4: received MAC
+	// Byte 5: SN (NAS COUNT low byte)
+	// Bytes 6+: inner NAS PDU
+	receivedMAC := rawNAS[1:5]
+	sn := rawNAS[5]
+	innerNAS := rawNAS[6:]
+
+	// The MAC covers [SN || inner NAS]
+	macInput := make([]byte, 1+len(innerNAS))
+	macInput[0] = sn
+	copy(macInput[1:], innerNAS)
+
+	expectedMAC, err := NASIntegrityProtect(kNASint, ulCount, 0, 0, macInput) // direction=0 (uplink)
+	if err != nil {
+		return false, fmt.Errorf("computing expected UL MAC: %w", err)
+	}
+
+	if len(receivedMAC) != 4 || len(expectedMAC) != 4 {
+		return false, fmt.Errorf("MAC length mismatch")
+	}
+	match := true
+	for i := 0; i < 4; i++ {
+		if receivedMAC[i] != expectedMAC[i] {
+			match = false
+		}
+	}
+	return match, nil
+}

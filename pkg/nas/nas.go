@@ -72,6 +72,12 @@ func (m MessageType) String() string {
 		return "IdentityRequest"
 	case MsgTypeIdentityResponse:
 		return "IdentityResponse"
+	case MsgTypeDetachRequest:
+		return "DetachRequest"
+	case MsgTypeDetachAccept:
+		return "DetachAccept"
+	case MsgTypeEMMInformation:
+		return "EMMInformation"
 	default:
 		return fmt.Sprintf("MessageType(0x%02x)", uint8(m))
 	}

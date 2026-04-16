@@ -330,6 +330,29 @@ func (m *MME) handleUplinkNASTransport(ctx context.Context, enb *EnbContext, ies
 
 	m.log.Infof("Uplink NAS %s from MME-UE-S1AP-ID=%d", h.MessageType, msg.MMEUES1APID)
 
+	// Verify uplink MAC if a security context is established and the message is integrity-protected.
+	ue.mu.RLock()
+	secCtx := ue.SecurityCtx
+	ulCount := uint32(0)
+	if secCtx != nil {
+		ulCount = secCtx.ULCount
+	}
+	ue.mu.RUnlock()
+
+	if secCtx != nil && (h.SecurityHeader == nas.SecurityHeaderIntegrityProtectedCiphered ||
+		h.SecurityHeader == nas.SecurityHeaderIntegrityProtected) {
+		ok, verr := nas.VerifyNASUplinkIntegrity(secCtx.KNASint, ulCount, msg.NASPDU)
+		if verr != nil || !ok {
+			m.log.Warnf("NAS integrity check failed for UE=%d (count=%d, err=%v)", msg.MMEUES1APID, ulCount, verr)
+			// Drop the message — do not process it
+			return
+		}
+		// Advance UL count after successful verification
+		ue.mu.Lock()
+		ue.SecurityCtx.ULCount++
+		ue.mu.Unlock()
+	}
+
 	switch h.MessageType {
 	case nas.MsgTypeIdentityResponse:
 		m.handleIdentityResponse(ue, msg.NASPDU[bodyOff:], streamID)
@@ -345,6 +368,8 @@ func (m *MME) handleUplinkNASTransport(ctx context.Context, enb *EnbContext, ies
 		m.handleSecurityModeComplete(ue, msg.NASPDU[bodyOff:], streamID)
 	case nas.MsgTypeAttachComplete:
 		m.handleAttachComplete(ue)
+	case nas.MsgTypeDetachRequest:
+		m.handleDetachRequest(ue, msg.NASPDU[bodyOff:], streamID)
 	default:
 		m.log.Warnf("Unhandled uplink NAS message: %s (UE=%d)", h.MessageType, msg.MMEUES1APID)
 	}
@@ -663,6 +688,64 @@ func (m *MME) handleUEContextReleaseRequest(ctx context.Context, enb *EnbContext
 	if ok {
 		m.cleanupUE(ueVal.(*UEContext))
 	}
+}
+
+// handleDetachRequest processes a UE-initiated Detach Request.
+// If the UE is not switching off, we send a Detach Accept. Either way, we release
+// the UE context by sending an UE Context Release Command to the eNB.
+func (m *MME) handleDetachRequest(ue *UEContext, body []byte, streamID uint16) {
+	req, err := nas.DecodeDetachRequest(body)
+	if err != nil {
+		m.log.Errorf("Failed to decode Detach Request for UE=%d: %v", ue.MMEUES1APID, err)
+		return
+	}
+
+	m.log.Infof("Detach Request from UE=%d (IMSI=%s, type=%d, switchOff=%v)",
+		ue.MMEUES1APID, ue.IMSI, req.DetachType, req.SwitchOff)
+
+	// Send Detach Accept unless UE is switching off (TS 24.301 §5.5.2.2.2)
+	if !req.SwitchOff {
+		detachAccept := nas.EncodeDetachAccept()
+
+		ue.mu.Lock()
+		var wrapped []byte
+		if ue.SecurityCtx != nil {
+			dlCount := ue.NASdlCount
+			ue.NASdlCount++
+			w, werr := nas.WrapNASWithIntegrity(ue.SecurityCtx.KNASint, dlCount,
+				nas.SecurityHeaderIntegrityProtectedCiphered, detachAccept)
+			if werr != nil {
+				m.log.Warnf("Failed to wrap Detach Accept for UE=%d: %v", ue.MMEUES1APID, werr)
+				wrapped = detachAccept
+			} else {
+				wrapped = w
+			}
+		} else {
+			wrapped = detachAccept
+		}
+		ue.mu.Unlock()
+
+		enb := ue.ENB
+		if err := m.sendDownlinkNAS(enb, ue.MMEUES1APID, ue.ENBUES1APID, wrapped, streamID); err != nil {
+			m.log.Warnf("Failed to send Detach Accept to UE=%d: %v", ue.MMEUES1APID, err)
+		}
+	}
+
+	// Release the S1 context: send UE Context Release Command to eNB, then clean up.
+	cmd := &s1ap.UEContextReleaseCommand{
+		MMEUES1APID: ue.MMEUES1APID,
+		ENBUES1APID: ue.ENBUES1APID,
+		CauseGroup:  s1ap.CauseNAS,
+		CauseValue:  2, // nas-detach
+	}
+	encoded, err := s1ap.EncodeUEContextReleaseCommand(cmd)
+	if err != nil {
+		m.log.Errorf("Failed to encode UEContextReleaseCommand for detach UE=%d: %v", ue.MMEUES1APID, err)
+	} else if err := ue.ENB.Assoc.Write(encoded, streamID); err != nil {
+		m.log.Warnf("Failed to send UEContextReleaseCommand after detach for UE=%d: %v", ue.MMEUES1APID, err)
+	}
+
+	m.cleanupUE(ue)
 }
 
 // cleanupUE removes a UE context from the map and updates metrics.
