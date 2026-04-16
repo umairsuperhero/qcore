@@ -80,6 +80,74 @@ type HSSMetrics struct {
 	AuthVectors     *prometheus.CounterVec
 }
 
+type SPGWMetrics struct {
+	UplinkPackets   *prometheus.CounterVec
+	DownlinkPackets *prometheus.CounterVec
+	UplinkBytes     *prometheus.CounterVec
+	DownlinkBytes   *prometheus.CounterVec
+	Drops           *prometheus.CounterVec
+	EchoRequests    *prometheus.CounterVec
+	SessionsCreated *prometheus.CounterVec
+	SessionsDeleted *prometheus.CounterVec
+	ActiveSessions  *prometheus.GaugeVec
+	APIRequests     *prometheus.CounterVec
+}
+
+func RegisterSPGWMetrics(m *Metrics) *SPGWMetrics {
+	return &SPGWMetrics{
+		UplinkPackets: m.NewCounter(
+			"spgw_uplink_packets_total",
+			"Total decapsulated uplink GTP-U packets",
+			[]string{},
+		),
+		DownlinkPackets: m.NewCounter(
+			"spgw_downlink_packets_total",
+			"Total encapsulated downlink GTP-U packets",
+			[]string{},
+		),
+		UplinkBytes: m.NewCounter(
+			"spgw_uplink_bytes_total",
+			"Total uplink bytes (inner IP payload)",
+			[]string{},
+		),
+		DownlinkBytes: m.NewCounter(
+			"spgw_downlink_bytes_total",
+			"Total downlink bytes (inner IP payload)",
+			[]string{},
+		),
+		Drops: m.NewCounter(
+			"spgw_drops_total",
+			"Total dropped packets, labeled by cause",
+			[]string{"cause"},
+		),
+		EchoRequests: m.NewCounter(
+			"spgw_gtpu_echo_requests_total",
+			"Total GTP-U Echo Requests received",
+			[]string{},
+		),
+		SessionsCreated: m.NewCounter(
+			"spgw_sessions_created_total",
+			"Total sessions created via S11",
+			[]string{},
+		),
+		SessionsDeleted: m.NewCounter(
+			"spgw_sessions_deleted_total",
+			"Total sessions deleted via S11",
+			[]string{},
+		),
+		ActiveSessions: m.NewGauge(
+			"spgw_active_sessions",
+			"Number of active PDN sessions",
+			[]string{},
+		),
+		APIRequests: m.NewCounter(
+			"spgw_api_requests_total",
+			"Total HTTP S11 requests",
+			[]string{"method", "path", "status"},
+		),
+	}
+}
+
 type MMEMetrics struct {
 	S1SetupRequests   *prometheus.CounterVec
 	AttachRequests    *prometheus.CounterVec

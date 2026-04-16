@@ -103,19 +103,61 @@ Windows/macOS keeps running without needing root or kernel modules.
 
 ---
 
-## Known gaps (intentional for Session 1)
+## Session 2 additions
 
-1. **No real SGi egress.** Packets hit the egress adapter and are logged,
-   not forwarded to a real network. Session 2: Linux TUN device + NAT.
-2. **No downlink.** The SPGW knows the eNB TEID (via `ModifyBearer`) but
-   nothing hands it packets to forward yet. Session 2: once TUN is in,
-   downlink from the internet side follows naturally.
-3. **No native SCTP.** The MME still ships the TCP-framed SCTP fallback
-   from Phase 2. Real SCTP binding is a separate slice.
-4. **No 5G NGAP.** Phase 5.
-5. **No charging, no QoS enforcement, no usage reporting.** Bearers are
+- **Linux TUN egress** (`pkg/spgw/egress_tun_linux.go`, build-tagged) — opens
+  `/dev/net/tun` with `IFF_TUN | IFF_NO_PI`, writes uplink IPv4 packets, and
+  read-loops downlink IPv4 packets onto a bounded queue that the existing
+  `Dataplane.downlinkPump` already drains via `Forward()`.
+- **Non-Linux stub** (`egress_tun_other.go`) returns a clear "not supported,
+  use egress=log" error — Windows/macOS dev keeps building and CI stays green.
+- **Egress factory** in `service.New()` selects based on `spgw.egress` config.
+  Unknown values warn and fall back to `log` rather than failing to start.
+- **Prometheus metrics** (`metrics.RegisterSPGWMetrics`):
+  `spgw_uplink_packets_total`, `spgw_downlink_packets_total`,
+  `spgw_uplink_bytes_total`, `spgw_downlink_bytes_total`,
+  `spgw_drops_total{cause}`, `spgw_gtpu_echo_requests_total`,
+  `spgw_sessions_created_total`, `spgw_sessions_deleted_total`,
+  `spgw_active_sessions`, `spgw_api_requests_total{method,path,status}`.
+  Wired via nil-safe `Service.SetMetrics(...)` and an HTTP middleware on the
+  S11 API.
+- **Config:** `spgw.egress` (`log` | `tun`), `spgw.tun_name` (default
+  `qcore0`), `spgw.tun_mtu` (default `1400`).
+
+### Bringing up the TUN egress on Linux
+
+```bash
+# 1. Run SPGW with egress=tun (needs CAP_NET_ADMIN or root)
+sudo QCORE_SPGW_EGRESS=tun ./bin/qcore-spgw start --config config.example.yaml
+
+# 2. Configure the TUN device and turn on forwarding
+sudo ip addr add 10.45.0.1/24 dev qcore0
+sudo ip link set qcore0 up
+sudo sysctl -w net.ipv4.ip_forward=1
+
+# 3. NAT the UE pool out the upstream interface (replace eth0)
+sudo iptables -t nat -A POSTROUTING -s 10.45.0.0/24 -o eth0 -j MASQUERADE
+sudo iptables -A FORWARD -i qcore0 -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -i eth0 -o qcore0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+```
+
+That's everything needed for a UE that completes attach to actually ping
+`8.8.8.8`. No QCore-side NAT bookkeeping — Linux `iptables` is already
+battle-tested and doing it in Go would just reinvent (worse) wheels.
+
+## Known gaps (intentional, deferred to Session 3+)
+
+1. **No native SCTP.** The MME still ships the TCP-framed SCTP fallback from
+   Phase 2. Native SCTP binding (likely via `pion/sctp` behind a build tag) is
+   a separate slice.
+2. **No 5G NGAP.** Phase 5.
+3. **No charging, no QoS enforcement, no usage reporting.** Bearers are
    "allow-all" once established.
-6. **Single PDN per UE.** Multi-APN selection is a later concern.
+4. **Single PDN per UE.** Multi-APN selection is a later concern.
+5. **Downlink is opportunistic.** The dataplane has a `Forward()` path and
+   the TUN read loop feeds it, but we haven't put a UE through a real
+   round-trip ping in CI yet (would need a Linux container with NET_ADMIN).
+   Session 2.5: a TestEndToEndPing under `//go:build linux`.
 
 ---
 
@@ -140,10 +182,9 @@ ICMP Echo inside GTP-U to the SPGW, and asserts the egress adapter saw it.
 
 ---
 
-## What's next (Session 2 preview)
+## What's next
 
-- Linux TUN egress (build-tagged, so non-Linux CI stays green)
-- Simple SNAT so uplink packets actually reach the public internet
-- Downlink: TUN read → lookup UE-IP in `SessionStore` → encap → send to eNB
-- Native SCTP for S1AP (drop the TCP fallback in `linux`/`freebsd` builds)
-- Metrics for every packet class (uplink, downlink, drops, echo)
+- TestEndToEndPing under `//go:build linux` that actually round-trips an ICMP
+  Echo end-to-end (UE → SPGW → TUN → loopback responder → TUN → SPGW → UE).
+- Native SCTP for S1AP (drop the TCP fallback in `linux`/`freebsd` builds).
+- Web dashboard skeleton (Phase 4).

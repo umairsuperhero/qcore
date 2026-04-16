@@ -6,7 +6,7 @@
 
 QCore is a mobile core network designed around developer experience. Start a complete LTE core with a single command, no tribal knowledge required.
 
-> **Status:** Phases 1 (HSS), 2 (MME), and 3 Session 1 (SPGW control + GTP-U uplink) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
+> **Status:** Phases 1 (HSS), 2 (MME), and 3 Sessions 1–2 (SPGW + Linux TUN egress + SPGW Prometheus metrics) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
 
 ---
 
@@ -109,7 +109,8 @@ See [docs/PHASE3.md](docs/PHASE3.md) for architecture, limitations, and what's c
 | 1 | HSS + subscriber provisioning | ✅ Shipped |
 | 2 | MME + S1AP/NAS attach (auth, security, attach accept) | ✅ Shipped — see [docs/UERANSIM.md](docs/UERANSIM.md) |
 | 3.1 | SPGW + GTP-U uplink dataplane + S11 | ✅ Shipped — see [docs/PHASE3.md](docs/PHASE3.md) |
-| 3.2 | TUN egress + downlink + native SCTP | 🔜 Next |
+| 3.2 | Linux TUN egress + SPGW Prometheus metrics | ✅ Shipped — see [docs/PHASE3.md](docs/PHASE3.md) |
+| 3.3 | TestEndToEndPing under `//go:build linux` + native SCTP | 🔜 Next |
 | 4 | Web dashboard (Next.js) | Planned |
 | 5 | 5G SA (AMF/SMF/UPF) | Planned |
 | 6 | Polish, docs, v1.0 release | Planned |

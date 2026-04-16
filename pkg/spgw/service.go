@@ -7,6 +7,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/logger"
+	"github.com/qcore-project/qcore/pkg/metrics"
 )
 
 // Service is the top-level SPGW: IP pool, TEID pool, session store,
@@ -19,8 +20,18 @@ type Service struct {
 	teidPool *TEIDPool
 	dp       *Dataplane
 	egress   Egress
+	metrics  *metrics.SPGWMetrics // optional; nil-safe everywhere
 
 	sgwAddr net.IP // address we advertise to the MME as the SGW S1-U endpoint
+}
+
+// SetMetrics attaches the Prometheus metrics struct. Call before Start so the
+// dataplane picks them up too. Safe to never call (metrics paths are nil-safe).
+func (s *Service) SetMetrics(m *metrics.SPGWMetrics) {
+	s.metrics = m
+	if s.dp != nil {
+		s.dp.metrics = m
+	}
 }
 
 // New constructs the SPGW service but does not start any sockets.
@@ -32,7 +43,10 @@ func New(cfg *config.SPGWConfig, log logger.Logger) (*Service, error) {
 		return nil, fmt.Errorf("ip pool: %w", err)
 	}
 
-	egress := NewLogEgress(log)
+	egress, err := buildEgress(cfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("egress: %w", err)
+	}
 
 	sgwIP := net.ParseIP(cfg.SGWU1Addr)
 	if sgwIP == nil {
@@ -51,6 +65,25 @@ func New(cfg *config.SPGWConfig, log logger.Logger) (*Service, error) {
 	}, nil
 }
 
+// buildEgress selects the egress adapter based on config. Falls back to
+// LogEgress on unknown values rather than refusing to start, so a typo in
+// config can't take a node down — operators see a warning instead.
+func buildEgress(cfg *config.SPGWConfig, log logger.Logger) (Egress, error) {
+	switch cfg.Egress {
+	case "", "log":
+		return NewLogEgress(log), nil
+	case "tun":
+		eg, err := NewTUNEgress(log, cfg.TUNName, cfg.TUNMTU)
+		if err != nil {
+			return nil, err
+		}
+		return eg, nil
+	default:
+		log.Warnf("unknown egress %q, falling back to log", cfg.Egress)
+		return NewLogEgress(log), nil
+	}
+}
+
 // Start binds the user-plane socket. The HTTP API is started separately by the
 // main binary so it can be composed with the /metrics endpoint.
 func (s *Service) Start() error {
@@ -59,6 +92,7 @@ func (s *Service) Start() error {
 	if err != nil {
 		return fmt.Errorf("dataplane: %w", err)
 	}
+	dp.metrics = s.metrics
 	s.dp = dp
 	s.log.Infof("SPGW user-plane listening on %s (egress=%s)", dp.LocalAddr(), s.egress.Name())
 	go dp.Run()
@@ -133,6 +167,11 @@ func (s *Service) CreateSession(req *CreateSessionRequest) (*CreateSessionRespon
 	s.log.Infof("created session IMSI=%s UE-IP=%s SGW-TEID=0x%x APN=%s EBI=%d",
 		req.IMSI, ip, teid, apn, ebi)
 
+	if s.metrics != nil {
+		s.metrics.SessionsCreated.WithLabelValues().Inc()
+		s.metrics.ActiveSessions.WithLabelValues().Set(float64(s.sessions.Count()))
+	}
+
 	return &CreateSessionResponse{
 		UEIP:    ip.String(),
 		SGWTEID: teid,
@@ -167,6 +206,10 @@ func (s *Service) DeleteSession(imsi string) error {
 	if ip != nil {
 		s.ipPool.Release(ip)
 		s.log.Infof("deleted session IMSI=%s (freed UE-IP=%s)", imsi, ip)
+	}
+	if s.metrics != nil {
+		s.metrics.SessionsDeleted.WithLabelValues().Inc()
+		s.metrics.ActiveSessions.WithLabelValues().Set(float64(s.sessions.Count()))
 	}
 	return nil
 }

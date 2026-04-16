@@ -46,7 +46,9 @@ type SPGWConfig struct {
 	UEPool      string `mapstructure:"ue_pool"`  // e.g. "10.45.0.0/24"
 	Gateway     string `mapstructure:"gateway"`  // e.g. "10.45.0.1"
 	SGWU1Addr   string `mapstructure:"sgw_u1_addr"` // what we advertise to the MME as our S1-U IP
-	Egress      string `mapstructure:"egress"`      // "log" (default) or "tun"
+	Egress      string `mapstructure:"egress"`      // "log" (default) or "tun" (Linux only)
+	TUNName     string `mapstructure:"tun_name"`    // Linux TUN device name (default "qcore0")
+	TUNMTU      int    `mapstructure:"tun_mtu"`     // Linux TUN MTU (default 1400 to fit under typical L2 after GTP overhead)
 }
 
 type DatabaseConfig struct {
@@ -97,6 +99,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("spgw.gateway", "10.45.0.1")
 	v.SetDefault("spgw.sgw_u1_addr", "127.0.0.1")
 	v.SetDefault("spgw.egress", "log")
+	v.SetDefault("spgw.tun_name", "qcore0")
+	v.SetDefault("spgw.tun_mtu", 1400)
 
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)

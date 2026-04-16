@@ -8,6 +8,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/gtp"
 	"github.com/qcore-project/qcore/pkg/logger"
+	"github.com/qcore-project/qcore/pkg/metrics"
 )
 
 // Dataplane owns the GTP-U UDP socket. It decapsulates uplink T-PDUs and
@@ -19,12 +20,33 @@ type Dataplane struct {
 	sessions *SessionStore
 	egress   Egress
 	log      logger.Logger
+	metrics  *metrics.SPGWMetrics // optional; nil-safe
 
 	uplinkCount   uint64
 	downlinkCount uint64
 	dropCount     uint64
 
 	quit chan struct{}
+}
+
+// dropCause is a small enum so call sites don't sprinkle string literals.
+type dropCause string
+
+const (
+	dropDecode    dropCause = "decode"
+	dropUnknownTE dropCause = "unknown_teid"
+	dropEgress    dropCause = "egress_send"
+	dropNoBearer  dropCause = "no_bearer"
+	dropNoENB     dropCause = "no_enb"
+	dropEncode    dropCause = "encode"
+	dropDLWrite   dropCause = "dl_write"
+)
+
+func (d *Dataplane) dropMetric(c dropCause) {
+	atomic.AddUint64(&d.dropCount, 1)
+	if d.metrics != nil {
+		d.metrics.Drops.WithLabelValues(string(c)).Inc()
+	}
 }
 
 // NewDataplane binds a UDP socket on the given address (":2152" by default).
@@ -103,7 +125,7 @@ func (d *Dataplane) uplinkLoop() {
 func (d *Dataplane) handleUplink(src *net.UDPAddr, raw []byte) {
 	hdr, payload, err := gtp.Decode(raw)
 	if err != nil {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropDecode)
 		d.log.Debugf("invalid GTP-U from %s: %v", src, err)
 		return
 	}
@@ -121,12 +143,16 @@ func (d *Dataplane) handleUplink(src *net.UDPAddr, raw []byte) {
 
 	bearer, ok := d.sessions.GetBySGWTEID(hdr.TEID)
 	if !ok {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropUnknownTE)
 		d.log.Warnf("uplink T-PDU for unknown TEID=0x%x from %s (dropping)", hdr.TEID, src)
 		return
 	}
 
 	atomic.AddUint64(&d.uplinkCount, 1)
+	if d.metrics != nil {
+		d.metrics.UplinkPackets.WithLabelValues().Inc()
+		d.metrics.UplinkBytes.WithLabelValues().Add(float64(len(payload)))
+	}
 
 	// Opportunistically learn the eNB's source address if it changed. This
 	// matters when the eNB is behind NAT or its IP wasn't known at attach.
@@ -141,11 +167,14 @@ func (d *Dataplane) handleUplink(src *net.UDPAddr, raw []byte) {
 
 	if err := d.egress.Send(pkt); err != nil {
 		d.log.Warnf("egress send failed: %v", err)
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropEgress)
 	}
 }
 
 func (d *Dataplane) handleEcho(src *net.UDPAddr, hdr *gtp.Header) {
+	if d.metrics != nil {
+		d.metrics.EchoRequests.WithLabelValues().Inc()
+	}
 	// Echo Response: type=2, TEID=0, Recovery IE value 0.
 	respHdr := &gtp.Header{
 		Flags:       0x02, // S flag
@@ -184,30 +213,34 @@ func (d *Dataplane) downlinkPump() {
 func (d *Dataplane) Forward(ipPkt []byte) {
 	_, dst, _ := parseIPv4Headers(ipPkt)
 	if dst == nil {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropDecode)
 		return
 	}
 	bearer, ok := d.sessions.GetByUEIP(dst)
 	if !ok {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropNoBearer)
 		d.log.Debugf("no bearer for UE-IP=%s, dropping downlink", dst)
 		return
 	}
 	if bearer.ENBAddr == nil || bearer.ENBTEID == 0 {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropNoENB)
 		d.log.Debugf("bearer for UE-IP=%s has no eNB endpoint yet, dropping", dst)
 		return
 	}
 	pkt, err := gtp.EncodeTPDU(bearer.ENBTEID, ipPkt)
 	if err != nil {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropEncode)
 		return
 	}
 	enbAddr := &net.UDPAddr{IP: bearer.ENBAddr, Port: gtp.PortU}
 	if _, err := d.conn.WriteToUDP(pkt, enbAddr); err != nil {
-		atomic.AddUint64(&d.dropCount, 1)
+		d.dropMetric(dropDLWrite)
 		d.log.Debugf("downlink write failed: %v", err)
 		return
 	}
 	atomic.AddUint64(&d.downlinkCount, 1)
+	if d.metrics != nil {
+		d.metrics.DownlinkPackets.WithLabelValues().Inc()
+		d.metrics.DownlinkBytes.WithLabelValues().Add(float64(len(ipPkt)))
+	}
 }

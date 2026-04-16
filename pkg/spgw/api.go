@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/qcore-project/qcore/pkg/metrics"
 )
 
 // CreateSessionRequest is QCore's HTTP-over-JSON analogue of the S11 GTPv2-C
@@ -46,8 +48,9 @@ type ModifyBearerResponse struct {
 
 // API exposes the SPGW's control interface over HTTP.
 type API struct {
-	svc    *Service
-	router *mux.Router
+	svc     *Service
+	router  *mux.Router
+	metrics *metrics.SPGWMetrics
 }
 
 // NewAPI wires up HTTP routes against the service.
@@ -57,8 +60,43 @@ func NewAPI(svc *Service) *API {
 	return a
 }
 
-// Handler returns the mux.Router for embedding in a larger HTTP server.
-func (a *API) Handler() http.Handler { return a.router }
+// SetMetrics attaches Prometheus instrumentation to the API. Idempotent.
+func (a *API) SetMetrics(m *metrics.SPGWMetrics) {
+	a.metrics = m
+}
+
+// Handler returns the mux.Router (with metrics middleware if configured).
+func (a *API) Handler() http.Handler {
+	if a.metrics == nil {
+		return a.router
+	}
+	return a.instrument(a.router)
+}
+
+// instrument wraps a handler with a counter for spgw_api_requests_total.
+func (a *API) instrument(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		path := r.URL.Path
+		if route := mux.CurrentRoute(r); route != nil {
+			if tmpl, err := route.GetPathTemplate(); err == nil {
+				path = tmpl
+			}
+		}
+		a.metrics.APIRequests.WithLabelValues(r.Method, path, strconv.Itoa(rec.status)).Inc()
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
 
 func (a *API) routes() {
 	a.router.HandleFunc("/api/v1/health", a.handleHealth).Methods(http.MethodGet)

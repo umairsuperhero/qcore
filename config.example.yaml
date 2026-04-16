@@ -24,8 +24,10 @@ spgw:
   s1u_port: 2152              # GTP-U UDP port (canonical)
   sgw_u1_addr: "127.0.0.1"    # address advertised to the MME for downlink encapsulation
   ue_pool: "10.45.0.0/24"     # UE IP allocation range
-  ue_pool_gateway: "10.45.0.1"
-  egress_mode: "log"          # "log" (default) — uplink packets are counted/logged; "tun" reserved for future
+  gateway: "10.45.0.1"        # excluded from the allocation pool
+  egress: "log"               # "log" — counts uplink packets (works everywhere); "tun" — Linux TUN device (see docs/PHASE3.md)
+  tun_name: "qcore0"          # only used when egress=tun
+  tun_mtu: 1400               # only used when egress=tun (GTP overhead-aware)
 
 database:
   host: "localhost"

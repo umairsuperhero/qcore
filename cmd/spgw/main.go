@@ -71,12 +71,26 @@ func runServer() error {
 	if err != nil {
 		return fmt.Errorf("constructing SPGW: %w", err)
 	}
+
+	// Build metrics up-front so the dataplane can pick them up at Start().
+	var spgwMetrics *metrics.SPGWMetrics
+	var metricsHandler http.Handler
+	if cfg.Metrics.Enabled {
+		m := metrics.New()
+		spgwMetrics = metrics.RegisterSPGWMetrics(m)
+		metricsHandler = m.Handler()
+		svc.SetMetrics(spgwMetrics)
+	}
+
 	if err := svc.Start(); err != nil {
 		return fmt.Errorf("starting SPGW: %w", err)
 	}
 	defer svc.Stop()
 
 	api := spgw.NewAPI(svc)
+	if spgwMetrics != nil {
+		api.SetMetrics(spgwMetrics)
+	}
 	apiAddr := fmt.Sprintf("%s:%d", cfg.SPGW.BindAddress, cfg.SPGW.APIPort)
 	apiServer := &http.Server{
 		Addr:         apiAddr,
@@ -94,12 +108,11 @@ func runServer() error {
 		}
 	}()
 
-	// Metrics
-	if cfg.Metrics.Enabled {
-		m := metrics.New()
+	// Metrics HTTP endpoint (separate port so /metrics is firewall-isolatable).
+	if metricsHandler != nil {
 		metricsAddr := fmt.Sprintf("%s:%d", cfg.SPGW.BindAddress, cfg.Metrics.Port)
 		metricsMux := http.NewServeMux()
-		metricsMux.Handle("/metrics", m.Handler())
+		metricsMux.Handle("/metrics", metricsHandler)
 		metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux}
 		go func() {
 			log.Infof("Metrics server listening on %s", metricsAddr)
