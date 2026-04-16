@@ -1,6 +1,9 @@
 package s1ap
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 // This file contains the eNB-side encoders and decoders (counterparts to the
 // MME-side encoders in procedures.go). These are needed for integration tests
@@ -185,7 +188,9 @@ func DecodeDownlinkNASTransport(ies []ProtocolIE) (*DownlinkNASTransport, error)
 }
 
 // EncodeInitialContextSetupResponse encodes an INITIAL CONTEXT SETUP RESPONSE
-// (eNB → MME) confirming radio bearer establishment for a UE.
+// (eNB → MME) confirming radio bearer establishment for a UE. If ERABs is
+// populated, an E-RABSetupListCtxtSURes IE is appended so the MME learns the
+// eNB-allocated S1-U TEID for each bearer.
 func EncodeInitialContextSetupResponse(resp *InitialContextSetupResponse) ([]byte, error) {
 	var ies []ProtocolIE
 
@@ -201,6 +206,14 @@ func EncodeInitialContextSetupResponse(resp *InitialContextSetupResponse) ([]byt
 	}
 	ies = append(ies, ProtocolIE{ID: IEID_ENB_UE_S1AP_ID, Criticality: CriticalityReject, Value: enbIDEnc.Bytes()})
 
+	if len(resp.ERABs) > 0 {
+		listVal, err := encodeERABSetupResultList(resp.ERABs)
+		if err != nil {
+			return nil, fmt.Errorf("encoding E-RABSetupListCtxtSURes: %w", err)
+		}
+		ies = append(ies, ProtocolIE{ID: IEID_E_RABSetupListCtxtSURes, Criticality: CriticalityIgnore, Value: listVal})
+	}
+
 	containerBytes, err := EncodeProtocolIEContainer(ies)
 	if err != nil {
 		return nil, err
@@ -212,4 +225,55 @@ func EncodeInitialContextSetupResponse(resp *InitialContextSetupResponse) ([]byt
 		Criticality:   CriticalityReject,
 		Value:         containerBytes,
 	})
+}
+
+// encodeERABSetupResultList mirrors encodeERABSetupList (request side) but
+// encodes the response-side item (E-RABSetupItemCtxtSURes).
+func encodeERABSetupResultList(items []ERABSetupResult) ([]byte, error) {
+	enc := NewPEREncoder()
+	if err := enc.PutConstrainedInt(int64(len(items)), 1, 256); err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		itemBytes, err := encodeERABSetupResultItem(it)
+		if err != nil {
+			return nil, err
+		}
+		idBytes := make([]byte, 2)
+		binary.BigEndian.PutUint16(idBytes, uint16(IEID_E_RABSetupItemCtxtSURes))
+		enc.PutBytes(idBytes)
+		if err := enc.PutConstrainedInt(int64(CriticalityIgnore), 0, 2); err != nil {
+			return nil, err
+		}
+		enc.align()
+		if err := enc.PutLengthDeterminant(len(itemBytes)); err != nil {
+			return nil, err
+		}
+		enc.PutBytes(itemBytes)
+	}
+	return enc.Bytes(), nil
+}
+
+// encodeERABSetupResultItem encodes E-RABSetupItemCtxtSURes:
+//   SEQUENCE { e-RAB-ID, transportLayerAddress, gTP-TEID, iE-Extensions OPTIONAL, ... }
+// Extensible, one OPTIONAL field (iE-Extensions), not present.
+func encodeERABSetupResultItem(it ERABSetupResult) ([]byte, error) {
+	enc := NewPEREncoder()
+	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Extensions), absent
+	if err := enc.PutConstrainedInt(int64(it.ERABID), 0, 15); err != nil {
+		return nil, fmt.Errorf("e-RAB-ID: %w", err)
+	}
+	ip := it.TransportLayerAddr.To4()
+	if ip == nil {
+		return nil, fmt.Errorf("transportLayerAddress must be IPv4")
+	}
+	// BIT STRING(SIZE(1..160,...)) — emit a 32-bit length determinant then the 4 bytes.
+	// This matches the request-side encoder in encodeERABSetupItem.
+	if err := enc.PutLengthDeterminant(32); err != nil {
+		return nil, err
+	}
+	enc.align()
+	enc.PutBytes(ip)
+	enc.PutFixedOctetString(it.GTPTEID[:])
+	return enc.Bytes(), nil
 }

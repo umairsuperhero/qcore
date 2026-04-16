@@ -102,6 +102,12 @@ type UEContext struct {
 	TAI     TAI
 	ECGI    ECGI
 	PDNAddr string // Allocated IPv4 address (dotted notation)
+
+	// S1-U bearer endpoints (default EPS bearer, EBI=5)
+	SGWTEID uint32 // SGW downlink-from-eNB TEID (eNB sends UL here)
+	SGWAddr string // SGW S1-U IP (advertised to eNB)
+	ENBTEID uint32 // eNB's TEID for downlink-to-UE (reported in Initial Context Setup Response)
+	ENBAddr string // eNB S1-U IP (learned from the S1AP association)
 }
 
 // TAI is a Tracking Area Identity.

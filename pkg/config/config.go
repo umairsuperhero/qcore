@@ -10,6 +10,7 @@ import (
 type Config struct {
 	HSS      HSSConfig      `mapstructure:"hss"`
 	MME      MMEConfig      `mapstructure:"mme"`
+	SPGW     SPGWConfig     `mapstructure:"spgw"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 	Metrics  MetricsConfig  `mapstructure:"metrics"`
@@ -34,6 +35,18 @@ type MMEConfig struct {
 	MMECode     uint8    `mapstructure:"mme_code"`
 	RelCapacity uint8    `mapstructure:"relative_capacity"` // 0-255, for load balancing
 	TAIList     []string `mapstructure:"tai_list"`           // e.g. ["00101:0001"]
+	SPGWURL     string   `mapstructure:"spgw_url"`           // HTTP S11 endpoint of SPGW
+}
+
+type SPGWConfig struct {
+	Name        string `mapstructure:"name"`
+	BindAddress string `mapstructure:"bind_address"`
+	APIPort     int    `mapstructure:"api_port"` // HTTP API (our S11-over-HTTP)
+	S1UPort     int    `mapstructure:"s1u_port"` // GTP-U (2152)
+	UEPool      string `mapstructure:"ue_pool"`  // e.g. "10.45.0.0/24"
+	Gateway     string `mapstructure:"gateway"`  // e.g. "10.45.0.1"
+	SGWU1Addr   string `mapstructure:"sgw_u1_addr"` // what we advertise to the MME as our S1-U IP
+	Egress      string `mapstructure:"egress"`      // "log" (default) or "tun"
 }
 
 type DatabaseConfig struct {
@@ -74,6 +87,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mme.mme_group_id", 1)
 	v.SetDefault("mme.mme_code", 1)
 	v.SetDefault("mme.relative_capacity", 127)
+	v.SetDefault("mme.spgw_url", "http://localhost:8082")
+
+	v.SetDefault("spgw.name", "qcore-spgw")
+	v.SetDefault("spgw.bind_address", "0.0.0.0")
+	v.SetDefault("spgw.api_port", 8082)
+	v.SetDefault("spgw.s1u_port", 2152)
+	v.SetDefault("spgw.ue_pool", "10.45.0.0/24")
+	v.SetDefault("spgw.gateway", "10.45.0.1")
+	v.SetDefault("spgw.sgw_u1_addr", "127.0.0.1")
+	v.SetDefault("spgw.egress", "log")
 
 	v.SetDefault("database.host", "localhost")
 	v.SetDefault("database.port", 5432)

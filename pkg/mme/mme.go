@@ -22,6 +22,7 @@ type MME struct {
 	log     logger.Logger
 	metrics *metrics.MMEMetrics
 	s6a     *S6aClient
+	s11     *S11Client
 
 	// PLMN identity
 	plmn [3]byte
@@ -45,13 +46,15 @@ type MME struct {
 	nextPDNOffset uint32 // atomic; first UE gets offset 2 → 10.45.0.2
 }
 
-// New creates a new MME instance.
-func New(cfg *config.MMEConfig, plmn [3]byte, log logger.Logger, m *metrics.MMEMetrics, s6a *S6aClient) *MME {
+// New creates a new MME instance. s11 may be nil, in which case the MME
+// falls back to its internal fake IP allocator and no real user plane.
+func New(cfg *config.MMEConfig, plmn [3]byte, log logger.Logger, m *metrics.MMEMetrics, s6a *S6aClient, s11 *S11Client) *MME {
 	return &MME{
 		cfg:         cfg,
 		log:         log.WithField("component", "mme"),
 		metrics:     m,
 		s6a:         s6a,
+		s11:         s11,
 		plmn:        plmn,
 		mmeGroupID:  cfg.MMEGroupID,
 		mmeCode:     cfg.MMECode,

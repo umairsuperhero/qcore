@@ -93,11 +93,23 @@ func runServer() error {
 		log.Infof("HSS connected at %s", cfg.MME.HSSURL)
 	}
 
+	// Create S11 client (HTTP to SPGW). Optional — if unreachable the MME
+	// falls back to its built-in fake IP allocator so the control-plane
+	// demo still works without a running SPGW.
+	s11 := mme.NewS11Client(cfg.MME.SPGWURL, log)
+	if s11.Enabled() {
+		if err := s11.HealthCheck(); err != nil {
+			log.Warnf("SPGW not reachable at %s: %v (MME will fall back to fake IP allocation)", cfg.MME.SPGWURL, err)
+		} else {
+			log.Infof("SPGW connected at %s", cfg.MME.SPGWURL)
+		}
+	}
+
 	// Create MME
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	mmeService := mme.New(&cfg.MME, plmnID, log, mmeMetrics, s6a)
+	mmeService := mme.New(&cfg.MME, plmnID, log, mmeMetrics, s6a, s11)
 
 	// Start S1AP listener
 	if err := mmeService.Start(ctx); err != nil {

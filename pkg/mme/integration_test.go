@@ -68,7 +68,7 @@ func TestEndToEndAttachOverWire(t *testing.T) {
 	}
 	plmn := [3]byte{0x00, 0xF1, 0x10}
 	s6a := NewS6aClient(hss.URL, noopLogger{})
-	mme := New(cfg, plmn, noopLogger{}, nil, s6a)
+	mme := New(cfg, plmn, noopLogger{}, nil, s6a, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -107,6 +107,8 @@ const (
 	IEID_UESecurityCapabilities      ProtocolIEID = 107
 	IEID_SecurityKey                 ProtocolIEID = 73
 	IEID_E_RABToBeSetupListCtxtSUReq ProtocolIEID = 24
+	IEID_E_RABSetupListCtxtSURes     ProtocolIEID = 50
+	IEID_E_RABSetupItemCtxtSURes     ProtocolIEID = 51
 	IEID_UEAggMaxBitRate             ProtocolIEID = 66
 	IEID_UE_S1AP_IDs                 ProtocolIEID = 99
 	IEID_E_RABToBeSetupItemCtxtSUReq ProtocolIEID = 52

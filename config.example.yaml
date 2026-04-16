@@ -11,10 +11,21 @@ mme:
   sctp_mode: "tcp"        # "sctp" for native SCTP, "tcp" for length-prefixed fallback (dev)
   plmn: "00101"           # MCC=001, MNC=01 (test PLMN)
   hss_url: "http://localhost:8080"
+  spgw_url: "http://localhost:8082"  # empty string disables S11 and falls back to local fake IP alloc
   tac: 1                  # Tracking Area Code
   mme_group_id: 1
   mme_code: 1
   relative_capacity: 127
+
+spgw:
+  name: "qcore-spgw"
+  bind_address: "0.0.0.0"
+  api_port: 8082
+  s1u_port: 2152              # GTP-U UDP port (canonical)
+  sgw_u1_addr: "127.0.0.1"    # address advertised to the MME for downlink encapsulation
+  ue_pool: "10.45.0.0/24"     # UE IP allocation range
+  ue_pool_gateway: "10.45.0.1"
+  egress_mode: "log"          # "log" (default) — uplink packets are counted/logged; "tun" reserved for future
 
 database:
   host: "localhost"

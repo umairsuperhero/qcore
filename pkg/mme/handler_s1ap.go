@@ -2,6 +2,7 @@ package mme
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 
@@ -540,11 +541,43 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 
 	m.log.Infof("Security Mode Complete from UE=%d (IMSI=%s)", ue.MMEUES1APID, ue.IMSI)
 
-	// Allocate PDN address and TMSI, then update UE state
-	pdnAddr := m.allocatePDNAddress()
+	// Allocate PDN address. Prefer the real SPGW via S11 when available; fall
+	// back to the internal placeholder allocator so control-plane-only runs
+	// (no SPGW) still complete attach.
+	var (
+		pdnAddr string
+		sgwTEID uint32
+		sgwAddr string
+	)
+	if m.s11 != nil && m.s11.Enabled() {
+		resp, err := m.s11.CreateSession(&S11CreateSessionRequest{
+			IMSI: ue.IMSI,
+			APN:  "internet",
+			EBI:  5,
+			PLMN: m.cfg.PLMN,
+		})
+		if err != nil {
+			m.log.Warnf("S11 CreateSession failed for IMSI=%s: %v (falling back to local IP allocation)", ue.IMSI, err)
+		} else {
+			pdnAddr = resp.UEIP
+			sgwTEID = resp.SGWTEID
+			sgwAddr = resp.SGWAddr
+			m.log.Infof("S11 Create Session OK: IMSI=%s UE-IP=%s SGW-TEID=0x%x SGW=%s",
+				ue.IMSI, pdnAddr, sgwTEID, sgwAddr)
+		}
+	}
+	if pdnAddr == "" {
+		pdnAddr = m.allocatePDNAddress()
+		// Placeholder transport-layer info so the E-RAB IE encodes correctly.
+		sgwTEID = 1
+		sgwAddr = "127.0.0.1"
+	}
+
 	tmsi := m.allocateTMSI()
 	ue.mu.Lock()
 	ue.PDNAddr = pdnAddr
+	ue.SGWTEID = sgwTEID
+	ue.SGWAddr = sgwAddr
 	ue.TMSI = tmsi
 	ue.EMMState = EMMRegistered
 	kNASint := ue.SecurityCtx.KNASint
@@ -829,9 +862,20 @@ func (m *MME) cleanupUE(ue *UEContext) {
 	m.ues.Delete(ue.MMEUES1APID)
 	ue.mu.RLock()
 	tmsi := ue.TMSI
+	imsi := ue.IMSI
+	hadSession := ue.PDNAddr != ""
 	ue.mu.RUnlock()
 	if tmsi != 0 {
 		m.tmsis.Delete(tmsi)
+	}
+	// Best-effort release of the SPGW session. Run async to keep cleanup fast;
+	// any failure is logged but not surfaced.
+	if hadSession && m.s11 != nil && m.s11.Enabled() && imsi != "" {
+		go func(imsi string) {
+			if err := m.s11.DeleteSession(imsi); err != nil {
+				m.log.Debugf("S11 DeleteSession for IMSI=%s: %v", imsi, err)
+			}
+		}(imsi)
 	}
 	if m.metrics != nil {
 		m.metrics.ActiveUEs.WithLabelValues().Dec()
@@ -874,6 +918,21 @@ func (m *MME) sendInitialContextSetup(enb *EnbContext, ue *UEContext, attachAcce
 	var keNB [32]byte
 	copy(keNB[:], secCtx.KeNB)
 
+	// Pull the SGW S1-U endpoint set at attach time (via S11 if SPGW is up,
+	// else the local placeholder).
+	ue.mu.RLock()
+	sgwAddr := ue.SGWAddr
+	sgwTEID := ue.SGWTEID
+	ue.mu.RUnlock()
+	if sgwAddr == "" {
+		sgwAddr = "127.0.0.1"
+	}
+	if sgwTEID == 0 {
+		sgwTEID = 1
+	}
+	var teidBytes [4]byte
+	binary.BigEndian.PutUint32(teidBytes[:], sgwTEID)
+
 	req := &s1ap.InitialContextSetupRequest{
 		MMEUES1APID:       ue.MMEUES1APID,
 		ENBUES1APID:       ue.ENBUES1APID,
@@ -884,8 +943,8 @@ func (m *MME) sendInitialContextSetup(enb *EnbContext, ue *UEContext, attachAcce
 				ERABID:             5, // default bearer EPS bearer ID
 				QCI:                9, // internet non-GBR
 				ARPLevel:           8, // mid-priority
-				TransportLayerAddr: net.ParseIP("127.0.0.1"), // placeholder SGW S1-U address
-				GTPTEID:            [4]byte{0x00, 0x00, 0x00, 0x01}, // placeholder TEID
+				TransportLayerAddr: net.ParseIP(sgwAddr),
+				GTPTEID:            teidBytes,
 				NASPDU:             attachAcceptNAS,
 			},
 		},
@@ -904,10 +963,12 @@ func (m *MME) sendInitialContextSetup(enb *EnbContext, ue *UEContext, attachAcce
 	return nil
 }
 
-// handleInitialContextSetupResponse logs the eNB's confirmation of bearer setup.
+// handleInitialContextSetupResponse processes the eNB's confirmation that the
+// radio bearer is set up. If the response includes E-RAB setup results with
+// the eNB-allocated S1-U TEID, we fire an S11 Modify Bearer toward the SPGW
+// so downlink packets can flow.
 func (m *MME) handleInitialContextSetupResponse(ctx context.Context, enb *EnbContext, ies []s1ap.ProtocolIE, streamID uint16) {
 	_ = ctx
-	_ = enb
 	_ = streamID
 
 	resp, err := s1ap.DecodeInitialContextSetupResponse(ies)
@@ -915,7 +976,50 @@ func (m *MME) handleInitialContextSetupResponse(ctx context.Context, enb *EnbCon
 		m.log.Errorf("Failed to decode INITIAL CONTEXT SETUP RESPONSE: %v", err)
 		return
 	}
-	m.log.Infof("INITIAL CONTEXT SETUP RESPONSE: MME-UE-S1AP-ID=%d — radio bearer established", resp.MMEUES1APID)
+	m.log.Infof("INITIAL CONTEXT SETUP RESPONSE: MME-UE-S1AP-ID=%d — radio bearer established (%d E-RAB(s))",
+		resp.MMEUES1APID, len(resp.ERABs))
+
+	ueVal, ok := m.ues.Load(resp.MMEUES1APID)
+	if !ok {
+		return
+	}
+	ue := ueVal.(*UEContext)
+
+	// Learn the eNB S1-U endpoint. Prefer the transport-layer address carried
+	// in the E-RABSetupItem; fall back to the eNB's S1AP peer address if the
+	// encoder didn't include it.
+	var enbAddr string
+	var enbTEID uint32
+	if len(resp.ERABs) > 0 {
+		r := resp.ERABs[0]
+		enbTEID = binary.BigEndian.Uint32(r.GTPTEID[:])
+		if r.TransportLayerAddr != nil {
+			enbAddr = r.TransportLayerAddr.String()
+		}
+	}
+	if enbAddr == "" && enb != nil && enb.Assoc != nil {
+		// Strip port: the eNB's S1AP source port is not the GTP-U port.
+		if host, _, splitErr := net.SplitHostPort(enb.Assoc.RemoteAddr().String()); splitErr == nil {
+			enbAddr = host
+		}
+	}
+
+	ue.mu.Lock()
+	ue.ENBTEID = enbTEID
+	ue.ENBAddr = enbAddr
+	imsi := ue.IMSI
+	ue.mu.Unlock()
+
+	if m.s11 != nil && m.s11.Enabled() && imsi != "" && enbAddr != "" && enbTEID != 0 {
+		if err := m.s11.ModifyBearer(imsi, &S11ModifyBearerRequest{
+			ENBTEID: enbTEID,
+			ENBAddr: enbAddr,
+		}); err != nil {
+			m.log.Warnf("S11 ModifyBearer failed for IMSI=%s: %v", imsi, err)
+			return
+		}
+		m.log.Infof("S11 ModifyBearer OK: IMSI=%s eNB=%s eNB-TEID=0x%x", imsi, enbAddr, enbTEID)
+	}
 }
 
 // sendDownlinkNAS wraps a NAS PDU in a DownlinkNASTransport S1AP message and sends it.

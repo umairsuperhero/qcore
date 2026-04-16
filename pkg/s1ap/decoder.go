@@ -37,6 +37,39 @@ func (d *PERDecoder) align() {
 	}
 }
 
+// Align is the exported form of align (for cross-package callers that compose PER values).
+func (d *PERDecoder) Align() { d.align() }
+
+// GetBits is the exported form of getBits.
+func (d *PERDecoder) GetBits(n uint) (uint8, error) { return d.getBits(n) }
+
+// GetBitString decodes a BIT STRING with a length determinant (number of bits).
+// It returns the bit string aligned into bytes with any trailing unused bits
+// in the last byte set to 0. This is sufficient for S1AP TransportLayerAddress
+// where we interpret 32-bit bit strings as IPv4 addresses.
+func (d *PERDecoder) GetBitString() ([]byte, error) {
+	length, err := d.GetLengthDeterminant()
+	if err != nil {
+		return nil, err
+	}
+	d.align()
+	byteLen := (length + 7) / 8
+	if byteLen == 0 {
+		return nil, nil
+	}
+	out := make([]byte, byteLen)
+	b, err := d.GetBytes(byteLen)
+	if err != nil {
+		return nil, err
+	}
+	copy(out, b)
+	// Mask any padding bits in the last byte
+	if rem := length % 8; rem != 0 {
+		out[byteLen-1] &= byte(0xFF) << uint(8-rem)
+	}
+	return out, nil
+}
+
 // getBits reads n bits (1-8) and returns them in the low bits.
 func (d *PERDecoder) getBits(n uint) (uint8, error) {
 	if n == 0 || n > 8 {

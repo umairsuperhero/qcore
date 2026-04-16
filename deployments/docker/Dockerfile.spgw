@@ -1,0 +1,29 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+    -o /qcore-spgw ./cmd/spgw
+
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates
+
+COPY --from=builder /qcore-spgw /usr/local/bin/qcore-spgw
+COPY config.example.yaml /etc/qcore/config.yaml
+
+# 2152 = GTP-U (UDP), 8082 = S11 HTTP API, 9092 = metrics
+EXPOSE 2152/udp 8082 9092
+
+ENTRYPOINT ["qcore-spgw"]
+CMD ["start", "--config", "/etc/qcore/config.yaml"]

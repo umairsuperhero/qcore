@@ -39,6 +39,25 @@ services:
       timeout: 3s
       retries: 10
 
+  spgw:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.spgw
+    ports:
+      - "2152:2152/udp"
+      - "8082:8082"
+      - "9092:9092"
+    environment:
+      QCORE_SPGW_BIND_ADDRESS: 0.0.0.0
+      QCORE_SPGW_SGW_U1_ADDR: spgw
+      QCORE_METRICS_PORT: "9092"
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   mme:
     build:
       context: ../..
@@ -50,8 +69,11 @@ services:
     depends_on:
       hss:
         condition: service_healthy
+      spgw:
+        condition: service_healthy
     environment:
       QCORE_MME_HSS_URL: http://hss:8080
+      QCORE_MME_SPGW_URL: http://spgw:8082
       QCORE_MME_BIND_ADDRESS: 0.0.0.0
       QCORE_MME_SCTP_MODE: tcp
       QCORE_METRICS_PORT: "9091"

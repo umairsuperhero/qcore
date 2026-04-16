@@ -6,7 +6,7 @@
 
 QCore is a mobile core network designed around developer experience. Start a complete LTE core with a single command, no tribal knowledge required.
 
-> **Status:** Phase 1 (HSS) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6).
+> **Status:** Phases 1 (HSS), 2 (MME), and 3 Session 1 (SPGW control + GTP-U uplink) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
 
 ---
 
@@ -73,12 +73,12 @@ QCore's thesis: **developer experience is the differentiator**.
 +-----------+         +----------+         +----------+
 |  eNodeB   |---S1--->|   MME    |---S6a-->|   HSS    |  <-- Phase 1 ✓
 +-----------+         +----------+         +----------+
-                           |
-                          S11
-                           |
-                      +----v-----+
-                      | SGW/PGW  |--SGi--> Internet
-                      +----------+
+      |                    |
+      |                   S11 (HTTP/JSON)
+      |                    |
+      |               +----v-----+
+      +---- S1-U ---->|  SPGW    |--SGi--> Internet   <-- Phase 3 S1 ✓
+           (GTP-U)    +----------+
 ```
 
 ### Phase 1: HSS (shipped)
@@ -91,13 +91,25 @@ QCore's thesis: **developer experience is the differentiator**.
 - PostgreSQL persistence with auto-migration
 - Multi-stage Docker build, graceful shutdown
 
+### Phase 3 Session 1: SPGW + GTP-U uplink (shipped)
+
+- Collapsed SGW+PGW ("SPGW") single binary
+- GTP-U v1 codec (T-PDU, Echo Request/Response, sequence + extension headers)
+- UE IP pool (CIDR) + TEID pool with recycling
+- S11 control-plane over HTTP/JSON (create / modify bearer / delete session)
+- MME attaches via S11: real UE IPs, real SGW TEIDs flow end-to-end through S1AP
+- In-repo E2E test: mock eNB attach → NAS Attach Complete → GTP-U uplink packet arrives at SPGW egress
+
+See [docs/PHASE3.md](docs/PHASE3.md) for architecture, limitations, and what's coming in Session 2.
+
 ### Roadmap
 
 | Phase | Component | Status |
 |-------|-----------|--------|
 | 1 | HSS + subscriber provisioning | ✅ Shipped |
 | 2 | MME + S1AP/NAS attach (auth, security, attach accept) | ✅ Shipped — see [docs/UERANSIM.md](docs/UERANSIM.md) |
-| 3 | SGW/PGW + GTP tunneling | 🔜 Next |
+| 3.1 | SPGW + GTP-U uplink dataplane + S11 | ✅ Shipped — see [docs/PHASE3.md](docs/PHASE3.md) |
+| 3.2 | TUN egress + downlink + native SCTP | 🔜 Next |
 | 4 | Web dashboard (Next.js) | Planned |
 | 5 | 5G SA (AMF/SMF/UPF) | Planned |
 | 6 | Polish, docs, v1.0 release | Planned |
@@ -108,12 +120,15 @@ QCore's thesis: **developer experience is the differentiator**.
 
 ```bash
 # Prerequisites: Go 1.23+
-make build        # Build both binaries to bin/qcore-hss and bin/qcore-mme
+make build        # Build all three binaries to bin/qcore-{hss,mme,spgw}
 make test         # Run all tests with race detector
 make lint         # Run golangci-lint
 
 # Start the HSS with local PostgreSQL
 ./bin/qcore-hss start --config config.example.yaml
+
+# Start the SPGW (in another terminal)
+./bin/qcore-spgw start --config config.example.yaml
 
 # Start the MME (in another terminal)
 ./bin/qcore-mme start --config config.example.yaml
@@ -123,6 +138,12 @@ End-to-end attach over the wire (real MME, mock HSS, Go-based mock eNB):
 
 ```bash
 go test -v -run TestEndToEndAttachOverWire ./pkg/mme/
+```
+
+End-to-end user-plane (real MME + real SPGW + uplink GTP-U):
+
+```bash
+go test -v -run TestEndToEndUserPlane ./pkg/mme/
 ```
 
 For driving QCore with [UERANSIM](https://github.com/aligungr/UERANSIM),

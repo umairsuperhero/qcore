@@ -711,10 +711,20 @@ func IMSIToBCD(imsi string) []byte {
 }
 
 // DecodeInitialContextSetupResponse decodes the eNB's response to the INITIAL CONTEXT SETUP.
-// We only need the MME-UE-S1AP-ID to match it to a UE; the rest (E-RAB setup results) are ignored.
+// The ERABs list carries per-bearer TEID + transport-layer address so the MME
+// can complete S11 Modify Bearer toward the SGW.
 type InitialContextSetupResponse struct {
 	MMEUES1APID uint32
 	ENBUES1APID uint32
+	ERABs       []ERABSetupResult
+}
+
+// ERABSetupResult is one entry in E-RABSetupListCtxtSURes, reporting the
+// eNB-allocated S1-U TEID for a successfully set-up bearer.
+type ERABSetupResult struct {
+	ERABID             uint8
+	TransportLayerAddr net.IP // eNB S1-U IP (IPv4 only for now)
+	GTPTEID            [4]byte
 }
 
 func DecodeInitialContextSetupResponse(ies []ProtocolIE) (*InitialContextSetupResponse, error) {
@@ -735,9 +745,87 @@ func DecodeInitialContextSetupResponse(ies []ProtocolIE) (*InitialContextSetupRe
 				return nil, fmt.Errorf("decoding eNB-UE-S1AP-ID: %w", err)
 			}
 			resp.ENBUES1APID = uint32(v)
+		case IEID_E_RABSetupListCtxtSURes:
+			items, err := decodeERABSetupResultList(ie.Value)
+			if err != nil {
+				return nil, fmt.Errorf("decoding E-RABSetupListCtxtSURes: %w", err)
+			}
+			resp.ERABs = items
 		}
 	}
 	return resp, nil
+}
+
+// decodeERABSetupResultList parses an E-RABSetupListCtxtSURes value. This is a
+// SEQUENCE(SIZE(1..256)) OF ProtocolIE-SingleContainer containing E-RABSetupItemCtxtSURes.
+func decodeERABSetupResultList(value []byte) ([]ERABSetupResult, error) {
+	dec := NewPERDecoder(value)
+	count, err := dec.GetConstrainedInt(1, 256)
+	if err != nil {
+		return nil, fmt.Errorf("count: %w", err)
+	}
+	out := make([]ERABSetupResult, 0, count)
+	for i := int64(0); i < count; i++ {
+		// ProtocolIE-SingleContainer: id(2 bytes big-endian) + criticality(aligned byte) + length + value
+		idBytes, err := dec.GetBytes(2)
+		if err != nil {
+			return nil, fmt.Errorf("item[%d] id: %w", i, err)
+		}
+		_ = idBytes // IE id; we don't enforce that it's E-RABSetupItemCtxtSURes here
+		if _, err := dec.GetConstrainedInt(0, 2); err != nil {
+			return nil, fmt.Errorf("item[%d] criticality: %w", i, err)
+		}
+		dec.Align()
+		itemLen, err := dec.GetLengthDeterminant()
+		if err != nil {
+			return nil, fmt.Errorf("item[%d] length: %w", i, err)
+		}
+		itemBytes, err := dec.GetBytes(itemLen)
+		if err != nil {
+			return nil, fmt.Errorf("item[%d] value: %w", i, err)
+		}
+		item, err := decodeERABSetupResultItem(itemBytes)
+		if err != nil {
+			return nil, fmt.Errorf("item[%d]: %w", i, err)
+		}
+		out = append(out, *item)
+	}
+	return out, nil
+}
+
+// decodeERABSetupResultItem parses an E-RABSetupItemCtxtSURes:
+//   SEQUENCE { e-RAB-ID INTEGER(0..15), transportLayerAddress BIT STRING(1..160),
+//              gTP-TEID OCTET STRING(4), iE-Extensions OPTIONAL, ... }
+func decodeERABSetupResultItem(buf []byte) (*ERABSetupResult, error) {
+	dec := NewPERDecoder(buf)
+	// Extensible SEQUENCE with one OPTIONAL field (iE-Extensions). Preamble:
+	//   1 bit ext flag + 1 bit optional present. We ignore both.
+	if _, err := dec.GetBits(1); err != nil { // extensibility
+		return nil, err
+	}
+	if _, err := dec.GetBits(1); err != nil { // iE-Extensions present
+		return nil, err
+	}
+	erabID, err := dec.GetConstrainedInt(0, 15)
+	if err != nil {
+		return nil, fmt.Errorf("e-RAB-ID: %w", err)
+	}
+	addr, err := dec.GetBitString()
+	if err != nil {
+		return nil, fmt.Errorf("transportLayerAddress: %w", err)
+	}
+	teid, err := dec.GetFixedOctetString(4)
+	if err != nil {
+		return nil, fmt.Errorf("gTP-TEID: %w", err)
+	}
+	out := &ERABSetupResult{
+		ERABID: uint8(erabID),
+	}
+	copy(out.GTPTEID[:], teid)
+	if len(addr) >= 4 {
+		out.TransportLayerAddr = net.IPv4(addr[0], addr[1], addr[2], addr[3])
+	}
+	return out, nil
 }
 
 // DecodeUplinkNASTransport decodes an UplinkNASTransport from its ProtocolIE list.

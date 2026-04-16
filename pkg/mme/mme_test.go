@@ -113,7 +113,7 @@ func newTestMME(t *testing.T, hssURL string) (*MME, *fakeAssoc) {
 	plmn := [3]byte{0x00, 0xF1, 0x10} // MCC=001, MNC=01
 	log := noopLogger{}
 	s6a := NewS6aClient(hssURL, log)
-	mme := New(cfg, plmn, log, nil, s6a)
+	mme := New(cfg, plmn, log, nil, s6a, nil)
 	mme.listener = noopListener{} // prevent nil panics
 
 	assoc := newFakeAssoc()
