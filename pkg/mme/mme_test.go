@@ -526,6 +526,51 @@ func TestHandleDetachRequest_Normal(t *testing.T) {
 	assert.False(t, ok, "UE context should be removed after detach")
 }
 
+func TestTriggerPaging(t *testing.T) {
+	mme, assoc := newTestMME(t, "http://localhost:9999")
+
+	plmn := [3]byte{0x00, 0xF1, 0x10}
+	tac := uint16(1)
+
+	// Register a UE in ECM-IDLE (registered but no active S1 connection)
+	ue := &UEContext{
+		MMEUES1APID: 1,
+		ENBUES1APID: 2,
+		IMSI:        "001010000000001",
+		EMMState:    EMMRegistered,
+		ECMState:    ECMIdle,
+		TAI:         TAI{PLMN: plmn, TAC: tac},
+	}
+	mme.ues.Store(ue.MMEUES1APID, ue)
+
+	// Register an eNB that supports the UE's TAI
+	enb := &EnbContext{
+		Assoc: assoc,
+		SupportedTAs: []SupportedTA{
+			{TAC: tac, PLMNs: [][3]byte{plmn}},
+		},
+	}
+	mme.enbs.Store("test-enb", enb)
+
+	// Trigger paging
+	count, err := mme.TriggerPaging("001010000000001")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "should page exactly 1 eNB")
+
+	// Verify the paging message was sent
+	require.Equal(t, 1, assoc.writtenCount(), "paging message should be sent to eNB")
+	pdu, err := s1ap.DecodePDU(assoc.lastWritten())
+	require.NoError(t, err)
+	assert.Equal(t, s1ap.ProcPaging, pdu.ProcedureCode)
+	assert.Equal(t, s1ap.PDUInitiatingMessage, pdu.Type)
+}
+
+func TestTriggerPaging_UnknownIMSI(t *testing.T) {
+	mme, _ := newTestMME(t, "http://localhost:9999")
+	_, err := mme.TriggerPaging("999999999999999")
+	assert.Error(t, err, "should return error for unknown IMSI")
+}
+
 func TestGetUEENBCounts(t *testing.T) {
 	mme, _ := newTestMME(t, "http://localhost:9999")
 

@@ -577,6 +577,117 @@ func encodeERABSetupItem(erab ERABToSetup) ([]byte, error) {
 	return enc.Bytes(), nil
 }
 
+// PagingRequest encodes the information the MME broadcasts to eNBs to page an idle UE.
+// TS 36.413 Section 9.1.8
+type PagingRequest struct {
+	// UEIdentityIndexValue: 10-bit value = IMSI mod 1024 (for DRX paging cycle selection)
+	UEIdentityIndex uint16
+	// IMSI BCD bytes (TS 24.008 §10.5.1.4): odd/even indicator + digits
+	// If we have an S-TMSI, prefer that; otherwise page by IMSI.
+	IMSI    []byte  // raw BCD identity bytes (from mobile identity IE)
+	TAIList []TAI   // list of TAIs to page in (from UE's registered TAI)
+	CNDomain uint8  // 0 = PS (packet-switched, always for LTE)
+}
+
+// EncodePagingRequest encodes an S1AP PAGING message.
+// The eNB uses UEIdentityIndex to determine paging occasions per TS 36.304 §7.1.
+func EncodePagingRequest(req *PagingRequest) ([]byte, error) {
+	var ies []ProtocolIE
+
+	// UEIdentityIndexValue: BIT STRING (SIZE(10)) — IMSI mod 1024
+	// 10 bits in 2 bytes (6 zero padding bits in high byte MSBs would be wrong —
+	// actually aligned PER fixed BIT STRING: the value is in the MSBs of the bytes)
+	idxEnc := NewPEREncoder()
+	// 10-bit value, MSB-first. Pack into 2 bytes: upper byte has bits 9-2, lower byte bits 1-0 in high bits.
+	v := req.UEIdentityIndex & 0x3FF
+	idxEnc.PutBytes([]byte{uint8(v >> 2), uint8((v & 0x03) << 6)})
+	ies = append(ies, ProtocolIE{ID: IEID_UEIdentityIndexValue, Criticality: CriticalityIgnore, Value: idxEnc.Bytes()})
+
+	// UEPagingID: CHOICE { s-TMSI(0), iMSI(1) } — we page by IMSI
+	// In ALIGNED PER, a CHOICE with 2 alternatives is 1 bit
+	pagingIDEnc := NewPEREncoder()
+	if err := pagingIDEnc.PutChoiceIndex(1, 2); err != nil { // 1 = IMSI
+		return nil, err
+	}
+	pagingIDEnc.align()
+	// IMSI-CP: OCTET STRING (SIZE(3..8)) — BCD mobile identity value bytes
+	if err := pagingIDEnc.PutOctetString(req.IMSI); err != nil {
+		return nil, err
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_UEPagingID, Criticality: CriticalityIgnore, Value: pagingIDEnc.Bytes()})
+
+	// CNDomain: ENUMERATED { ps(0), cs(1) } — always ps for LTE
+	cnEnc := NewPEREncoder()
+	if err := cnEnc.PutConstrainedInt(int64(req.CNDomain), 0, 1); err != nil {
+		return nil, err
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_CNDomain, Criticality: CriticalityIgnore, Value: cnEnc.Bytes()})
+
+	// TAIList: SEQUENCE (SIZE(1..maxnoofTAIs=256)) OF TAIItem
+	// TAIItem ::= SEQUENCE { tAI TAI, iE-Extensions OPTIONAL, ... }
+	taiEnc := NewPEREncoder()
+	if err := taiEnc.PutConstrainedInt(int64(len(req.TAIList)), 1, 256); err != nil {
+		return nil, fmt.Errorf("encoding TAI list count: %w", err)
+	}
+	for _, tai := range req.TAIList {
+		taiEnc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), not present
+		taiEnc.PutFixedOctetString(tai.PLMN[:])
+		tacBytes := make([]byte, 2)
+		binary.BigEndian.PutUint16(tacBytes, tai.TAC)
+		taiEnc.PutFixedOctetString(tacBytes)
+	}
+	ies = append(ies, ProtocolIE{ID: IEID_TAIList, Criticality: CriticalityIgnore, Value: taiEnc.Bytes()})
+
+	containerBytes, err := EncodeProtocolIEContainer(ies)
+	if err != nil {
+		return nil, err
+	}
+	pdu := &PDU{
+		Type:          PDUInitiatingMessage,
+		ProcedureCode: ProcPaging,
+		Criticality:   CriticalityIgnore,
+		Value:         containerBytes,
+	}
+	return EncodePDU(pdu)
+}
+
+// IMSIToBCD converts a decimal IMSI string to a BCD mobile identity byte slice.
+// Format per TS 24.008 §10.5.1.4: byte 0 = (digit2<<4)|0x09 (length-even|IMSI type),
+// then pairs of digits packed as (odd<<4|even).
+func IMSIToBCD(imsi string) []byte {
+	// Type IMSI = 1, identity type field in low 3 bits
+	// First byte: (first_digit << 4) | (odd_length ? 0x09 : 0x01)
+	// Actually for paging IMSI-CP, it's just the raw BCD value bytes
+	// Use the same format as DecodeIMSI expects (EPS mobile identity)
+	n := len(imsi)
+	out := make([]byte, 0, (n+2)/2)
+	// First byte: low nibble = identity type (1=IMSI), high nibble = first digit
+	if n == 0 {
+		return out
+	}
+	b0 := uint8(1) // identity type IMSI
+	if n%2 == 1 {
+		b0 |= 0x08 // odd indicator
+		b0 |= uint8(imsi[0]-'0') << 4
+		out = append(out, b0)
+		for i := 1; i+1 < n; i += 2 {
+			out = append(out, (uint8(imsi[i+1]-'0')<<4)|uint8(imsi[i]-'0'))
+		}
+	} else {
+		b0 |= uint8(imsi[0]-'0') << 4
+		out = append(out, b0)
+		for i := 1; i < n; i += 2 {
+			hi := uint8(imsi[i] - '0')
+			lo := uint8(0xF)
+			if i+1 < n {
+				lo = uint8(imsi[i+1] - '0')
+			}
+			out = append(out, (lo<<4)|hi)
+		}
+	}
+	return out
+}
+
 // DecodeInitialContextSetupResponse decodes the eNB's response to the INITIAL CONTEXT SETUP.
 // We only need the MME-UE-S1AP-ID to match it to a UE; the rest (E-RAB setup results) are ignored.
 type InitialContextSetupResponse struct {

@@ -12,6 +12,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
+	"github.com/qcore-project/qcore/pkg/s1ap"
 	"github.com/qcore-project/qcore/pkg/sctp"
 )
 
@@ -192,4 +193,92 @@ func (m *MME) GetUECount() int {
 		return true
 	})
 	return count
+}
+
+// TriggerPaging sends an S1AP PAGING message to all eNBs that support the UE's TAI.
+// Used to page an ECM-IDLE UE. The UE's TAI must be known (set at attach time).
+// Returns the number of eNBs paged.
+func (m *MME) TriggerPaging(imsi string) (int, error) {
+	// Find the UE context for this IMSI
+	var ue *UEContext
+	m.ues.Range(func(_, v any) bool {
+		u := v.(*UEContext)
+		u.mu.RLock()
+		match := u.IMSI == imsi
+		u.mu.RUnlock()
+		if match {
+			ue = u
+			return false // stop iteration
+		}
+		return true
+	})
+	if ue == nil {
+		return 0, fmt.Errorf("UE not found for IMSI=%s", imsi)
+	}
+
+	ue.mu.RLock()
+	tai := ue.TAI
+	ue.mu.RUnlock()
+
+	// UEIdentityIndex = IMSI mod 1024 (TS 36.304 §7.1)
+	idxVal := imsiMod1024(imsi)
+
+	pagingReq := &s1ap.PagingRequest{
+		UEIdentityIndex: idxVal,
+		IMSI:            s1ap.IMSIToBCD(imsi),
+		TAIList:         []s1ap.TAI{{PLMN: tai.PLMN, TAC: tai.TAC}},
+		CNDomain:        0, // PS
+	}
+	encoded, err := s1ap.EncodePagingRequest(pagingReq)
+	if err != nil {
+		return 0, fmt.Errorf("encoding paging request: %w", err)
+	}
+
+	// Send to all eNBs that support the UE's TAI
+	count := 0
+	m.enbs.Range(func(_, v any) bool {
+		enb := v.(*EnbContext)
+		enb.mu.RLock()
+		supported := enbSupportsTAI(enb, tai)
+		enb.mu.RUnlock()
+		if !supported {
+			return true
+		}
+		if err := enb.Assoc.Write(encoded, 0); err != nil {
+			m.log.Warnf("Failed to send paging to eNB %s: %v", enb.Assoc.RemoteAddr(), err)
+		} else {
+			count++
+		}
+		return true
+	})
+
+	m.log.Infof("Triggered paging for IMSI=%s: sent to %d eNB(s)", imsi, count)
+	return count, nil
+}
+
+// imsiMod1024 computes IMSI mod 1024 for the UE paging identity index.
+// Per TS 36.304 §7.1: UE_ID = (IMSI mod 1024).
+func imsiMod1024(imsi string) uint16 {
+	var n uint64
+	for _, c := range imsi {
+		if c >= '0' && c <= '9' {
+			n = (n*10 + uint64(c-'0')) % 1024
+		}
+	}
+	return uint16(n)
+}
+
+// enbSupportsTAI returns true if the eNB's SupportedTAs list includes the given TAI.
+func enbSupportsTAI(enb *EnbContext, tai TAI) bool {
+	for _, ta := range enb.SupportedTAs {
+		if ta.TAC != tai.TAC {
+			continue
+		}
+		for _, plmn := range ta.PLMNs {
+			if plmn == tai.PLMN {
+				return true
+			}
+		}
+	}
+	return false
 }

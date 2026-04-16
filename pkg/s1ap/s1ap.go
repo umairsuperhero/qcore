@@ -110,6 +110,10 @@ const (
 	IEID_UEAggMaxBitRate             ProtocolIEID = 66
 	IEID_UE_S1AP_IDs                 ProtocolIEID = 99
 	IEID_E_RABToBeSetupItemCtxtSUReq ProtocolIEID = 52
+	IEID_UEIdentityIndexValue        ProtocolIEID = 80
+	IEID_UEPagingID                  ProtocolIEID = 43
+	IEID_CNDomain                    ProtocolIEID = 3
+	IEID_TAIList                     ProtocolIEID = 69
 )
 
 // Cause values (TS 36.413 Section 9.2.1.3)
