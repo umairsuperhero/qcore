@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -45,13 +46,24 @@ func TestTUNEgress_RealKernel(t *testing.T) {
 		t.Logf("note: kernel MTU=%d (TUNSETIFF does not set MTU; that's fine)", iface.MTU)
 	}
 
-	// Uplink write: kernel accepts bytes into the interface's ingress queue.
-	// No address is configured, so routing will drop the packet — but Write()
-	// succeeds based on the fd being writable, which is what we're checking.
-	pkt := buildMinimalIPv4Packet(t)
-	if err := eg.Send(pkt); err != nil {
-		_ = eg.Close()
-		t.Fatalf("Send on live TUN: %v", err)
+	// A TUN device returns EIO on writes until the interface is UP — the
+	// kernel treats writes as "packet arrived on this NIC" and the NIC must
+	// be administratively up to ingest frames. Prod operators bring it up
+	// with `ip link set qcore0 up`; we do the same here so the Send probe
+	// actually exercises the write path.
+	if out, err := exec.Command("ip", "link", "set", devName, "up").CombinedOutput(); err != nil {
+		t.Logf("ip link set %s up: %v — skipping Send probe (iproute2 missing?): %s",
+			devName, err, string(out))
+	} else {
+		// Uplink write: kernel accepts bytes into the interface's ingress queue.
+		// No address is configured, so routing will drop the packet — but Write()
+		// succeeds based on the fd being writable and the device being UP, which
+		// is what we're checking.
+		pkt := buildMinimalIPv4Packet(t)
+		if err := eg.Send(pkt); err != nil {
+			_ = eg.Close()
+			t.Fatalf("Send on live TUN (after ip link up): %v", err)
+		}
 	}
 
 	// Brief pause so the read goroutine (readLoop) gets scheduled at least
