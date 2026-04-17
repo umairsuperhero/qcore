@@ -58,8 +58,54 @@ jobs:
       - name: Build MME
         run: go build -o bin/qcore-mme ./cmd/mme
 
+      - name: Build SPGW
+        run: go build -o bin/qcore-spgw ./cmd/spgw
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: qcore-binaries
           path: bin/
+
+  # linux-integration runs Linux-kernel-dependent tests that need
+  # CAP_NET_ADMIN (e.g. /dev/net/tun for SPGW egress). GitHub Actions
+  # ubuntu-latest runners grant passwordless sudo, so we re-exec `go
+  # test` under sudo preserving PATH so the tool-cache Go binary is
+  # reachable. This is the scaffolding the 5G-SA pivot (see
+  # docs/rfc/0001-5g-sba-pivot.md) depends on for UERANSIM and NGAP
+  # integration once native SCTP lands.
+  linux-integration:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Show kernel + tun support
+        run: |
+          uname -a
+          ls -l /dev/net/tun || true
+          sudo modprobe tun || true
+          ls -l /dev/net/tun
+
+      - name: Run Linux TUN smoke (CAP_NET_ADMIN required)
+        run: |
+          sudo -E env "PATH=$PATH" go test -v -count=1 \
+            -run 'TestTUNEgress_' \
+            ./pkg/spgw/
+
+      # UERANSIM-driven smoke is intentionally not wired yet: the QCore MME
+      # currently uses a length-prefixed TCP fallback instead of native SCTP,
+      # so a real UERANSIM gNB cannot attach. Once pion/sctp is wired in,
+      # this step should: install UERANSIM, point it at qcore-mme bound on
+      # 127.0.0.1:36412/sctp, run a scripted attach, and assert the UE
+      # reaches REGISTERED in the /api/v1/ues endpoint. Tracking this as
+      # a TODO in docs/rfc/0001-5g-sba-pivot.md Phase 0.
+      - name: UERANSIM smoke (placeholder — blocked on native SCTP)
+        run: |
+          echo "SKIPPED: UERANSIM smoke is blocked on native SCTP (pion/sctp)."
+          echo "See docs/rfc/0001-5g-sba-pivot.md Phase 0."
