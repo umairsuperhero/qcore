@@ -1,10 +1,18 @@
 # QCore Product Requirements Document
 ### The World's Best 4G + 5G Core Deployment & Operations Experience
 
-**Status:** Draft v0.1
+**Status:** Draft v0.2
 **Owner:** QCore Project
-**Last updated:** 2026-04-05
+**Last updated:** 2026-04-16
 **Audience:** Contributors, early adopters, and the future team building QCore
+
+> **⚠ Revised 2026-04-16 — 5G-first pivot.**
+> The original v0.1 of this PRD ordered 5G (v0.5) after the 4G stack and
+> dashboard. [RFC 0001](rfc/0001-5g-sba-pivot.md) reverses that: 5G SA
+> becomes the primary v1.0 product and 4G EPC becomes a supported legacy
+> track. The dashboard is built **in parallel** from Phase 0 forward, not
+> at the end. See [ARCHITECTURE.md](ARCHITECTURE.md) for the target shape
+> and §9 (Milestones) below for the updated sequencing.
 
 ---
 
@@ -323,18 +331,33 @@ Every second above is a product-review target.
 
 ## 9. Milestones
 
-| Release | Scope | Target |
+Milestones are ordered by logical dependency. No dates committed — see
+RFC 0001 for the "slow but great" philosophy.
+
+**Shipped (pre-pivot, 4G track):**
+
+| Release | Scope | Status |
 |---------|-------|--------|
-| **v0.1** | HSS + Milenage, REST API, Docker (shipped) | ✅ |
-| **v0.2** | MME + S1AP, subscriber CLI, zero-config | Q3 2026 |
-| **v0.3** | SGW/PGW + GTP, end-to-end 4G attach | Q4 2026 |
-| **v0.4** | Web dashboard (topology, subscribers, flows) | Q1 2027 |
-| **v0.5** | 5G SA control plane (AMF/SMF/AUSF/UDM) | Q2 2027 |
-| **v0.6** | 5G UPF + eBPF datapath | Q3 2027 |
-| **v0.7** | Scenarios + UE simulator + chaos | Q4 2027 |
-| **v0.8** | Helm + Operator + HA | Q1 2028 |
-| **v0.9** | RBAC + audit + TLS + enterprise polish | Q2 2028 |
-| **v1.0** | GA: conformance-tested, supported, stable API | Q3 2028 |
+| **v0.1** | HSS + Milenage, REST API, Docker, auto-seed | ✅ Shipped 2026-04-05 |
+| **v0.2** | MME + S1AP + NAS + full attach (TCP-SCTP fallback) | ✅ Shipped 2026-04-16 |
+| **v0.3a** | SPGW + GTP-U uplink + S11 HTTP + E2E user-plane test | ✅ Shipped 2026-04-16 |
+| **v0.3b** | Linux TUN egress + SPGW Prometheus metrics | ✅ Shipped 2026-04-16 |
+
+**Planned (post-pivot, 5G-first track):**
+
+| Release | Scope | Phase (per RFC 0001) |
+|---------|-------|----------------------|
+| **v0.4** | Phase 0 foundations: `pkg/sbi`, Linux CI w/ NET_ADMIN + UERANSIM smoke, `config.Validate()` | Phase 0 |
+| **v0.5** | Subscriber plane refactor: `pkg/subscriber` extracted; `pkg/udm` + `pkg/udr` SBI faces | Phase 1 |
+| **v0.6** | 5G control plane: `pkg/ngap`, `pkg/asn1per`, `pkg/nas5g`, `pkg/amf`, `pkg/ausf`, `pkg/nrf` — UERANSIM 5G REGISTRATION works | Phase 2 |
+| **v0.7** | 5G user plane: `pkg/pfcp`, `pkg/smf`, evolve `pkg/spgw` → `pkg/upf` — UERANSIM PDU session + ping | Phase 3 |
+| **v0.8** | Dashboard parity: subscribers, live attach visualiser, topology, `qcore doctor` | Phase 4 (parallel) |
+| **v0.9** | 4G legacy re-skinning onto unified subscriber plane; Diameter S6a facade | Phase 5 |
+| **v1.0** | GA: mTLS, tracing, Helm, UERANSIM conformance suite, stable SBI APIs | Phase 6 |
+
+**Explicitly deferred past v1.0:** 5G NSA, network slicing beyond default
+S-NSSAI, roaming (N32/SEPP), CHF/charging, N3IWF, carrier-scale (>100k
+UEs/instance).
 
 ---
 
@@ -364,19 +387,29 @@ Every second above is a product-review target.
 
 ## 11. Open Questions
 
-1. **License:** Apache 2.0 confirmed for code. Dashboard: MIT or Apache?
-   Enterprise tier: should some features be source-available (BUSL)?
+1. **License:** Apache 2.0 confirmed for code. Dashboard: same Apache 2.0
+   for the OSS dashboard. Enterprise dashboard tier (post-v1.0): likely
+   BUSL or source-available. RFC 0001 places the OSS/paid seam at the
+   dashboard repo level — protocol code stays fully OSS.
 2. **Datapath strategy:** eBPF-first (fastest path to 10 Gbps on Linux) or
    DPDK-first (higher ceiling, harder to operate)? Recommendation: eBPF v1.0,
    DPDK as v1.x plugin.
-3. **5G SA feature order:** AMF/SMF/UPF first (basic data), or AMF/AUSF/UDM
-   first (auth parity with 4G)? Recommendation: auth parity first to exercise
-   existing HSS-equivalent.
+3. **5G SA feature order:** ~~AMF/SMF/UPF first (basic data), or AMF/AUSF/UDM
+   first (auth parity with 4G)?~~ **Resolved by RFC 0001** — subscriber
+   plane (UDM/UDR/AUSF) first (Phase 1), then AMF + NGAP + 5G-NAS
+   (Phase 2), then SMF + UPF + PFCP (Phase 3).
 4. **Business model:** donations, Open Core (enterprise add-ons), hosted
    cloud (QCore Cloud), or services? Recommendation: OSS + hosted cloud for
-   sustainability, no paywalled protocol features.
+   sustainability, no paywalled protocol features. RFC 0001 confirms: all
+   protocol code stays fully OSS; paid tier (if any) is dashboard-only.
 5. **Should we ship our own minimal RAN emulator?** Would slash time-to-wow
-   further but forks scope. Recommendation: v0.7+ optional.
+   further but forks scope. Recommendation: Phase 2+ minimal built-in 5G UE
+   for CI; full UERANSIM integration for acceptance tests.
+6. **OpenAPI source:** 3GPP publishes OpenAPI specs for the 5G core. Use
+   them as-is, patch where needed, or hand-write ours? Leaning: import
+   theirs, patch, regenerate clients.
+7. **Session-state persistence:** in-memory only, in-memory with periodic
+   disk snapshots, or external (etcd)? Leaning: snapshots for v1.0.
 
 ---
 

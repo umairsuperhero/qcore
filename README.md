@@ -7,6 +7,12 @@
 QCore is a mobile core network designed around developer experience. Start a complete LTE core with a single command, no tribal knowledge required.
 
 > **Status:** Phases 1 (HSS), 2 (MME), and 3 Sessions 1–2 (SPGW + Linux TUN egress + SPGW Prometheus metrics) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
+>
+> **⚠ Direction change (2026-04-16):** QCore is pivoting to **5G SA as the
+> primary track** with 4G EPC as a supported legacy track. The working 4G
+> stack above stays; new feature investment shifts to 5G. See
+> [RFC 0001](docs/rfc/0001-5g-sba-pivot.md) for the decision and
+> [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the target shape.
 
 ---
 
