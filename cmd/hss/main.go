@@ -11,10 +11,10 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/database"
-	"github.com/qcore-project/qcore/pkg/hss"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/subscriber"
+	"github.com/qcore-project/qcore/pkg/subscriber/admin"
 	"github.com/spf13/cobra"
 )
 
@@ -97,7 +97,7 @@ func runServer() error {
 
 	// Create subscriber service + admin API
 	service := subscriber.NewService(db, log, hssMetrics, plmnID)
-	api := hss.NewAPI(service, db, log, hssMetrics)
+	api := admin.NewAPI(service, db, log, hssMetrics)
 
 	// Zero-config delight: seed a demo subscriber on first run so curl works immediately.
 	// Uses 3GPP TS 35.208 Test Set 1 — the canonical Milenage test credentials.

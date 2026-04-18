@@ -1,4 +1,7 @@
-package hss
+// Package admin exposes the operator-facing REST API for managing
+// subscribers (CRUD, CSV import/export, on-demand auth vector generation).
+// It is explicitly not a 3GPP SBI surface — Nudr and Nudm live elsewhere.
+package admin
 
 import (
 	"encoding/json"
@@ -34,7 +37,7 @@ type APIResponse struct {
 func NewAPI(service *subscriber.Service, db *gorm.DB, log logger.Logger, m *metrics.HSSMetrics) *API {
 	a := &API{
 		service: service,
-		log:     log.WithField("component", "hss-api"),
+		log:     log.WithField("component", "subscriber-admin"),
 		metrics: m,
 		router:  mux.NewRouter(),
 		db:      db,
