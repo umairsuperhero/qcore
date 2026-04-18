@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/qcore-project/qcore/pkg/hss"
+	"github.com/qcore-project/qcore/pkg/subscriber"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +78,7 @@ func testMilenageSet1() error {
 	opc := mustHex16("cd63cb71954a9f4e48a5994e37a02baf")
 	rand := mustHex16("23553cbe9637a89d218ae64dae47bf35")
 
-	res, ck, ik, ak, err := hss.F2345(k, opc, rand)
+	res, ck, ik, ak, err := subscriber.F2345(k, opc, rand)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func testOPcGeneration() error {
 	k := mustHex16("465b5ce8b199b49faa5f0a2ee238a6bc")
 	op := mustHex16("cdc202d5123e20f62b6d676ac72cb318")
 
-	opc, err := hss.GenerateOPc(k, op)
+	opc, err := subscriber.GenerateOPc(k, op)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func testAuthVectorStructure() error {
 	amf := [2]byte{0x80, 0x00}
 	plmn := [3]byte{0x00, 0x01, 0x01}
 
-	av, err := hss.GenerateAuthVector(k, opc, sqn, amf, plmn)
+	av, err := subscriber.GenerateAuthVector(k, opc, sqn, amf, plmn)
 	if err != nil {
 		return err
 	}

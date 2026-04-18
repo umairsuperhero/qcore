@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/config"
-	"github.com/qcore-project/qcore/pkg/hss"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/mme"
+	"github.com/qcore-project/qcore/pkg/subscriber"
 	"github.com/spf13/cobra"
 )
 
@@ -74,7 +74,7 @@ func runServer() error {
 	log.Info("Starting QCore MME")
 
 	// Parse PLMN
-	plmnID, err := hss.ParsePLMN(cfg.MME.PLMN)
+	plmnID, err := subscriber.ParsePLMN(cfg.MME.PLMN)
 	if err != nil {
 		return fmt.Errorf("parsing PLMN %q: %w (example: 00101 for test network)", cfg.MME.PLMN, err)
 	}

@@ -1,4 +1,4 @@
-package models
+package subscriber
 
 import (
 	"testing"

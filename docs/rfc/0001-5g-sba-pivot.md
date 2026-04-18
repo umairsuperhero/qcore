@@ -183,11 +183,18 @@ Goal: unify 4G + 5G subscriber data under one service.
 
 - Extract `pkg/subscriber` (storage + Milenage + KASME + SUCI crypto) from
   `pkg/hss`.
-- `pkg/hss` becomes an S6a facade over `pkg/subscriber`.
-- Add `pkg/udm` + `pkg/udr` SBI faces over the same subscriber service.
-- Add `pkg/ausf` — thin authentication service that calls `pkg/subscriber`.
-- **Milestone:** a subscriber added via CLI is queryable via both S6a
-  (legacy) and N8/Nudr (SBI).
+- Retire the current `pkg/hss` package. It contains no Diameter today — the
+  name was aspirational. `pkg/hss` will be reintroduced in Phase 5 as a
+  real S6a facade alongside the 4G legacy track work.
+- Move the admin REST + CSV surface to `pkg/subscriber/admin` (the
+  dashboard's customer — separate from any 3GPP SBI face).
+- Add `pkg/udr` + `pkg/udm` SBI faces over `pkg/subscriber`. UDM consumes
+  UDR via an interface — a Local client for combo deployments, an HTTP
+  client for disaggregated ones.
+- Add `pkg/ausf` — thin authentication service that calls `pkg/udm`.
+- **Milestone:** a subscriber added via the admin API is queryable via
+  N8/Nudr (SBI), and `pkg/ausf` produces auth vectors via Nausf. The data
+  tier is ready for S6a once Diameter lands in Phase 5.
 
 ### Phase 2 — NGAP + 5G-NAS + AMF
 Goal: control-plane registration.

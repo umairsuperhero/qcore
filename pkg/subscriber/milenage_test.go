@@ -1,4 +1,4 @@
-package hss
+package subscriber
 
 import (
 	"encoding/hex"

@@ -1,4 +1,4 @@
-package hss
+package subscriber
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/qcore-project/qcore/internal/models"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"gorm.io/gorm"
@@ -24,13 +23,13 @@ type Service struct {
 func NewService(db *gorm.DB, log logger.Logger, m *metrics.HSSMetrics, plmnID [3]byte) *Service {
 	return &Service{
 		db:      db,
-		log:     log.WithField("component", "hss"),
+		log:     log.WithField("component", "subscriber"),
 		metrics: m,
 		plmnID:  plmnID,
 	}
 }
 
-func (s *Service) CreateSubscriber(ctx context.Context, sub *models.Subscriber) error {
+func (s *Service) CreateSubscriber(ctx context.Context, sub *Subscriber) error {
 	if sub.AMF == "" {
 		sub.AMF = "8000"
 	}
@@ -59,8 +58,8 @@ func (s *Service) CreateSubscriber(ctx context.Context, sub *models.Subscriber) 
 	return nil
 }
 
-func (s *Service) GetSubscriber(ctx context.Context, imsi string) (*models.Subscriber, error) {
-	var sub models.Subscriber
+func (s *Service) GetSubscriber(ctx context.Context, imsi string) (*Subscriber, error) {
+	var sub Subscriber
 	if err := s.db.WithContext(ctx).Where("imsi = ?", imsi).First(&sub).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("subscriber %s not found", imsi)
@@ -70,8 +69,8 @@ func (s *Service) GetSubscriber(ctx context.Context, imsi string) (*models.Subsc
 	return &sub, nil
 }
 
-func (s *Service) UpdateSubscriber(ctx context.Context, imsi string, updates *models.Subscriber) error {
-	result := s.db.WithContext(ctx).Model(&models.Subscriber{}).Where("imsi = ?", imsi).Updates(updates)
+func (s *Service) UpdateSubscriber(ctx context.Context, imsi string, updates *Subscriber) error {
+	result := s.db.WithContext(ctx).Model(&Subscriber{}).Where("imsi = ?", imsi).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("updating subscriber: %w", result.Error)
 	}
@@ -83,7 +82,7 @@ func (s *Service) UpdateSubscriber(ctx context.Context, imsi string, updates *mo
 }
 
 func (s *Service) DeleteSubscriber(ctx context.Context, imsi string) error {
-	result := s.db.WithContext(ctx).Where("imsi = ?", imsi).Delete(&models.Subscriber{})
+	result := s.db.WithContext(ctx).Where("imsi = ?", imsi).Delete(&Subscriber{})
 	if result.Error != nil {
 		return fmt.Errorf("deleting subscriber: %w", result.Error)
 	}
@@ -97,7 +96,7 @@ func (s *Service) DeleteSubscriber(ctx context.Context, imsi string) error {
 	return nil
 }
 
-func (s *Service) ListSubscribers(ctx context.Context, page, limit int, search string) ([]models.Subscriber, int64, error) {
+func (s *Service) ListSubscribers(ctx context.Context, page, limit int, search string) ([]Subscriber, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -106,7 +105,7 @@ func (s *Service) ListSubscribers(ctx context.Context, page, limit int, search s
 	}
 
 	var total int64
-	query := s.db.WithContext(ctx).Model(&models.Subscriber{})
+	query := s.db.WithContext(ctx).Model(&Subscriber{})
 
 	if search != "" {
 		like := "%" + search + "%"
@@ -117,7 +116,7 @@ func (s *Service) ListSubscribers(ctx context.Context, page, limit int, search s
 		return nil, 0, fmt.Errorf("counting subscribers: %w", err)
 	}
 
-	var subscribers []models.Subscriber
+	var subscribers []Subscriber
 	offset := (page - 1) * limit
 	if err := query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&subscribers).Error; err != nil {
 		return nil, 0, fmt.Errorf("listing subscribers: %w", err)
@@ -201,7 +200,7 @@ func (s *Service) ImportCSV(ctx context.Context, reader io.Reader) (int, error) 
 			return 0, fmt.Errorf("reading CSV row %d: %w", count+2, err)
 		}
 
-		sub := &models.Subscriber{
+		sub := &Subscriber{
 			IMSI: record[colMap["imsi"]],
 			Ki:   record[colMap["ki"]],
 			OPc:  record[colMap["opc"]],
@@ -248,7 +247,7 @@ func (s *Service) ExportCSV(ctx context.Context, writer io.Writer) error {
 		return fmt.Errorf("writing CSV header: %w", err)
 	}
 
-	var subscribers []models.Subscriber
+	var subscribers []Subscriber
 	if err := s.db.WithContext(ctx).Find(&subscribers).Error; err != nil {
 		return fmt.Errorf("querying subscribers: %w", err)
 	}

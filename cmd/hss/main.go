@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/qcore-project/qcore/internal/models"
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/database"
 	"github.com/qcore-project/qcore/pkg/hss"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
+	"github.com/qcore-project/qcore/pkg/subscriber"
 	"github.com/spf13/cobra"
 )
 
@@ -81,7 +81,7 @@ func runServer() error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	log.Info("Running database migrations")
-	if err := database.AutoMigrate(db, &models.Subscriber{}); err != nil {
+	if err := database.AutoMigrate(db, &subscriber.Subscriber{}); err != nil {
 		return fmt.Errorf("running migrations: %w", err)
 	}
 
@@ -90,13 +90,13 @@ func runServer() error {
 	hssMetrics := metrics.RegisterHSSMetrics(m)
 
 	// Parse PLMN
-	plmnID, err := hss.ParsePLMN("00101")
+	plmnID, err := subscriber.ParsePLMN("00101")
 	if err != nil {
 		return fmt.Errorf("parsing PLMN: %w", err)
 	}
 
-	// Create HSS service and API
-	service := hss.NewService(db, log, hssMetrics, plmnID)
+	// Create subscriber service + admin API
+	service := subscriber.NewService(db, log, hssMetrics, plmnID)
 	api := hss.NewAPI(service, db, log, hssMetrics)
 
 	// Zero-config delight: seed a demo subscriber on first run so curl works immediately.
@@ -175,7 +175,7 @@ func runServer() error {
 // seedDemoSubscriberIfEmpty creates a single demo subscriber when the database
 // is empty, so new users can hit the API with zero setup. The IMSI and keys
 // come from 3GPP TS 35.208 Test Set 1 — verified test vectors, not secrets.
-func seedDemoSubscriberIfEmpty(ctx context.Context, service *hss.Service, log logger.Logger) error {
+func seedDemoSubscriberIfEmpty(ctx context.Context, service *subscriber.Service, log logger.Logger) error {
 	if os.Getenv("QCORE_SKIP_SEED") == "true" {
 		return nil
 	}
@@ -188,7 +188,7 @@ func seedDemoSubscriberIfEmpty(ctx context.Context, service *hss.Service, log lo
 		return nil // don't touch existing data
 	}
 
-	demo := &models.Subscriber{
+	demo := &subscriber.Subscriber{
 		IMSI:   "001010000000001",
 		Ki:     "465b5ce8b199b49faa5f0a2ee238a6bc",
 		OPc:    "cd63cb71954a9f4e48a5994e37a02baf",

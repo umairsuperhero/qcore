@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/qcore-project/qcore/internal/models"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
+	"github.com/qcore-project/qcore/pkg/subscriber"
 	"gorm.io/gorm"
 )
 
 type API struct {
-	service *Service
+	service *subscriber.Service
 	log     logger.Logger
 	metrics *metrics.HSSMetrics
 	router  *mux.Router
@@ -31,7 +31,7 @@ type APIResponse struct {
 	Total int64       `json:"total,omitempty"`
 }
 
-func NewAPI(service *Service, db *gorm.DB, log logger.Logger, m *metrics.HSSMetrics) *API {
+func NewAPI(service *subscriber.Service, db *gorm.DB, log logger.Logger, m *metrics.HSSMetrics) *API {
 	a := &API{
 		service: service,
 		log:     log.WithField("component", "hss-api"),
@@ -102,7 +102,7 @@ func (a *API) getSubscriber(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) createSubscriber(w http.ResponseWriter, r *http.Request) {
-	var sub models.Subscriber
+	var sub subscriber.Subscriber
 	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
@@ -127,7 +127,7 @@ func (a *API) createSubscriber(w http.ResponseWriter, r *http.Request) {
 func (a *API) updateSubscriber(w http.ResponseWriter, r *http.Request) {
 	imsi := mux.Vars(r)["imsi"]
 
-	var updates models.Subscriber
+	var updates subscriber.Subscriber
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
