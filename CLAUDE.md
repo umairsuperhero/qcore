@@ -25,8 +25,8 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 - `pkg/sbi/nrf` Phase 0 sketch: NFProfile/NFService types, in-memory Client for single-process dev + tests.
 
 ### Remaining
-- `pkg/udm` — Nudm SBI face over `pkg/subscriber` (SDM get subscriber data + UEAU generate-auth-data). First real NF on `pkg/sbi`.
-- `pkg/udr` — Nudr SBI face (UDM↔UDR split is 3GPP-correct; start as thin passthrough).
+- `pkg/udm` — first cut landed: `Nudm_SDM` `GET /nudm-sdm/v2/{supi}/am-data` returns AccessAndMobilitySubscriptionData over pkg/sbi, round-trip tested in h2c. Still to do: `Nudm_UEAU` generate-auth-data (needs 5G-AKA derivation from TS 33.501 Annex A — current pkg/subscriber Milenage yields a 4G EPS-AKA vector, not 5G) and `Nudm_UECM` serving-AMF registration.
+- `pkg/udr` — Nudr SBI face. UDM↔UDR split is 3GPP-correct; start as thin passthrough over pkg/subscriber.
 - `pkg/ausf` — Nausf SBI face (authentication), calls UDM UEAU.
 - Tests for `pkg/subscriber/admin` (moved but untested).
 
@@ -50,7 +50,7 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 | `pkg/spgw` | SPGW + TUN egress + metrics | Shipping → will evolve to `pkg/upf` |
 | `pkg/sbi` | HTTP/2 + RFC 7807 SBI framework | Phase 0 sketch (v0.5) |
 | `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
-| `pkg/udm` | Nudm SBI face | **Planned (v0.5 — current work)** |
+| `pkg/udm` | Nudm SBI face | Shipping (SDM am-data); UEAU + UECM pending |
 | `pkg/udr` | Nudr SBI face | Planned (v0.5) |
 | `pkg/ausf` | Nausf SBI face | Planned (v0.5) |
 | `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
