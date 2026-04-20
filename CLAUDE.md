@@ -1,36 +1,100 @@
-# QCore - Claude Code Context
+# QCore — Claude Code Context
 
-## Project
-QCore is an open-source 4G (LTE) core network written in Go. Phase 1 is the HSS (Home Subscriber Server).
+## What is QCore
+Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/qcore  
+**North star:** "The open-source core network that's actually easy to use" — DX is the differentiator over open5GS/Magma/free5GC.  
+**Long-term ambition:** Beat commercial cores (Attocore, Druid) on 4G + 5G with best-in-class web UI, remote troubleshooting, local AI hotfixes, and a clear monetization layer.
 
-## Build Commands
+## Strategic Direction
+**5G SA is the primary track.** 4G EPC is supported legacy. 3GPP 5G SBA is HTTP/2 + OpenAPI — natively aligned with QCore's REST-first instincts. Private-5G (enterprise/campus/industrial) is where monetization lives. See `docs/rfc/0001-5g-sba-pivot.md` and `docs/ARCHITECTURE.md`.
+
+## Shipped (working, tested)
+- **Phase 1 — HSS:** Milenage verified vs 3GPP TS 35.208. REST API, PostgreSQL, Docker Compose, Prometheus metrics, CLI.
+- **Phase 2 — MME:** Full S1AP/NAS attach — SCTP/TCP, PER codec, NAS security, KDF, AES-CMAC, GUTI attach, Detach, Paging. `TestEndToEndAttachOverWire` green.
+- **Phase 3 — SPGW + GTP-U:** GTP-U v1 codec, collapsed SPGW, UE IP + TEID pools, S11-over-HTTP/JSON, Linux TUN egress (`//go:build linux`), 10 Prometheus metrics. `TestEndToEndUserPlane` green.
+
+## Current Task — v0.5 Subscriber Plane Refactor
+**Goal:** Unified subscriber library usable by both the legacy 4G admin REST API and the 5G SBI faces (UDM/UDR/AUSF).  
+**Milestone:** A subscriber added via CLI is queryable via both the admin REST API (legacy) and N8/Nudr (5G SBI).
+
+### Done
+- `pkg/subscriber` extracted from the old `pkg/hss`: model + validation + DB ops, Milenage (`F2345`, `GenerateOPc`, `GenerateAuthVector`), SQN management. Verified against 3GPP TS 35.208.
+- `pkg/subscriber/admin` hosts the operator-facing REST API (CRUD, CSV import/export, on-demand auth vectors). Consumed by `cmd/hss`.
+- `pkg/hss` retired. `cmd/hss` now imports `pkg/subscriber` + `pkg/subscriber/admin` directly. The `hss` binary name is kept for operator familiarity.
+- `pkg/sbi` Phase 0 sketch: HTTP/2 (h2/h2c) server, client, RFC 7807 ProblemDetails, RequestID/AccessLog/Recover middleware, round-trip test green.
+- `pkg/sbi/nrf` Phase 0 sketch: NFProfile/NFService types, in-memory Client for single-process dev + tests.
+
+### Remaining
+- `pkg/udm` — Nudm SBI face over `pkg/subscriber` (SDM get subscriber data + UEAU generate-auth-data). First real NF on `pkg/sbi`.
+- `pkg/udr` — Nudr SBI face (UDM↔UDR split is 3GPP-correct; start as thin passthrough).
+- `pkg/ausf` — Nausf SBI face (authentication), calls UDM UEAU.
+- Tests for `pkg/subscriber/admin` (moved but untested).
+
+## Roadmap (after v0.5)
+- **v0.6** — NGAP + 5G-NAS + AMF + NRF. Milestone: UERANSIM 5G UE completes REGISTRATION.
+- **v0.7** — PFCP + SMF + UPF (dual-mode). Milestone: UERANSIM 5G PDU session + ping.
+- **v0.8** — Dashboard (Next.js): subscriber CRUD, service topology, live attach flow visualiser.
+- **v0.9** — 4G legacy refactor on unified subscriber plane.
+- **v1.0** — OTel tracing, mTLS, Helm chart, conformance suite.
+
+## Package Map
+| Package | Purpose | Status |
+|---------|---------|--------|
+| `pkg/subscriber` | Subscriber storage + Milenage (unified 4G/5G) | Shipping |
+| `pkg/subscriber/admin` | Operator-facing REST API (CRUD, CSV, auth vectors) | Shipping |
+| `pkg/mme` | MME + S1AP + S6a client + S11 client | Shipping |
+| `pkg/s1ap` | S1AP PER codec | Shipping → PER will extract to `pkg/asn1per` |
+| `pkg/nas` | NAS codec + security | Shipping → will split nas4g/nas5g |
+| `pkg/sctp` | SCTP + TCP fallback | Shipping |
+| `pkg/gtp` | GTP-U v1 codec | Shipping |
+| `pkg/spgw` | SPGW + TUN egress + metrics | Shipping → will evolve to `pkg/upf` |
+| `pkg/sbi` | HTTP/2 + RFC 7807 SBI framework | Phase 0 sketch (v0.5) |
+| `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
+| `pkg/udm` | Nudm SBI face | **Planned (v0.5 — current work)** |
+| `pkg/udr` | Nudr SBI face | Planned (v0.5) |
+| `pkg/ausf` | Nausf SBI face | Planned (v0.5) |
+| `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
+| `pkg/amf` | AMF core | Planned (v0.6) |
+
+## Tech Stack
+- **Go 1.23**, logrus, cobra+viper, gorm, gorilla/mux, prometheus/client_golang, golang.org/x/sys
+- **PostgreSQL 16**, Docker Compose
+- **Next.js + TypeScript** (dashboard, v0.8)
+- Go module: `github.com/qcore-project/qcore`
+
+## Dev Environment
+- Windows machine (XPS-15), working via WSL Ubuntu-24.04
+- Project path: `/mnt/c/Users/XPS-15/Documents/Software/qcore` (WSL)
+- Docker Desktop must be running for integration tests
+
+## Common Commands
 ```bash
-make build        # Build binary to bin/qcore-hss
-make test         # Run all tests with race detector
-make test-short   # Run tests without integration tests
-make lint         # Run golangci-lint
-make docker-up    # Start PostgreSQL + HSS via Docker Compose
-make docker-down  # Stop Docker services
+# Build everything
+go build ./...
+
+# Run all tests
+go test ./...
+
+# Run HSS self-tests (crypto verification)
+go run ./cmd/hss test
+
+# Start HSS server
+go run ./cmd/hss start
+
+# Start with Docker (full stack)
+docker compose up
 ```
 
 ## Code Conventions
-- Go 1.21+, standard Go conventions
 - Error wrapping: `fmt.Errorf("context: %w", err)`
 - Table-driven tests with testify/assert
-- API tests use httptest
-- Structured logging via pkg/logger (never import logrus directly)
-- Config via pkg/config (viper, YAML + env vars with QCORE_ prefix)
+- Structured logging via `pkg/logger` (never import logrus directly)
+- Config via `pkg/config` (viper, YAML + env vars with QCORE_ prefix)
+- Linux-only code uses `//go:build linux` build tags
+- All crypto verified against 3GPP TS 35.208 test vectors
 
-## Architecture
-- `cmd/` — CLI entry points (cobra)
-- `pkg/` — Public library code (logger, config, database, metrics, hss)
-- `internal/` — Private code (models)
-- `deployments/` — Docker, Kubernetes configs
-
-## Key Files
-- `pkg/hss/auth.go` — Milenage crypto (3GPP TS 35.206), must match TS 35.207 test vectors
-- `pkg/hss/api.go` — REST API handlers
-- `cmd/hss/main.go` — CLI wiring
-
-## Module Path
-`github.com/qcore-project/qcore`
+## Design Principles
+1. **DX first** — prefer HTTP/JSON over obscure binary protocols where standards allow
+2. **Test vectors** — all crypto must be verified against 3GPP TS 35.208 test sets
+3. **No magic** — errors are explicit, logs are structured, metrics are Prometheus
+4. **Honest feedback** — push back on tech debt and short-term thinking
