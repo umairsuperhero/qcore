@@ -298,26 +298,28 @@ Today's `master` has:
 
 | Target component | What exists today | Distance to target |
 |---|---|---|
-| `pkg/subscriber` | `pkg/hss` (combined) | Refactor — split storage from S6a face |
+| `pkg/subscriber` | **shipped** — extracted from old `pkg/hss` in v0.5 (model, Milenage, SQN, service) | Reused as-is; 5G-AKA derivation (TS 33.501 Annex A) still to add for Nudm_UEAU |
+| `pkg/subscriber/admin` | **shipped** — REST CRUD + CSV + auth-vectors, consumed by `cmd/hss` | Reused as-is; add tests |
 | `pkg/asn1per` | embedded in `pkg/s1ap` | Extract |
 | `pkg/nas/core` | embedded in `pkg/nas` | Extract |
-| `pkg/hss` (S6a facade) | uses HTTP — non-standard | Replace with Diameter facade (post-v1.0) |
+| `pkg/hss` (S6a facade) | **retired** in v0.5 — no Diameter code exists yet; `cmd/hss` now talks REST via `pkg/subscriber/admin` | Reintroduce as real Diameter facade in Phase 5 (post-v1.0) |
 | `pkg/mme` | shipped | Reused as-is for legacy track |
 | `pkg/s1ap` | shipped | Refactor to use `pkg/asn1per` |
 | `pkg/gtp` | shipped | Reused as-is in UPF |
 | `pkg/spgw` | shipped | Evolve into `pkg/upf` + PFCP front |
-| `pkg/sbi` | does not exist | Build |
-| `pkg/nrf` | does not exist | Build |
+| `pkg/sbi` | **Phase 0 sketch shipped** (v0.5) — h2/h2c server + client, RFC 7807 ProblemDetails, middleware (RequestID/AccessLog/Recover) | Harden + wire OpenAPI validation as real NFs mount |
+| `pkg/sbi/nrf` | **Phase 0 sketch shipped** (v0.5) — NFProfile types + in-memory Client for dev/tests; HTTP Client stub for real NRF | Expand when real NRF server lands |
+| `pkg/nrf` (server) | does not exist | Build (Nnrf over SBI) |
 | `pkg/amf` | does not exist | Build |
 | `pkg/ngap` | does not exist | Build (on `pkg/asn1per`) |
 | `pkg/nas5g` | does not exist | Build (on `pkg/nas/core`) |
 | `pkg/ausf` | does not exist | Build (thin) |
-| `pkg/udm` | does not exist | Build (SBI face on `pkg/subscriber`) |
-| `pkg/udr` | does not exist | Build (SBI face on `pkg/subscriber`) |
+| `pkg/udm` | **first cut shipped** (v0.5) — `Nudm_SDM` `GET /nudm-sdm/v2/{supi}/am-data` over `pkg/sbi`, h2c round-trip tested | Add `Nudm_UEAU` (needs 5G-AKA in `pkg/subscriber`) and `Nudm_UECM` (needs AMF) |
+| `pkg/udr` | does not exist | Build (Nudr SBI face — thin passthrough over `pkg/subscriber` for v0.5) |
 | `pkg/smf` | does not exist | Build |
 | `pkg/pfcp` | does not exist | Build |
 | Dashboard | does not exist | Build (Next.js) |
-| Linux CI with NET_ADMIN | does not exist | Build before Phase 2 |
+| Linux CI with NET_ADMIN | exists (ci.yml Linux integration job) | Extend as more NFs land |
 
 Refactor work ≈ 1 Phase of effort.
 Net new 5G protocol code ≈ 3 Phases.
@@ -345,3 +347,4 @@ No timelines promised. See the RFC for the milestone-driven sequencing.
 ## 9. Changelog
 
 - **2026-04-16** — Initial draft alongside RFC 0001.
+- **2026-04-19** — v0.5 progress: `pkg/hss` retired; `pkg/subscriber` + `pkg/subscriber/admin` shipped; `pkg/sbi` + `pkg/sbi/nrf` Phase 0 sketches shipped; first 5G NF cut (`pkg/udm` Nudm_SDM am-data) shipped and round-trip tested. §7 state-vs-target table updated. Target architecture (§§1-6) unchanged — still the same destination.

@@ -6,7 +6,9 @@
 
 QCore is a mobile core network designed around developer experience. Start a complete LTE core with a single command, no tribal knowledge required.
 
-> **Status:** Phases 1 (HSS), 2 (MME), and 3 Sessions 1–2 (SPGW + Linux TUN egress + SPGW Prometheus metrics) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
+> **Status (4G EPC):** Phases 1 (HSS), 2 (MME), and 3 Sessions 1–2 (SPGW + Linux TUN egress + SPGW Prometheus metrics) — shipped. Milenage authentication verified against official 3GPP TS 35.208 test vectors (sets 1, 3, 4, 5, 6). End-to-end attach + uplink GTP-U packet verified in-repo (`TestEndToEndUserPlane`).
+>
+> **Status (5G SA, v0.5 — in flight):** subscriber plane unified into `pkg/subscriber` (shared by 4G and 5G); `pkg/sbi` + `pkg/sbi/nrf` Phase 0 sketches (HTTP/2 + RFC 7807 Problem Details + in-memory NRF) shipped; first 5G network function cut — `pkg/udm` exposing `Nudm_SDM` `GET /nudm-sdm/v2/{supi}/am-data` — shipped and round-trip tested over h2c. A subscriber added via the REST admin API is now queryable via 5G SBI.
 >
 > **⚠ Direction change (2026-04-16):** QCore is pivoting to **5G SA as the
 > primary track** with 4G EPC as a supported legacy track. The working 4G
