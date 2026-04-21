@@ -314,8 +314,9 @@ Today's `master` has:
 | `pkg/ngap` | does not exist | Build (on `pkg/asn1per`) |
 | `pkg/nas5g` | does not exist | Build (on `pkg/nas/core`) |
 | `pkg/ausf` | does not exist | Build (thin) |
-| `pkg/udm` | **first cut shipped** (v0.5) — `Nudm_SDM` `GET /nudm-sdm/v2/{supi}/am-data` over `pkg/sbi`, h2c round-trip tested | Add `Nudm_UEAU` (needs 5G-AKA in `pkg/subscriber`) and `Nudm_UECM` (needs AMF) |
-| `pkg/udr` | **first cut shipped** (v0.5) — `Nudr_DataRepository` `GET /nudr-dr/v2/subscription-data/{ueId}/{servingPlmnId}/provisioned-data/am-data` over `pkg/sbi`, h2c round-trip tested | Add authentication-subscription endpoint (for AUSF) and wire UDM to read through UDR when pkg/udr owns its own storage |
+| `pkg/udm` | **shipped** (v0.5) — `Nudm_SDM` am-data over `pkg/sbi`, plus an `AmDataSource` interface with two impls: `NewStoreSource` (direct over `pkg/subscriber`) and `NewUDRSource` (over `pkg/udr.Client`). Full UDM→UDR chain covered by `TestUDM_over_UDR_chain` on h2c loopback. | Add `Nudm_UEAU` (needs 5G-AKA in `pkg/subscriber`) and `Nudm_UECM` (needs AMF) |
+| `pkg/udr` | **shipped** (v0.5) — `Nudr_DataRepository` am-data over `pkg/sbi`, plus `pkg/udr.Client` with typed errors (`ErrNotFound`, `ErrBadUeID`) | Add authentication-subscription endpoint (for AUSF); give UDR its own storage schema so direct-mode can retire |
+| `pkg/sbi/common` | **shipped** (v0.5) — shared TS 29.571 types (AccessAndMobilitySubscriptionData, AmbrRm, Nssai, Snssai) consumed by both `pkg/udm` and `pkg/udr` | Add types as downstream NFs start consuming them |
 | `pkg/smf` | does not exist | Build |
 | `pkg/pfcp` | does not exist | Build |
 | Dashboard | does not exist | Build (Next.js) |
@@ -348,3 +349,4 @@ No timelines promised. See the RFC for the milestone-driven sequencing.
 
 - **2026-04-16** — Initial draft alongside RFC 0001.
 - **2026-04-19** — v0.5 progress: `pkg/hss` retired; `pkg/subscriber` + `pkg/subscriber/admin` shipped; `pkg/sbi` + `pkg/sbi/nrf` Phase 0 sketches shipped; first two 5G NF cuts shipped and round-trip tested — `pkg/udm` (Nudm_SDM am-data) and `pkg/udr` (Nudr_DataRepository am-data). §7 state-vs-target table updated. Target architecture (§§1-6) unchanged — still the same destination.
+- **2026-04-20** — UDM→UDR layering seam landed: `pkg/sbi/common` extracted for shared TS 29.571 types; `pkg/udm.AmDataSource` interface splits direct-mode (`NewStoreSource`) from network-mode (`NewUDRSource` over `pkg/udr.Client`); `TestUDM_over_UDR_chain` exercises the full chain over h2c loopback. Mode is a constructor-arg change — no refactor needed to flip UDM from reading `pkg/subscriber` directly to reading through UDR.
