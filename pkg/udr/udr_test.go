@@ -2,6 +2,7 @@ package udr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -101,6 +102,88 @@ func TestUDR_DataRepository_AmData(t *testing.T) {
 		}
 		if pd.Status != http.StatusBadRequest {
 			t.Errorf("status: want 400, got %d", pd.Status)
+		}
+	})
+}
+
+// TestUDR_AuthenticationSubscription covers the auth-sub endpoint: the
+// shape the UDM UEAU's UDR-backed AuthSource consumes. Drives the typed
+// client (Client.GetAuthenticationSubscription) on the happy path so
+// both the wire and the client-side error-mapping are exercised.
+func TestUDR_AuthenticationSubscription(t *testing.T) {
+	log := logger.New("error", "text")
+
+	store := &fakeStore{subs: map[string]*subscriber.Subscriber{
+		"001010000000001": {
+			IMSI: "001010000000001",
+			Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+			OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+			AMF:  "b9b9",
+			SQN:  "ff9bb4d0b607",
+		},
+	}}
+
+	udr := NewService(store, log)
+
+	port := pickFreePort(t)
+	srv := sbi.NewServer(sbi.ServerConfig{
+		BindAddress: "127.0.0.1",
+		Port:        port,
+		NFType:      "UDR",
+	}, log, udr.Handler())
+
+	go func() { _ = srv.Serve() }()
+	time.Sleep(50 * time.Millisecond)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
+
+	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)
+	client := NewClient(baseURL, "TEST-UDM", false)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	t.Run("happy path via typed client", func(t *testing.T) {
+		resp, err := client.GetAuthenticationSubscription(ctx, "imsi-001010000000001")
+		if err != nil {
+			t.Fatalf("GetAuthenticationSubscription: %v", err)
+		}
+		if resp.AuthenticationMethod != "5G_AKA" {
+			t.Errorf("authenticationMethod: got %q, want 5G_AKA", resp.AuthenticationMethod)
+		}
+		if resp.EncPermanentKey != "465b5ce8b199b49faa5f0a2ee238a6bc" {
+			t.Errorf("encPermanentKey: got %q", resp.EncPermanentKey)
+		}
+		if resp.EncOpcKey != "cd63cb71954a9f4e48a5994e37a02baf" {
+			t.Errorf("encOpcKey: got %q", resp.EncOpcKey)
+		}
+		if resp.AuthenticationManagementField != "b9b9" {
+			t.Errorf("AMF: got %q", resp.AuthenticationManagementField)
+		}
+		if resp.AlgorithmId != "milenage" {
+			t.Errorf("algorithmId: got %q", resp.AlgorithmId)
+		}
+		if resp.SequenceNumber == nil || resp.SequenceNumber.Sqn != "ff9bb4d0b607" {
+			t.Errorf("sqn: got %+v", resp.SequenceNumber)
+		}
+		if resp.Supi != "imsi-001010000000001" {
+			t.Errorf("supi: got %q", resp.Supi)
+		}
+	})
+
+	t.Run("unknown ueId returns ErrNotFound via typed client", func(t *testing.T) {
+		_, err := client.GetAuthenticationSubscription(ctx, "imsi-999999999999999")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("want ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("malformed ueId returns ErrBadUeID via typed client", func(t *testing.T) {
+		_, err := client.GetAuthenticationSubscription(ctx, "nai-foo@bar")
+		if !errors.Is(err, ErrBadUeID) {
+			t.Errorf("want ErrBadUeID, got %v", err)
 		}
 	})
 }

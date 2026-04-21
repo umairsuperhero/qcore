@@ -48,6 +48,11 @@ func (s *Service) registerRoutes() {
 	// don't use it yet — PLMN-scoped subscription data is a v1.0+
 	// concern; today one subscriber = one profile across all PLMNs.
 	s.mux.HandleFunc("GET /nudr-dr/v2/subscription-data/{ueId}/{servingPlmnId}/provisioned-data/am-data", s.getAmData)
+
+	// TS 29.505 §5.2.2.3 / 29.503 §6.3.6.2.2.
+	// Authentication-subscription sits at a different path shape —
+	// no servingPlmnId, since Milenage creds are PLMN-independent.
+	s.mux.HandleFunc("GET /nudr-dr/v2/subscription-data/{ueId}/authentication-data/authentication-subscription", s.getAuthSubscription)
 }
 
 // getAmData — TS 29.504 §5.2.2.2.3. Returns the AM subscription data
@@ -91,6 +96,56 @@ func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
 	}
 	if sub.MSISDN != "" {
 		resp.Gpsis = []string{"msisdn-" + sub.MSISDN}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// getAuthSubscription — TS 29.505 §5.2.2.3.3. Returns the Milenage
+// credentials (K, OPc, AMF, SQN) for a UE in the shape UDM UEAU needs
+// to produce a 5G-AKA vector. See the doc comment on
+// common.AuthenticationSubscription for the v0.5 plaintext caveat.
+func (s *Service) getAuthSubscription(w http.ResponseWriter, r *http.Request) {
+	ueID := r.PathValue("ueId")
+	imsi, err := parseIMSIUeID(ueID)
+	if err != nil {
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusBadRequest,
+			Title:  "Bad Request",
+			Detail: err.Error(),
+			Cause:  "MANDATORY_IE_INCORRECT",
+		})
+		return
+	}
+
+	sub, err := s.store.GetSubscriber(r.Context(), imsi)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			sbi.WriteProblem(w, &sbi.ProblemDetails{
+				Status: http.StatusNotFound,
+				Title:  "Not Found",
+				Detail: err.Error(),
+				Cause:  "DATA_NOT_FOUND",
+			})
+			return
+		}
+		s.log.WithError(err).WithField("ueId", ueID).Error("udr: get subscriber failed")
+		sbi.WriteProblem(w, sbi.InternalError("subscriber lookup failed"))
+		return
+	}
+
+	resp := common.AuthenticationSubscription{
+		AuthenticationMethod:          "5G_AKA",
+		EncPermanentKey:               sub.Ki,
+		EncOpcKey:                     sub.OPc,
+		AuthenticationManagementField: sub.AMF,
+		AlgorithmId:                   "milenage",
+		SequenceNumber: &common.SequenceNumber{
+			SqnScheme: "GENERAL",
+			Sqn:       sub.SQN,
+		},
+		Supi: "imsi-" + sub.IMSI,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

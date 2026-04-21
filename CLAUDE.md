@@ -34,7 +34,7 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 
 ### Remaining
 - `pkg/udm` — still to do: `Nudm_UECM` serving-AMF registration (needs pkg/amf).
-- `pkg/udr` — still to do: authentication-subscription endpoint.
+- `pkg/udr` — SQN writeback (PATCH) so a UDR-backed UEAU can persist the advanced counter. Once that lands, `pkg/udm` gets a `NewUDRAuthSource` to mirror the `NewUDRSource` am-data layering flip.
 
 ## Roadmap (after v0.5)
 - **v0.6** — NGAP + 5G-NAS + AMF + NRF. Milestone: UERANSIM 5G UE completes REGISTRATION.
@@ -58,7 +58,7 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 | `pkg/sbi/common` | Shared TS 29.571 types | Shipping |
 | `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
 | `pkg/udm` | Nudm SBI face (SDM + UEAU) + AmDataSource / AuthSource seams | Shipping (SDM am-data, UEAU 5G-AKA); UECM pending |
-| `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data); auth-subscription pending |
+| `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data + authentication-subscription GET); SQN writeback pending |
 | `pkg/ausf` | Nausf SBI face + in-memory auth-ctx store | Shipping (5G-AKA create + confirm) |
 | `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
 | `pkg/amf` | AMF core | Planned (v0.6) |
