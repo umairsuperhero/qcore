@@ -63,6 +63,44 @@ func DeriveKAUSF(ck, ik [16]byte, snName string, sqnXorAk [6]byte) [32]byte {
 	return out
 }
 
+// DeriveKSEAF — TS 33.501 Annex A.6. AUSF derives KSEAF from KAUSF and
+// hands it to the SEAF (AMF) on successful auth. This is the anchor key
+// for the rest of the NAS/AS key hierarchy.
+//
+//	FC = 0x6C
+//	P0 = SN name (UTF-8), L0 = len(P0)
+//	Key = KAUSF (32 bytes)
+//	KSEAF = HMAC-SHA-256(KAUSF, FC || P0 || L0)
+func DeriveKSEAF(kausf [32]byte, snName string) [32]byte {
+	sn := []byte(snName)
+	s := make([]byte, 0, 1+len(sn)+2)
+	s = append(s, 0x6C)
+	s = append(s, sn...)
+	s = append(s, byte(len(sn)>>8), byte(len(sn)&0xFF))
+
+	mac := hmac.New(sha256.New, kausf[:])
+	mac.Write(s)
+	var out [32]byte
+	copy(out[:], mac.Sum(nil))
+	return out
+}
+
+// DeriveHXRESStar — TS 33.501 Annex A.5. AUSF-side compression of the
+// XRES* it got from UDM, to hand to AMF without leaking the full value.
+//
+//	HXRES* = SHA-256(RAND || XRES*)[16:32]   -- the low-order 128 bits
+//
+// AMF compares HXRES*(RAND, RES*) from the UE against this value.
+func DeriveHXRESStar(randVal, xresStar [16]byte) [16]byte {
+	h := sha256.New()
+	h.Write(randVal[:])
+	h.Write(xresStar[:])
+	full := h.Sum(nil)
+	var out [16]byte
+	copy(out[:], full[16:32])
+	return out
+}
+
 // DeriveRESStar — TS 33.501 Annex A.4. Same construction on both sides:
 // the UE calls it with its own RES and gets RES*; the home network calls
 // it with XRES and gets XRES*.

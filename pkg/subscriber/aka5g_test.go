@@ -117,6 +117,55 @@ func TestDerive5GAKA_FreshRANDChangesKey(t *testing.T) {
 	}
 }
 
+// TestDeriveHXRESStar — AUSF-side compression must be deterministic and
+// sensitive to both RAND and XRES* (so an attacker flipping either can't
+// preserve HXRES*).
+func TestDeriveHXRESStar(t *testing.T) {
+	xres := mustHex16("aabbccddeeff00112233445566778899")
+	a := DeriveHXRESStar(tsRAND, xres)
+	b := DeriveHXRESStar(tsRAND, xres)
+	if a != b {
+		t.Errorf("non-deterministic")
+	}
+
+	otherRAND := mustHex16("000102030405060708090a0b0c0d0e0f")
+	if DeriveHXRESStar(otherRAND, xres) == a {
+		t.Errorf("HXRES* must change with RAND")
+	}
+	otherXRES := mustHex16("99887766554433221100ffeeddccbbaa")
+	if DeriveHXRESStar(tsRAND, otherXRES) == a {
+		t.Errorf("HXRES* must change with XRES*")
+	}
+}
+
+// TestDeriveKSEAF — anchor-key derivation must be deterministic, depend
+// on both KAUSF and SN-Name, and produce a 256-bit output.
+func TestDeriveKSEAF(t *testing.T) {
+	kausf := [32]byte{}
+	for i := range kausf {
+		kausf[i] = byte(i)
+	}
+	sn := "5G:mnc001.mcc001.3gppnetwork.org"
+
+	a := DeriveKSEAF(kausf, sn)
+	b := DeriveKSEAF(kausf, sn)
+	if a != b {
+		t.Errorf("non-deterministic")
+	}
+
+	if DeriveKSEAF(kausf, "5G:mnc002.mcc001.3gppnetwork.org") == a {
+		t.Errorf("KSEAF must change with SN-Name")
+	}
+
+	var other [32]byte
+	for i := range other {
+		other[i] = byte(255 - i)
+	}
+	if DeriveKSEAF(other, sn) == a {
+		t.Errorf("KSEAF must change with KAUSF")
+	}
+}
+
 func mustHex16(s string) [16]byte {
 	b, err := hex.DecodeString(s)
 	if err != nil || len(b) != 16 {
