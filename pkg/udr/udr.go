@@ -8,6 +8,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	"github.com/qcore-project/qcore/pkg/sbi/common"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 )
 
@@ -82,8 +83,8 @@ func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := AccessAndMobilitySubscriptionData{
-		SubscribedUeAmbr: &AmbrRm{
+	resp := common.AccessAndMobilitySubscriptionData{
+		SubscribedUeAmbr: &common.AmbrRm{
 			Uplink:   "1 Gbps",
 			Downlink: "1 Gbps",
 		},

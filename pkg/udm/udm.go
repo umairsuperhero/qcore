@@ -3,39 +3,92 @@ package udm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	"github.com/qcore-project/qcore/pkg/sbi/common"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 )
 
-// SubscriberStore is the subset of pkg/subscriber.Service that UDM needs.
-// Defined as a local interface so tests can supply a fake without dragging
-// in gorm, and so pkg/udm stays blind to the storage layer — the whole
-// point of UDM is that it's the data face, not the database.
+// AmDataSource is what UDM needs to serve Nudm_SDM am-data. Two impls
+// today: a direct adapter over pkg/subscriber (storeSource) and a
+// pkg/udr.Client for UDR-backed mode. The interface is the layering
+// seam — swapping modes is a constructor-arg change, not a refactor.
 //
-// pkg/subscriber.Service satisfies this interface as-is.
+// Sources receive the raw SUPI ("imsi-<15 digits>") because the UDR
+// client passes it straight through as a ueId; the direct adapter
+// strips the prefix internally.
+type AmDataSource interface {
+	GetAmData(ctx context.Context, supi string) (*common.AccessAndMobilitySubscriptionData, error)
+}
+
+// Typed errors a source can return. The HTTP handler maps these to
+// RFC 7807 responses so both backends produce the same Problem shape.
+var (
+	ErrNotFound = errors.New("am-data not found")
+	ErrBadSupi  = errors.New("malformed SUPI")
+)
+
+// SubscriberStore is the subset of pkg/subscriber.Service the direct
+// adapter needs. Kept as a named interface so tests can supply a fake
+// without pulling in gorm.
+//
+// pkg/subscriber.Service satisfies this as-is.
 type SubscriberStore interface {
 	GetSubscriber(ctx context.Context, imsi string) (*subscriber.Subscriber, error)
+}
+
+// NewStoreSource adapts a SubscriberStore to AmDataSource for
+// direct-mode UDM (no UDR hop). Applies the same SUPI-parse + AMBR
+// default that the handler used to do inline.
+func NewStoreSource(store SubscriberStore) AmDataSource {
+	return &storeSource{store: store}
+}
+
+type storeSource struct{ store SubscriberStore }
+
+func (s *storeSource) GetAmData(ctx context.Context, supi string) (*common.AccessAndMobilitySubscriptionData, error) {
+	imsi, err := parseIMSISupi(supi)
+	if err != nil {
+		return nil, err
+	}
+	sub, err := s.store.GetSubscriber(ctx, imsi)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	// Default UE-AMBR for v0.5. Real deployments override per-profile;
+	// until we add that field to pkg/subscriber.Subscriber we hand out
+	// a generous default rather than surprising the caller with nil.
+	resp := &common.AccessAndMobilitySubscriptionData{
+		SubscribedUeAmbr: &common.AmbrRm{Uplink: "1 Gbps", Downlink: "1 Gbps"},
+	}
+	if sub.MSISDN != "" {
+		resp.Gpsis = []string{"msisdn-" + sub.MSISDN}
+	}
+	return resp, nil
 }
 
 // Service is the UDM NF. Its Handler() is intended to be handed to
 // pkg/sbi.NewServer — all HTTP/2, middleware, and TLS concerns live there.
 type Service struct {
-	store SubscriberStore
-	log   logger.Logger
-	mux   *http.ServeMux
+	source AmDataSource
+	log    logger.Logger
+	mux    *http.ServeMux
 }
 
-// NewService wires a UDM over the given store. The returned *Service has
-// its routes registered; mount it with srv := sbi.NewServer(cfg, log, udm.Handler()).
-func NewService(store SubscriberStore, log logger.Logger) *Service {
+// NewService wires a UDM over the given AmDataSource. For direct mode
+// pass NewStoreSource(store); for UDR-backed mode pass a pkg/udr.Client.
+func NewService(source AmDataSource, log logger.Logger) *Service {
 	s := &Service{
-		store: store,
-		log:   log.WithField("nf", "udm"),
-		mux:   http.NewServeMux(),
+		source: source,
+		log:    log.WithField("nf", "udm"),
+		mux:    http.NewServeMux(),
 	}
 	s.registerRoutes()
 	return s
@@ -53,55 +106,32 @@ func (s *Service) registerRoutes() {
 }
 
 // getAmData — TS 29.503 §5.2.2.2.2. Returns AccessAndMobilitySubscriptionData
-// for a UE identified by SUPI.
-//
-// 3GPP SUPI format per TS 23.003 §2.2A: "imsi-<15 digits>" for 3GPP access,
-// or "nai-..." for non-3GPP. We only handle the IMSI form today; NAI form
-// returns 501 so the caller knows it's not yet implemented rather than
-// failing silently.
+// for a UE identified by SUPI. Delegates to the configured AmDataSource
+// and maps typed errors to RFC 7807 responses.
 func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
 	supi := r.PathValue("supi")
-	imsi, err := parseIMSISupi(supi)
+	resp, err := s.source.GetAmData(r.Context(), supi)
 	if err != nil {
-		sbi.WriteProblem(w, &sbi.ProblemDetails{
-			Status: http.StatusBadRequest,
-			Title:  "Bad Request",
-			Detail: err.Error(),
-			Cause:  "MANDATORY_IE_INCORRECT",
-		})
-		return
-	}
-
-	sub, err := s.store.GetSubscriber(r.Context(), imsi)
-	if err != nil {
-		// subscriber.Service returns "subscriber <imsi> not found" as a
-		// bare error. Map that string to 404/USER_NOT_FOUND (TS 29.503
-		// §6.1.7.3). Everything else is a 500.
-		if strings.Contains(err.Error(), "not found") {
+		switch {
+		case errors.Is(err, ErrBadSupi):
+			sbi.WriteProblem(w, &sbi.ProblemDetails{
+				Status: http.StatusBadRequest,
+				Title:  "Bad Request",
+				Detail: err.Error(),
+				Cause:  "MANDATORY_IE_INCORRECT",
+			})
+		case errors.Is(err, ErrNotFound):
 			sbi.WriteProblem(w, &sbi.ProblemDetails{
 				Status: http.StatusNotFound,
 				Title:  "Not Found",
 				Detail: err.Error(),
 				Cause:  "USER_NOT_FOUND",
 			})
-			return
+		default:
+			s.log.WithError(err).WithField("supi", supi).Error("udm: get am-data failed")
+			sbi.WriteProblem(w, sbi.InternalError("am-data lookup failed"))
 		}
-		s.log.WithError(err).WithField("supi", supi).Error("udm: get subscriber failed")
-		sbi.WriteProblem(w, sbi.InternalError("subscriber lookup failed"))
 		return
-	}
-
-	resp := AccessAndMobilitySubscriptionData{
-		// Default UE-AMBR for v0.5. Real deployments override per-profile;
-		// until we add that field to pkg/subscriber.Subscriber we hand out
-		// a generous default rather than surprising the caller with nil.
-		SubscribedUeAmbr: &AmbrRm{
-			Uplink:   "1 Gbps",
-			Downlink: "1 Gbps",
-		},
-	}
-	if sub.MSISDN != "" {
-		resp.Gpsis = []string{"msisdn-" + sub.MSISDN}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -109,30 +139,35 @@ func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseIMSISupi accepts a SUPI in the "imsi-<15 digits>" form and returns
-// the bare IMSI. Rejects NAI/GCI/GLI forms with an explanatory error —
-// they exist in the spec but none of QCore's current access types need
-// them, so faking a lookup would be misleading.
+// the bare IMSI. Rejects NAI/GCI/GLI forms — they exist in the spec but
+// none of QCore's current access types need them, so faking a lookup
+// would be misleading. Wraps ErrBadSupi so the handler maps to 400.
 func parseIMSISupi(supi string) (string, error) {
 	if supi == "" {
-		return "", errBadSupi("SUPI is empty")
+		return "", badSupi("SUPI is empty")
 	}
 	if !strings.HasPrefix(supi, "imsi-") {
-		return "", errBadSupi("only imsi-<IMSI> SUPIs are supported; got " + supi)
+		return "", badSupi("only imsi-<IMSI> SUPIs are supported; got " + supi)
 	}
 	imsi := strings.TrimPrefix(supi, "imsi-")
 	if len(imsi) != 15 {
-		return "", errBadSupi("IMSI portion must be 15 digits, got " + imsi)
+		return "", badSupi("IMSI portion must be 15 digits, got " + imsi)
 	}
 	for _, c := range imsi {
 		if c < '0' || c > '9' {
-			return "", errBadSupi("IMSI must be all digits, got " + imsi)
+			return "", badSupi("IMSI must be all digits, got " + imsi)
 		}
 	}
 	return imsi, nil
 }
 
-type supiError string
+func badSupi(msg string) error {
+	return &supiErr{msg: msg}
+}
 
-func (e supiError) Error() string { return string(e) }
+type supiErr struct{ msg string }
 
-func errBadSupi(msg string) error { return supiError(msg) }
+func (e *supiErr) Error() string { return e.msg }
+func (e *supiErr) Is(target error) bool {
+	return target == ErrBadSupi
+}

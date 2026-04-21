@@ -11,6 +11,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	"github.com/qcore-project/qcore/pkg/sbi/common"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 )
 
@@ -66,7 +67,7 @@ func TestUDR_DataRepository_AmData(t *testing.T) {
 	const path = "/nudr-dr/v2/subscription-data/imsi-001010000000001/00101/provisioned-data/am-data"
 
 	t.Run("happy path", func(t *testing.T) {
-		var resp AccessAndMobilitySubscriptionData
+		var resp common.AccessAndMobilitySubscriptionData
 		if err := client.DoJSON(ctx, "GET", path, nil, &resp); err != nil {
 			t.Fatalf("DoJSON: %v", err)
 		}

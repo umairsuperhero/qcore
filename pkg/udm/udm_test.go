@@ -11,6 +11,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	"github.com/qcore-project/qcore/pkg/sbi/common"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 )
 
@@ -46,7 +47,7 @@ func TestUDM_SDM_AmData(t *testing.T) {
 		},
 	}}
 
-	udm := NewService(store, log)
+	udm := NewService(NewStoreSource(store), log)
 
 	port := pickFreePort(t)
 	srv := sbi.NewServer(sbi.ServerConfig{
@@ -69,7 +70,7 @@ func TestUDM_SDM_AmData(t *testing.T) {
 	defer cancel()
 
 	t.Run("happy path", func(t *testing.T) {
-		var resp AccessAndMobilitySubscriptionData
+		var resp common.AccessAndMobilitySubscriptionData
 		if err := client.DoJSON(ctx, "GET", "/nudm-sdm/v2/imsi-001010000000001/am-data", nil, &resp); err != nil {
 			t.Fatalf("DoJSON: %v", err)
 		}
