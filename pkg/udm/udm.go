@@ -76,8 +76,12 @@ func (s *storeSource) GetAmData(ctx context.Context, supi string) (*common.Acces
 
 // Service is the UDM NF. Its Handler() is intended to be handed to
 // pkg/sbi.NewServer — all HTTP/2, middleware, and TLS concerns live there.
+//
+// auth is optional: without it, the /nudm-ueau routes respond 501.
+// Attach one with WithAuthSource.
 type Service struct {
 	source AmDataSource
+	auth   AuthSource
 	log    logger.Logger
 	mux    *http.ServeMux
 }

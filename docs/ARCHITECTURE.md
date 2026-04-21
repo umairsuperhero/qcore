@@ -298,7 +298,7 @@ Today's `master` has:
 
 | Target component | What exists today | Distance to target |
 |---|---|---|
-| `pkg/subscriber` | **shipped** — extracted from old `pkg/hss` in v0.5 (model, Milenage, SQN, service) | Reused as-is; 5G-AKA derivation (TS 33.501 Annex A) still to add for Nudm_UEAU |
+| `pkg/subscriber` | **shipped** — extracted from old `pkg/hss` in v0.5 (model, Milenage, SQN, service). 5G-AKA derivations (TS 33.501 Annex A.2 KAUSF / A.4 RES*) landed on top of the same Milenage core; `Generate5GAuthVector` shares the per-subscriber SQN counter with the 4G path. | Add AUTS reverse-Milenage for SQN resync; cross-validate 5G-AKA against external reference |
 | `pkg/subscriber/admin` | **shipped** — REST CRUD + CSV + auth-vectors, consumed by `cmd/hss` | Reused as-is; add tests |
 | `pkg/asn1per` | embedded in `pkg/s1ap` | Extract |
 | `pkg/nas/core` | embedded in `pkg/nas` | Extract |
@@ -314,7 +314,7 @@ Today's `master` has:
 | `pkg/ngap` | does not exist | Build (on `pkg/asn1per`) |
 | `pkg/nas5g` | does not exist | Build (on `pkg/nas/core`) |
 | `pkg/ausf` | does not exist | Build (thin) |
-| `pkg/udm` | **shipped** (v0.5) — `Nudm_SDM` am-data over `pkg/sbi`, plus an `AmDataSource` interface with two impls: `NewStoreSource` (direct over `pkg/subscriber`) and `NewUDRSource` (over `pkg/udr.Client`). Full UDM→UDR chain covered by `TestUDM_over_UDR_chain` on h2c loopback. | Add `Nudm_UEAU` (needs 5G-AKA in `pkg/subscriber`) and `Nudm_UECM` (needs AMF) |
+| `pkg/udm` | **shipped** (v0.5) — `Nudm_SDM` am-data over `pkg/sbi`, plus `Nudm_UEAU` generate-auth-data. `AmDataSource` and `AuthSource` seams separate SDM and UEAU backends. `NewStoreSource`/`NewStoreAuthSource` for direct mode, `NewUDRSource` for network mode. UDM→UDR SDM chain covered by `TestUDM_over_UDR_chain`; UEAU covered by `TestUDM_UEAU_GenerateAuthData` on h2c loopback. | Add `Nudm_UECM` (needs AMF) and AUTS-based SQN resync |
 | `pkg/udr` | **shipped** (v0.5) — `Nudr_DataRepository` am-data over `pkg/sbi`, plus `pkg/udr.Client` with typed errors (`ErrNotFound`, `ErrBadUeID`) | Add authentication-subscription endpoint (for AUSF); give UDR its own storage schema so direct-mode can retire |
 | `pkg/sbi/common` | **shipped** (v0.5) — shared TS 29.571 types (AccessAndMobilitySubscriptionData, AmbrRm, Nssai, Snssai) consumed by both `pkg/udm` and `pkg/udr` | Add types as downstream NFs start consuming them |
 | `pkg/smf` | does not exist | Build |
@@ -350,3 +350,4 @@ No timelines promised. See the RFC for the milestone-driven sequencing.
 - **2026-04-16** — Initial draft alongside RFC 0001.
 - **2026-04-19** — v0.5 progress: `pkg/hss` retired; `pkg/subscriber` + `pkg/subscriber/admin` shipped; `pkg/sbi` + `pkg/sbi/nrf` Phase 0 sketches shipped; first two 5G NF cuts shipped and round-trip tested — `pkg/udm` (Nudm_SDM am-data) and `pkg/udr` (Nudr_DataRepository am-data). §7 state-vs-target table updated. Target architecture (§§1-6) unchanged — still the same destination.
 - **2026-04-20** — UDM→UDR layering seam landed: `pkg/sbi/common` extracted for shared TS 29.571 types; `pkg/udm.AmDataSource` interface splits direct-mode (`NewStoreSource`) from network-mode (`NewUDRSource` over `pkg/udr.Client`); `TestUDM_over_UDR_chain` exercises the full chain over h2c loopback. Mode is a constructor-arg change — no refactor needed to flip UDM from reading `pkg/subscriber` directly to reading through UDR.
+- **2026-04-20** — 5G-AKA and Nudm_UEAU shipped. `pkg/subscriber` gained `DeriveKAUSF` / `DeriveRESStar` / `Generate5GAuthVector` per TS 33.501 Annex A, sharing the Milenage core and SQN state with the 4G EPS-AKA path. `pkg/udm` gained `POST /nudm-ueau/v1/{supi}/security-information/generate-auth-data` behind a parallel `AuthSource` seam (`WithAuthSource`). AUSF can now get a 5G-AKA vector from UDM — unblocks the upcoming `pkg/ausf`.

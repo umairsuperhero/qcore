@@ -167,6 +167,53 @@ func (s *Service) GenerateAuthVector(ctx context.Context, imsi string) (*AuthVec
 	return av, nil
 }
 
+// Generate5GAuthVector issues a TS 33.501 Annex A 5G-AKA vector for the
+// given IMSI and serving-network name. Shares the per-subscriber SQN
+// counter with the 4G path — both EPS-AKA and 5G-AKA advance the same
+// SQN, which matches what happens in deployed cores (a subscriber has
+// one authentication identity, not two).
+func (s *Service) Generate5GAuthVector(ctx context.Context, imsi, snName string) (*AuthVector5G, error) {
+	sub, err := s.GetSubscriber(ctx, imsi)
+	if err != nil {
+		return nil, err
+	}
+
+	ki, err := sub.KiBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding Ki: %w", err)
+	}
+	opc, err := sub.OPcBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding OPc: %w", err)
+	}
+	sqn, err := sub.SQNBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding SQN: %w", err)
+	}
+	amf, err := sub.AMFBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding AMF: %w", err)
+	}
+
+	av, err := Generate5GAuthVector(ki, opc, sqn, amf, snName)
+	if err != nil {
+		return nil, fmt.Errorf("generating 5G auth vector: %w", err)
+	}
+
+	if err := sub.IncrementSQN(); err != nil {
+		return nil, fmt.Errorf("incrementing SQN: %w", err)
+	}
+	if err := s.db.WithContext(ctx).Model(sub).Update("sqn", sub.SQN).Error; err != nil {
+		return nil, fmt.Errorf("saving SQN: %w", err)
+	}
+
+	if s.metrics != nil {
+		s.metrics.AuthVectors.WithLabelValues().Inc()
+	}
+	s.log.Infof("Generated 5G auth vector for IMSI=%s sn=%s", imsi, snName)
+	return av, nil
+}
+
 func (s *Service) ImportCSV(ctx context.Context, reader io.Reader) (int, error) {
 	r := csv.NewReader(reader)
 

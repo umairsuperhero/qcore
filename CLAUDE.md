@@ -26,9 +26,11 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 - `pkg/sbi/common` — shared TS 29.571 types (AccessAndMobilitySubscriptionData, AmbrRm, Nssai, Snssai) lifted out of pkg/udm + pkg/udr so cross-NF shapes don't drift.
 - `pkg/udm` Nudm_SDM `GET /nudm-sdm/v2/{supi}/am-data` shipped. Refactored behind an `AmDataSource` interface: `NewStoreSource` wraps pkg/subscriber for direct mode; `NewUDRSource` wraps `pkg/udr.Client` for network mode — the UDM→UDR layering flip is a constructor-arg change.
 - `pkg/udr` Nudr_DataRepository `GET /nudr-dr/v2/subscription-data/{ueId}/{servingPlmnId}/provisioned-data/am-data` shipped. Has a client (`pkg/udr.Client`) with typed errors (`ErrNotFound`, `ErrBadUeID`). End-to-end UDM→UDR chain test (`TestUDM_over_UDR_chain`) exercises both NFs over h2c loopback.
+- 5G-AKA in `pkg/subscriber`: `DeriveKAUSF` (TS 33.501 Annex A.2), `DeriveRESStar` (Annex A.4), `Generate5GAuthVector`. Same Milenage core as 4G EPS-AKA, SQN shared per-subscriber.
+- `pkg/udm` Nudm_UEAU `POST /nudm-ueau/v1/{supi}/security-information/generate-auth-data` shipped. `AuthSource` seam parallels `AmDataSource`; attach with `WithAuthSource`. Returns `AuthenticationInfoResult` with `Av5gHeAka`. Resync (AUTS) returns 501 until Milenage reverse is wired.
 
 ### Remaining
-- `pkg/udm` — still to do: `Nudm_UEAU` generate-auth-data (needs 5G-AKA derivation from TS 33.501 Annex A — current pkg/subscriber Milenage yields a 4G EPS-AKA vector, not 5G) and `Nudm_UECM` serving-AMF registration.
+- `pkg/udm` — still to do: `Nudm_UECM` serving-AMF registration (needs pkg/amf).
 - `pkg/udr` — still to do: authentication-subscription endpoint (waits on pkg/ausf).
 - `pkg/ausf` — Nausf SBI face (authentication), calls UDM UEAU.
 - Tests for `pkg/subscriber/admin` (moved but untested).
@@ -54,7 +56,7 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 | `pkg/sbi` | HTTP/2 + RFC 7807 SBI framework | Phase 0 sketch (v0.5) |
 | `pkg/sbi/common` | Shared TS 29.571 types | Shipping |
 | `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
-| `pkg/udm` | Nudm SBI face + AmDataSource seam (store / UDR modes) | Shipping (SDM am-data); UEAU + UECM pending |
+| `pkg/udm` | Nudm SBI face (SDM + UEAU) + AmDataSource / AuthSource seams | Shipping (SDM am-data, UEAU 5G-AKA); UECM pending |
 | `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data); auth-subscription pending |
 | `pkg/ausf` | Nausf SBI face | Planned (v0.5) |
 | `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
