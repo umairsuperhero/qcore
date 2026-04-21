@@ -97,7 +97,14 @@ func runServer() error {
 
 	// Create subscriber service + admin API
 	service := subscriber.NewService(db, log, hssMetrics, plmnID)
-	api := admin.NewAPI(service, db, log, hssMetrics)
+	health := func(ctx context.Context) error {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.PingContext(ctx)
+	}
+	api := admin.NewAPI(service, health, log, hssMetrics)
 
 	// Zero-config delight: seed a demo subscriber on first run so curl works immediately.
 	// Uses 3GPP TS 35.208 Test Set 1 — the canonical Milenage test credentials.

@@ -4,8 +4,10 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,15 +17,32 @@ import (
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/subscriber"
-	"gorm.io/gorm"
 )
 
+// Store is the subset of *subscriber.Service that this admin API needs.
+// Narrowing to an interface keeps the handlers testable without a real
+// database — a struct satisfying Store is enough.
+type Store interface {
+	ListSubscribers(ctx context.Context, page, limit int, search string) ([]subscriber.Subscriber, int64, error)
+	GetSubscriber(ctx context.Context, imsi string) (*subscriber.Subscriber, error)
+	CreateSubscriber(ctx context.Context, sub *subscriber.Subscriber) error
+	UpdateSubscriber(ctx context.Context, imsi string, updates *subscriber.Subscriber) error
+	DeleteSubscriber(ctx context.Context, imsi string) error
+	GenerateAuthVector(ctx context.Context, imsi string) (*subscriber.AuthVector, error)
+	ImportCSV(ctx context.Context, reader io.Reader) (int, error)
+	ExportCSV(ctx context.Context, writer io.Writer) error
+}
+
+// HealthCheckFunc lets the caller plug in the liveness probe — typically
+// a closure over *gorm.DB.PingContext. Tests pass a stub.
+type HealthCheckFunc func(ctx context.Context) error
+
 type API struct {
-	service *subscriber.Service
+	store   Store
+	health  HealthCheckFunc
 	log     logger.Logger
 	metrics *metrics.HSSMetrics
 	router  *mux.Router
-	db      *gorm.DB
 }
 
 type APIResponse struct {
@@ -34,13 +53,13 @@ type APIResponse struct {
 	Total int64       `json:"total,omitempty"`
 }
 
-func NewAPI(service *subscriber.Service, db *gorm.DB, log logger.Logger, m *metrics.HSSMetrics) *API {
+func NewAPI(store Store, health HealthCheckFunc, log logger.Logger, m *metrics.HSSMetrics) *API {
 	a := &API{
-		service: service,
+		store:   store,
+		health:  health,
 		log:     log.WithField("component", "subscriber-admin"),
 		metrics: m,
 		router:  mux.NewRouter(),
-		db:      db,
 	}
 	a.registerRoutes()
 	return a
@@ -76,7 +95,7 @@ func (a *API) listSubscribers(w http.ResponseWriter, r *http.Request) {
 	}
 	search := r.URL.Query().Get("search")
 
-	subscribers, total, err := a.service.ListSubscribers(r.Context(), page, limit, search)
+	subscribers, total, err := a.store.ListSubscribers(r.Context(), page, limit, search)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -92,7 +111,7 @@ func (a *API) listSubscribers(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) getSubscriber(w http.ResponseWriter, r *http.Request) {
 	imsi := mux.Vars(r)["imsi"]
-	sub, err := a.service.GetSubscriber(r.Context(), imsi)
+	sub, err := a.store.GetSubscriber(r.Context(), imsi)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -111,7 +130,7 @@ func (a *API) createSubscriber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.service.CreateSubscriber(r.Context(), &sub); err != nil {
+	if err := a.store.CreateSubscriber(r.Context(), &sub); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			respondError(w, http.StatusConflict, err.Error())
 			return
@@ -136,7 +155,7 @@ func (a *API) updateSubscriber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.service.UpdateSubscriber(r.Context(), imsi, &updates); err != nil {
+	if err := a.store.UpdateSubscriber(r.Context(), imsi, &updates); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
 			return
@@ -145,13 +164,13 @@ func (a *API) updateSubscriber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sub, _ := a.service.GetSubscriber(r.Context(), imsi)
+	sub, _ := a.store.GetSubscriber(r.Context(), imsi)
 	respondJSON(w, http.StatusOK, APIResponse{Data: sub})
 }
 
 func (a *API) deleteSubscriber(w http.ResponseWriter, r *http.Request) {
 	imsi := mux.Vars(r)["imsi"]
-	if err := a.service.DeleteSubscriber(r.Context(), imsi); err != nil {
+	if err := a.store.DeleteSubscriber(r.Context(), imsi); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
 			return
@@ -164,7 +183,7 @@ func (a *API) deleteSubscriber(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) generateAuthVector(w http.ResponseWriter, r *http.Request) {
 	imsi := mux.Vars(r)["imsi"]
-	av, err := a.service.GenerateAuthVector(r.Context(), imsi)
+	av, err := a.store.GenerateAuthVector(r.Context(), imsi)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusNotFound, err.Error())
@@ -184,7 +203,7 @@ func (a *API) importCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	count, err := a.service.ImportCSV(r.Context(), file)
+	count, err := a.store.ImportCSV(r.Context(), file)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -199,21 +218,17 @@ func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
 
-	if err := a.service.ExportCSV(r.Context(), w); err != nil {
+	if err := a.store.ExportCSV(r.Context(), w); err != nil {
 		a.log.WithError(err).Error("Failed to export CSV")
 	}
 }
 
 func (a *API) healthCheck(w http.ResponseWriter, r *http.Request) {
-	sqlDB, err := a.db.DB()
-	if err != nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"status": "error",
-			"error":  err.Error(),
-		})
+	if a.health == nil {
+		respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
-	if err := sqlDB.Ping(); err != nil {
+	if err := a.health(r.Context()); err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "error",
 			"error":  err.Error(),

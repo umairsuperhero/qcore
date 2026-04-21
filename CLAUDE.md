@@ -30,11 +30,11 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 - `pkg/udm` Nudm_UEAU `POST /nudm-ueau/v1/{supi}/security-information/generate-auth-data` shipped. `AuthSource` seam parallels `AmDataSource`; attach with `WithAuthSource`. Returns `AuthenticationInfoResult` with `Av5gHeAka`. Resync (AUTS) returns 501 until Milenage reverse is wired.
 - `pkg/udm.Client` — consumer for Nudm_SDM + Nudm_UEAU (mirrors pkg/udr.Client shape, typed ErrNotFound / ErrBadSupi from 404/400).
 - `pkg/ausf` Nausf_UEAuthentication shipped: `POST /nausf-auth/v1/ue-authentications` creates an auth ctx (fetches Av5gHeAka from UDM, derives HXRES*, returns Av5gAka + Location), and `PUT .../{ctx}/5g-aka-confirmation` verifies RES* vs XRES* in constant time and returns KSEAF on success. In-memory ctx store, consumed on terminal result. End-to-end `TestAUSF_EndToEnd` drives AMF→AUSF→UDM→subscriber over two h2c loopback servers.
+- `pkg/subscriber/admin` tested: `Store` interface extracted from `*subscriber.Service` and a `HealthCheckFunc` seam added; `api_test.go` covers health, list/get/create/update/delete, auth-vector, CSV import/export, and the recovery-middleware panic path via `httptest` + fake store. Compile-time assertion pins `*subscriber.Service` to `Store`. `cmd/hss` updated to pass a `db.PingContext` closure.
 
 ### Remaining
 - `pkg/udm` — still to do: `Nudm_UECM` serving-AMF registration (needs pkg/amf).
 - `pkg/udr` — still to do: authentication-subscription endpoint.
-- Tests for `pkg/subscriber/admin` (moved but untested).
 
 ## Roadmap (after v0.5)
 - **v0.6** — NGAP + 5G-NAS + AMF + NRF. Milestone: UERANSIM 5G UE completes REGISTRATION.
