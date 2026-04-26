@@ -103,3 +103,82 @@ func TestUDM_over_UDR_chain(t *testing.T) {
 		}
 	})
 }
+
+// TestUDM_UEAU_over_UDR_chain is the UEAU twin of TestUDM_over_UDR_chain:
+// UDM's AuthSource is a UDR client, UDR reads creds from its SubscriberStore,
+// everything goes over h2c on loopback. The important property is that two
+// consecutive AMF→UDM UEAU calls must produce different AUTN values, proving
+// that the UDR-backed UEAU is both (a) reading fresh SQN on each call and
+// (b) PATCHing SQN back to UDR so the next call sees the advance.
+func TestUDM_UEAU_over_UDR_chain(t *testing.T) {
+	log := logger.New("error", "text")
+
+	store := &fakeStore{subs: map[string]*subscriber.Subscriber{
+		"001010000000001": {
+			IMSI: "001010000000001",
+			Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+			OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+			AMF:  "b9b9",
+			SQN:  "000000000001",
+		},
+	}}
+
+	udrSvc := udr.NewService(store, log)
+	udrPort := pickFreePort(t)
+	udrSrv := sbi.NewServer(sbi.ServerConfig{
+		BindAddress: "127.0.0.1", Port: udrPort, NFType: "UDR",
+	}, log, udrSvc.Handler())
+	go func() { _ = udrSrv.Serve() }()
+
+	udrClient := udr.NewClient("http://127.0.0.1:"+strconv.Itoa(udrPort), "UDM", false)
+	// UDM uses UDR for BOTH SDM (via NewUDRSource) and UEAU (via NewUDRAuthSource).
+	udmSvc := NewService(NewUDRSource(udrClient, "00101"), log).
+		WithAuthSource(NewUDRAuthSource(udrClient))
+	udmPort := pickFreePort(t)
+	udmSrv := sbi.NewServer(sbi.ServerConfig{
+		BindAddress: "127.0.0.1", Port: udmPort, NFType: "UDM",
+	}, log, udmSvc.Handler())
+	go func() { _ = udmSrv.Serve() }()
+
+	time.Sleep(100 * time.Millisecond)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = udmSrv.Shutdown(ctx)
+		_ = udrSrv.Shutdown(ctx)
+	})
+
+	caller := sbi.NewClient("http://127.0.0.1:"+strconv.Itoa(udmPort), "TEST-AUSF", false)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req := &AuthenticationInfoRequest{ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org"}
+
+	var first, second AuthenticationInfoResult
+	if err := caller.DoJSON(ctx, "POST", "/nudm-ueau/v1/imsi-001010000000001/security-information/generate-auth-data", req, &first); err != nil {
+		t.Fatalf("first UEAU: %v", err)
+	}
+	if first.AuthType != AuthType5GAka || first.AuthenticationVector == nil {
+		t.Fatalf("first vector missing: %+v", first)
+	}
+	if len(first.AuthenticationVector.AUTN) != 32 {
+		t.Errorf("first AUTN hex: want 32 chars, got %d (%q)", len(first.AuthenticationVector.AUTN), first.AuthenticationVector.AUTN)
+	}
+
+	if err := caller.DoJSON(ctx, "POST", "/nudm-ueau/v1/imsi-001010000000001/security-information/generate-auth-data", req, &second); err != nil {
+		t.Fatalf("second UEAU: %v", err)
+	}
+
+	// Distinct AUTN is the observable proof that SQN advanced in UDR
+	// between calls. (RAND also changes, which changes AUTN too — but if
+	// SQN writeback were broken the fakeStore would still have SQN=1
+	// both times, and SQN⊕AK bytes inside AUTN would be the same modulo
+	// RAND, still yielding different AUTN — so we additionally check
+	// the store directly.)
+	if first.AuthenticationVector.AUTN == second.AuthenticationVector.AUTN {
+		t.Errorf("AUTN repeated across calls: %q", first.AuthenticationVector.AUTN)
+	}
+	if store.subs["001010000000001"].SQN != "000000000003" {
+		t.Errorf("SQN in store: want 000000000003 after two advances, got %s", store.subs["001010000000001"].SQN)
+	}
+}

@@ -31,10 +31,11 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 - `pkg/udm.Client` — consumer for Nudm_SDM + Nudm_UEAU (mirrors pkg/udr.Client shape, typed ErrNotFound / ErrBadSupi from 404/400).
 - `pkg/ausf` Nausf_UEAuthentication shipped: `POST /nausf-auth/v1/ue-authentications` creates an auth ctx (fetches Av5gHeAka from UDM, derives HXRES*, returns Av5gAka + Location), and `PUT .../{ctx}/5g-aka-confirmation` verifies RES* vs XRES* in constant time and returns KSEAF on success. In-memory ctx store, consumed on terminal result. End-to-end `TestAUSF_EndToEnd` drives AMF→AUSF→UDM→subscriber over two h2c loopback servers.
 - `pkg/subscriber/admin` tested: `Store` interface extracted from `*subscriber.Service` and a `HealthCheckFunc` seam added; `api_test.go` covers health, list/get/create/update/delete, auth-vector, CSV import/export, and the recovery-middleware panic path via `httptest` + fake store. Compile-time assertion pins `*subscriber.Service` to `Store`. `cmd/hss` updated to pass a `db.PingContext` closure.
+- `pkg/udr` SQN writeback shipped: `PATCH /nudr-dr/v2/subscription-data/{ueId}/authentication-data/authentication-subscription` accepts an RFC 6902 JSON Patch; only `replace /sequenceNumber/sqn` is honored today (other ops → 422). `Client.UpdateAuthSubscriptionSQN` is the typed consumer. `SubscriberStore` grew `SetSQN`; `pkg/subscriber.Service.SetSQN` validates 12-hex and updates the row.
+- `pkg/udm` `NewUDRAuthSource` shipped — the UEAU twin of `NewUDRSource`. On each `GenerateAv` it GETs auth-subscription from UDR, runs Milenage locally, then `IncrementSQNHex` + PATCHes SQN back to UDR so the next vector won't replay. `TestUDM_UEAU_over_UDR_chain` proves AUTN advances and the store ends at the expected SQN after two calls.
 
 ### Remaining
 - `pkg/udm` — still to do: `Nudm_UECM` serving-AMF registration (needs pkg/amf).
-- `pkg/udr` — SQN writeback (PATCH) so a UDR-backed UEAU can persist the advanced counter. Once that lands, `pkg/udm` gets a `NewUDRAuthSource` to mirror the `NewUDRSource` am-data layering flip.
 
 ## Roadmap (after v0.5)
 - **v0.6** — NGAP + 5G-NAS + AMF + NRF. Milestone: UERANSIM 5G UE completes REGISTRATION.
@@ -58,7 +59,7 @@ Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/
 | `pkg/sbi/common` | Shared TS 29.571 types | Shipping |
 | `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
 | `pkg/udm` | Nudm SBI face (SDM + UEAU) + AmDataSource / AuthSource seams | Shipping (SDM am-data, UEAU 5G-AKA); UECM pending |
-| `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data + authentication-subscription GET); SQN writeback pending |
+| `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data + authentication-subscription GET/PATCH SQN) |
 | `pkg/ausf` | Nausf SBI face + in-memory auth-ctx store | Shipping (5G-AKA create + confirm) |
 | `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
 | `pkg/amf` | AMF core | Planned (v0.6) |

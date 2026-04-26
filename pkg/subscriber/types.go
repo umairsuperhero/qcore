@@ -85,16 +85,28 @@ func (s *Subscriber) SQNBytes() ([6]byte, error) {
 }
 
 func (s *Subscriber) IncrementSQN() error {
-	val, err := strconv.ParseUint(s.SQN, 16, 48)
+	next, err := IncrementSQNHex(s.SQN)
 	if err != nil {
-		return fmt.Errorf("parsing SQN: %w", err)
+		return err
+	}
+	s.SQN = next
+	return nil
+}
+
+// IncrementSQNHex advances a 12-hex-char SQN by one, wrapping at 2^48.
+// Exposed for callers that don't own a Subscriber row — e.g. a UDR-backed
+// UEAU that reads SQN from a remote auth-subscription record, advances
+// it locally, and writes it back over the wire.
+func IncrementSQNHex(sqn string) (string, error) {
+	val, err := strconv.ParseUint(sqn, 16, 48)
+	if err != nil {
+		return "", fmt.Errorf("parsing SQN: %w", err)
 	}
 	val++
 	if val > 0xffffffffffff {
 		val = 0
 	}
-	s.SQN = fmt.Sprintf("%012x", val)
-	return nil
+	return fmt.Sprintf("%012x", val), nil
 }
 
 func decodeHex16(s string) ([16]byte, error) {

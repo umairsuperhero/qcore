@@ -30,6 +30,15 @@ func (f *fakeStore) GetSubscriber(_ context.Context, imsi string) (*subscriber.S
 	return s, nil
 }
 
+func (f *fakeStore) SetSQN(_ context.Context, imsi, newSQN string) error {
+	s, ok := f.subs[imsi]
+	if !ok {
+		return fmt.Errorf("subscriber %s not found", imsi)
+	}
+	s.SQN = newSQN
+	return nil
+}
+
 // TestUDM_SDM_AmData spins the UDM up behind a real pkg/sbi server in h2c
 // mode and exercises the Nudm_SDM /am-data endpoint end-to-end: happy
 // path, unknown SUPI (404), malformed SUPI (400). That covers the three
