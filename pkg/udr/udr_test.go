@@ -28,6 +28,25 @@ func (f *fakeStore) GetSubscriber(_ context.Context, imsi string) (*subscriber.S
 	return s, nil
 }
 
+func (f *fakeStore) SetSQN(_ context.Context, imsi, newSQN string) error {
+	// Mirror the production pkg/subscriber.Service.SetSQN validation so the
+	// handler's "hex"/"12 hex" error-string branch is reachable in tests.
+	if len(newSQN) != 12 {
+		return fmt.Errorf("SQN must be 12 hex chars, got %d", len(newSQN))
+	}
+	for _, c := range newSQN {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return fmt.Errorf("SQN must be hex: %q", newSQN)
+		}
+	}
+	s, ok := f.subs[imsi]
+	if !ok {
+		return fmt.Errorf("subscriber %s not found", imsi)
+	}
+	s.SQN = newSQN
+	return nil
+}
+
 // TestUDR_DataRepository_AmData covers the single endpoint shipped in
 // this cut. Happy path + unknown ueId (404/DATA_NOT_FOUND) + malformed
 // ueId (400). Same three shapes as pkg/udm's test — UDR gets the same
@@ -184,6 +203,52 @@ func TestUDR_AuthenticationSubscription(t *testing.T) {
 		_, err := client.GetAuthenticationSubscription(ctx, "nai-foo@bar")
 		if !errors.Is(err, ErrBadUeID) {
 			t.Errorf("want ErrBadUeID, got %v", err)
+		}
+	})
+
+	t.Run("PATCH replace /sequenceNumber/sqn persists to store", func(t *testing.T) {
+		if err := client.UpdateAuthSubscriptionSQN(ctx, "imsi-001010000000001", "ff9bb4d0b608"); err != nil {
+			t.Fatalf("UpdateAuthSubscriptionSQN: %v", err)
+		}
+		// Roundtrip — GET should return the new SQN.
+		got, err := client.GetAuthenticationSubscription(ctx, "imsi-001010000000001")
+		if err != nil {
+			t.Fatalf("re-GET: %v", err)
+		}
+		if got.SequenceNumber == nil || got.SequenceNumber.Sqn != "ff9bb4d0b608" {
+			t.Errorf("sqn did not persist: %+v", got.SequenceNumber)
+		}
+	})
+
+	t.Run("PATCH on unknown ueId returns ErrNotFound", func(t *testing.T) {
+		err := client.UpdateAuthSubscriptionSQN(ctx, "imsi-999999999999999", "000000000001")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("want ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("PATCH with unsupported op returns 422", func(t *testing.T) {
+		// Drive the raw SBI client so we can shape a non-standard body.
+		raw := sbi.NewClient(baseURL, "TEST-UDM", false)
+		body := []map[string]any{
+			{"op": "remove", "path": "/sequenceNumber/sqn"},
+		}
+		err := raw.DoJSON(ctx, "PATCH",
+			"/nudr-dr/v2/subscription-data/imsi-001010000000001/authentication-data/authentication-subscription",
+			body, nil)
+		pd, ok := err.(*sbi.ProblemDetails)
+		if !ok {
+			t.Fatalf("want *ProblemDetails, got %T: %v", err, err)
+		}
+		if pd.Status != http.StatusUnprocessableEntity {
+			t.Errorf("status: want 422, got %d", pd.Status)
+		}
+	})
+
+	t.Run("PATCH with malformed SQN value returns 400", func(t *testing.T) {
+		err := client.UpdateAuthSubscriptionSQN(ctx, "imsi-001010000000001", "zzzz")
+		if !errors.Is(err, ErrBadUeID) {
+			t.Errorf("want ErrBadUeID (via 400 path), got %v", err)
 		}
 	})
 }

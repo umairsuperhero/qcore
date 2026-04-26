@@ -308,6 +308,27 @@ func (s *Service) ExportCSV(ctx context.Context, writer io.Writer) error {
 	return nil
 }
 
+// SetSQN overwrites the stored SQN for an IMSI. Used by UDR when a UEAU
+// backend elsewhere (e.g. a UDR-backed UDM AuthSource) has advanced the
+// counter and needs to persist it. Validates the hex shape but does not
+// enforce monotonicity — replay protection is a caller-side concern.
+func (s *Service) SetSQN(ctx context.Context, imsi, newSQN string) error {
+	if len(newSQN) != 12 {
+		return fmt.Errorf("SQN must be 12 hex chars, got %d", len(newSQN))
+	}
+	if _, err := hex.DecodeString(newSQN); err != nil {
+		return fmt.Errorf("SQN must be hex: %w", err)
+	}
+	result := s.db.WithContext(ctx).Model(&Subscriber{}).Where("imsi = ?", imsi).Update("sqn", newSQN)
+	if result.Error != nil {
+		return fmt.Errorf("updating SQN: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("subscriber %s not found", imsi)
+	}
+	return nil
+}
+
 // ParsePLMN converts a PLMN string like "00101" to a 3-byte array.
 func ParsePLMN(plmn string) ([3]byte, error) {
 	if len(plmn) != 5 && len(plmn) != 6 {

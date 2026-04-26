@@ -57,6 +57,30 @@ func (c *Client) GetAuthenticationSubscription(ctx context.Context, ueID string)
 	return &resp, nil
 }
 
+// UpdateAuthSubscriptionSQN — TS 29.505 §5.2.2.3.4. Persists an advanced
+// SQN for ueId by sending an RFC 6902 JSON Patch with a single replace
+// op on /sequenceNumber/sqn. Used by a UDR-backed UDM UEAU after it has
+// generated an auth vector and incremented the counter locally.
+func (c *Client) UpdateAuthSubscriptionSQN(ctx context.Context, ueID, newSQN string) error {
+	path := "/nudr-dr/v2/subscription-data/" + ueID + "/authentication-data/authentication-subscription"
+	body := []map[string]any{
+		{"op": "replace", "path": "/sequenceNumber/sqn", "value": newSQN},
+	}
+	if err := c.sbi.DoJSON(ctx, "PATCH", path, body, nil); err != nil {
+		var pd *sbi.ProblemDetails
+		if errors.As(err, &pd) {
+			switch pd.Status {
+			case http.StatusNotFound:
+				return ErrNotFound
+			case http.StatusBadRequest:
+				return ErrBadUeID
+			}
+		}
+		return err
+	}
+	return nil
+}
+
 // GetAmData — TS 29.504 §5.2.2.2.3. Fetches AccessAndMobilitySubscriptionData
 // for ueId ("imsi-<15 digits>") under servingPlmnID.
 //

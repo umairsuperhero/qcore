@@ -18,6 +18,7 @@ import (
 // once UDR owns its own storage tables).
 type SubscriberStore interface {
 	GetSubscriber(ctx context.Context, imsi string) (*subscriber.Subscriber, error)
+	SetSQN(ctx context.Context, imsi, newSQN string) error
 }
 
 // Service is the UDR NF. Hand Handler() to pkg/sbi.NewServer.
@@ -53,6 +54,12 @@ func (s *Service) registerRoutes() {
 	// Authentication-subscription sits at a different path shape —
 	// no servingPlmnId, since Milenage creds are PLMN-independent.
 	s.mux.HandleFunc("GET /nudr-dr/v2/subscription-data/{ueId}/authentication-data/authentication-subscription", s.getAuthSubscription)
+
+	// TS 29.505 §5.2.2.3.4. PATCH accepts an RFC 6902 JSON Patch body.
+	// Today we only implement the one op UEAU actually needs — replace
+	// /sequenceNumber/sqn — because that's what holds back a UDR-backed
+	// UEAU flip. Other ops return 422 so a caller can't silently no-op.
+	s.mux.HandleFunc("PATCH /nudr-dr/v2/subscription-data/{ueId}/authentication-data/authentication-subscription", s.patchAuthSubscription)
 }
 
 // getAmData — TS 29.504 §5.2.2.2.3. Returns the AM subscription data
@@ -150,6 +157,102 @@ func (s *Service) getAuthSubscription(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// patchAuthSubscription — TS 29.505 §5.2.2.3.4. Applies an RFC 6902 JSON
+// Patch to the UE's auth-subscription. QCore supports exactly one op
+// shape today: {"op":"replace","path":"/sequenceNumber/sqn","value":"<hex>"}.
+// Other ops/paths return 422. A 204 on success mirrors the spec's
+// "No Content" response style for successful PATCH.
+func (s *Service) patchAuthSubscription(w http.ResponseWriter, r *http.Request) {
+	ueID := r.PathValue("ueId")
+	imsi, err := parseIMSIUeID(ueID)
+	if err != nil {
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusBadRequest,
+			Title:  "Bad Request",
+			Detail: err.Error(),
+			Cause:  "MANDATORY_IE_INCORRECT",
+		})
+		return
+	}
+
+	var ops []jsonPatchOp
+	if err := json.NewDecoder(r.Body).Decode(&ops); err != nil {
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusBadRequest,
+			Title:  "Bad Request",
+			Detail: "malformed JSON Patch body: " + err.Error(),
+			Cause:  "MANDATORY_IE_INCORRECT",
+		})
+		return
+	}
+
+	var newSQN string
+	for _, op := range ops {
+		if op.Op == "replace" && op.Path == "/sequenceNumber/sqn" {
+			v, ok := op.Value.(string)
+			if !ok {
+				sbi.WriteProblem(w, &sbi.ProblemDetails{
+					Status: http.StatusUnprocessableEntity,
+					Title:  "Unprocessable Entity",
+					Detail: "sqn value must be a string",
+					Cause:  "MANDATORY_IE_INCORRECT",
+				})
+				return
+			}
+			newSQN = v
+			continue
+		}
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusUnprocessableEntity,
+			Title:  "Unprocessable Entity",
+			Detail: "unsupported patch op " + op.Op + " on " + op.Path + "; only replace on /sequenceNumber/sqn is supported",
+			Cause:  "UNSUPPORTED_RESOURCE",
+		})
+		return
+	}
+	if newSQN == "" {
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusBadRequest,
+			Title:  "Bad Request",
+			Detail: "no supported patch op in body",
+			Cause:  "MANDATORY_IE_MISSING",
+		})
+		return
+	}
+
+	if err := s.store.SetSQN(r.Context(), imsi, newSQN); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			sbi.WriteProblem(w, &sbi.ProblemDetails{
+				Status: http.StatusNotFound,
+				Title:  "Not Found",
+				Detail: err.Error(),
+				Cause:  "DATA_NOT_FOUND",
+			})
+			return
+		}
+		if strings.Contains(err.Error(), "hex") || strings.Contains(err.Error(), "12 hex") {
+			sbi.WriteProblem(w, &sbi.ProblemDetails{
+				Status: http.StatusBadRequest,
+				Title:  "Bad Request",
+				Detail: err.Error(),
+				Cause:  "MANDATORY_IE_INCORRECT",
+			})
+			return
+		}
+		s.log.WithError(err).WithField("ueId", ueID).Error("udr: set sqn failed")
+		sbi.WriteProblem(w, sbi.InternalError("sqn update failed"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type jsonPatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value"`
 }
 
 // parseIMSIUeID accepts a UDR ueId in "imsi-<15 digits>" form.
