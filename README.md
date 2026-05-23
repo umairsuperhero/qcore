@@ -18,6 +18,12 @@ QCore is a mobile core network designed around developer experience. Start a com
 
 ---
 
+## Product & Vision
+
+The [Product Experience Charter](docs/experience-charter.md) is the single source of truth for what QCore is, who it is for, and the experience it must deliver. It covers the North Star vision, the primary persona (RAN/device developer), the Golden Path, the AI-native diagnostic strategy, and the commercial logic. **Read it before any product or design work.**
+
+---
+
 ## Quick Start
 
 ```bash
