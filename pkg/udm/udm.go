@@ -82,6 +82,7 @@ func (s *storeSource) GetAmData(ctx context.Context, supi string) (*common.Acces
 type Service struct {
 	source AmDataSource
 	auth   AuthSource
+	uecm   *uecmStore
 	log    logger.Logger
 	mux    *http.ServeMux
 }

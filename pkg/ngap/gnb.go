@@ -316,6 +316,24 @@ func EncodeInitialContextSetupResponse(resp *InitialContextSetupResponse) ([]byt
 	})
 }
 
+// DecodeInitialContextSetupResponse decodes the gNB's InitialContextSetupResponse IE list.
+func DecodeInitialContextSetupResponse(ies []ProtocolIE) (*InitialContextSetupResponse, error) {
+	resp := &InitialContextSetupResponse{}
+	for _, ie := range ies {
+		var err error
+		switch ie.ID {
+		case IEIDAMFUENGAPID:
+			resp.AMFUENGAPID, err = DecodeAMFUENGAPID(ie.Value)
+		case IEIDRANUENGAPID:
+			resp.RANUENGAPID, err = DecodeRANUENGAPID(ie.Value)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("ngap: InitialContextSetupResponse IE %d: %w", ie.ID, err)
+		}
+	}
+	return resp, nil
+}
+
 // DecodeInitialContextSetupRequest decodes an InitialContextSetupRequest from its IE list.
 func DecodeInitialContextSetupRequest(ies []ProtocolIE) (*InitialContextSetupRequest, error) {
 	req := &InitialContextSetupRequest{}
