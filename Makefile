@@ -1,4 +1,4 @@
-.PHONY: build build-hss build-mme build-spgw build-all test test-short lint clean run run-mme run-spgw docker-build docker-build-hss docker-build-mme docker-build-spgw docker-up docker-down coverage
+.PHONY: build build-hss build-mme build-spgw build-collector build-all test test-short lint clean run run-mme run-spgw run-collector docker-build docker-build-hss docker-build-mme docker-build-spgw docker-up docker-down coverage
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -16,7 +16,10 @@ build-mme:
 build-spgw:
 	go build $(LDFLAGS) -o bin/qcore-spgw ./cmd/spgw
 
-build-all: build-hss build-mme build-spgw
+build-collector:
+	go build $(LDFLAGS) -o bin/qcore-collector ./cmd/qcore-collector
+
+build-all: build-hss build-mme build-spgw build-collector
 
 test:
 	go test -v -race -coverprofile=coverage.out ./...
@@ -38,6 +41,9 @@ run-mme: build-mme
 
 run-spgw: build-spgw
 	./bin/qcore-spgw start --config config.example.yaml
+
+run-collector: build-collector
+	./bin/qcore-collector start
 
 docker-build: docker-build-hss docker-build-mme docker-build-spgw
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/config"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/mme"
@@ -110,6 +111,7 @@ func runServer() error {
 	defer cancel()
 
 	mmeService := mme.New(&cfg.MME, plmnID, log, mmeMetrics, s6a, s11)
+	mmeService.SetEmitter(events.New(cfg.Telemetry.CollectorURL, "mme", log))
 
 	// Start S1AP listener
 	if err := mmeService.Start(ctx); err != nil {

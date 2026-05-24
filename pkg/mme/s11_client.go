@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 )
 
@@ -74,8 +75,9 @@ func (c *S11Client) HealthCheck() error {
 	return nil
 }
 
-// CreateSession invokes POST /api/v1/sessions on the SPGW.
-func (c *S11Client) CreateSession(req *S11CreateSessionRequest) (*S11CreateSessionResponse, error) {
+// CreateSession invokes POST /api/v1/sessions on the SPGW. journeyID, when
+// non-empty, is forwarded as a header so the SPGW can tag its own events.
+func (c *S11Client) CreateSession(req *S11CreateSessionRequest, journeyID string) (*S11CreateSessionResponse, error) {
 	if !c.Enabled() {
 		return nil, fmt.Errorf("S11 client disabled (no SPGW URL configured)")
 	}
@@ -83,7 +85,15 @@ func (c *S11Client) CreateSession(req *S11CreateSessionRequest) (*S11CreateSessi
 	if err != nil {
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
-	httpResp, err := c.httpClient.Post(c.baseURL+"/api/v1/sessions", "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/sessions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if journeyID != "" {
+		httpReq.Header.Set(events.JourneyIDHeader, journeyID)
+	}
+	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("POST /sessions: %w", err)
 	}
@@ -101,7 +111,7 @@ func (c *S11Client) CreateSession(req *S11CreateSessionRequest) (*S11CreateSessi
 }
 
 // ModifyBearer invokes POST /api/v1/sessions/{imsi}/modify on the SPGW.
-func (c *S11Client) ModifyBearer(imsi string, req *S11ModifyBearerRequest) error {
+func (c *S11Client) ModifyBearer(imsi string, req *S11ModifyBearerRequest, journeyID string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("S11 client disabled")
 	}
@@ -110,7 +120,15 @@ func (c *S11Client) ModifyBearer(imsi string, req *S11ModifyBearerRequest) error
 		return fmt.Errorf("marshaling request: %w", err)
 	}
 	url := fmt.Sprintf("%s/api/v1/sessions/%s/modify", c.baseURL, imsi)
-	httpResp, err := c.httpClient.Post(url, "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("building request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if journeyID != "" {
+		httpReq.Header.Set(events.JourneyIDHeader, journeyID)
+	}
+	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", url, err)
 	}
@@ -123,7 +141,7 @@ func (c *S11Client) ModifyBearer(imsi string, req *S11ModifyBearerRequest) error
 }
 
 // DeleteSession invokes DELETE /api/v1/sessions/{imsi}.
-func (c *S11Client) DeleteSession(imsi string) error {
+func (c *S11Client) DeleteSession(imsi, journeyID string) error {
 	if !c.Enabled() {
 		return nil
 	}
@@ -131,6 +149,9 @@ func (c *S11Client) DeleteSession(imsi string) error {
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
+	}
+	if journeyID != "" {
+		req.Header.Set(events.JourneyIDHeader, journeyID)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/metrics"
 )
 
@@ -51,14 +52,18 @@ type API struct {
 	svc     *Service
 	router  *mux.Router
 	metrics *metrics.SPGWMetrics
+	emitter events.Emitter
 }
 
 // NewAPI wires up HTTP routes against the service.
 func NewAPI(svc *Service) *API {
-	a := &API{svc: svc, router: mux.NewRouter()}
+	a := &API{svc: svc, router: mux.NewRouter(), emitter: &events.NoopEmitter{}}
 	a.routes()
 	return a
 }
+
+// SetEmitter attaches a structured event emitter. Call before serving.
+func (a *API) SetEmitter(e events.Emitter) { a.emitter = e }
 
 // SetMetrics attaches Prometheus instrumentation to the API. Idempotent.
 func (a *API) SetMetrics(m *metrics.SPGWMetrics) {
@@ -115,20 +120,38 @@ func (a *API) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *API) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	journeyID := r.Header.Get(events.JourneyIDHeader)
 	var req CreateSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("decode: %v", err))
 		return
 	}
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s11",
+		Message:   "S11 Create Session Request received",
+		Payload:   events.SessionCreatePayload{IMSI: req.IMSI, APN: req.APN},
+	})
 	resp, err := a.svc.CreateSession(&req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s11",
+		Message:   "S11 Create Session Response sent",
+		Payload:   events.SessionCreatePayload{IMSI: req.IMSI, APN: resp.APN, UEIP: resp.UEIP, SGWTEID: resp.SGWTEID},
+	})
 	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (a *API) handleModifyBearer(w http.ResponseWriter, r *http.Request) {
+	journeyID := r.Header.Get(events.JourneyIDHeader)
 	vars := mux.Vars(r)
 	imsi := vars["imsi"]
 	var req ModifyBearerRequest
@@ -142,15 +165,32 @@ func (a *API) handleModifyBearer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s11",
+		Message:   "S11 Modify Bearer: eNB endpoint recorded",
+		Payload:   events.ModifyBearerPayload{IMSI: imsi, ENBAddr: req.ENBAddr, ENBTEID: req.ENBTEID},
+	})
 	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *API) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	journeyID := r.Header.Get(events.JourneyIDHeader)
 	imsi := mux.Vars(r)["imsi"]
 	if err := a.svc.DeleteSession(imsi); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s11",
+		Message:   "S11 Delete Session: session released",
+		Payload:   events.SessionDeletePayload{IMSI: imsi},
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 

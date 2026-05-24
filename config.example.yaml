@@ -47,3 +47,6 @@ logging:
 metrics:
   enabled: true
   port: 9090
+
+telemetry:
+  collector_url: "http://localhost:9099"

@@ -8,12 +8,20 @@ import (
 )
 
 type Config struct {
-	HSS      HSSConfig      `mapstructure:"hss"`
-	MME      MMEConfig      `mapstructure:"mme"`
-	SPGW     SPGWConfig     `mapstructure:"spgw"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Logging  LoggingConfig  `mapstructure:"logging"`
-	Metrics  MetricsConfig  `mapstructure:"metrics"`
+	HSS       HSSConfig       `mapstructure:"hss"`
+	MME       MMEConfig       `mapstructure:"mme"`
+	SPGW      SPGWConfig      `mapstructure:"spgw"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Logging   LoggingConfig   `mapstructure:"logging"`
+	Metrics   MetricsConfig   `mapstructure:"metrics"`
+	Telemetry TelemetryConfig `mapstructure:"telemetry"`
+}
+
+// TelemetryConfig controls the structured event pipeline. When CollectorURL
+// is set, each NF posts events to the collector; when empty, events are
+// silently discarded (NoopEmitter).
+type TelemetryConfig struct {
+	CollectorURL string `mapstructure:"collector_url"`
 }
 
 type HSSConfig struct {
@@ -117,6 +125,8 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.port", 9090)
+
+	v.SetDefault("telemetry.collector_url", "http://localhost:9099")
 }
 
 func Load(path string) (*Config, error) {

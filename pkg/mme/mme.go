@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/qcore-project/qcore/pkg/config"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/s1ap"
@@ -23,6 +24,7 @@ type MME struct {
 	metrics *metrics.MMEMetrics
 	s6a     *S6aClient
 	s11     *S11Client
+	emitter events.Emitter
 
 	// PLMN identity
 	plmn [3]byte
@@ -59,8 +61,12 @@ func New(cfg *config.MMEConfig, plmn [3]byte, log logger.Logger, m *metrics.MMEM
 		mmeGroupID:  cfg.MMEGroupID,
 		mmeCode:     cfg.MMECode,
 		relCapacity: cfg.RelCapacity,
+		emitter:     &events.NoopEmitter{},
 	}
 }
+
+// SetEmitter attaches a structured event emitter. Call before Start.
+func (m *MME) SetEmitter(e events.Emitter) { m.emitter = e }
 
 // Start begins accepting S1AP connections from eNodeBs.
 func (m *MME) Start(ctx context.Context) error {

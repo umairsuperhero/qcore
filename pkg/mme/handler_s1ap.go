@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/nas"
 	"github.com/qcore-project/qcore/pkg/s1ap"
 )
@@ -82,6 +83,13 @@ func (m *MME) handleS1Setup(ctx context.Context, enb *EnbContext, ies []s1ap.Pro
 		if m.metrics != nil {
 			m.metrics.S1SetupRequests.WithLabelValues("rejected").Inc()
 		}
+		m.emitter.Emit(events.Event{
+			Category: events.SignalingRx,
+			Severity: events.SeverityWarn,
+			Protocol: "s1ap",
+			Message:  "S1 Setup rejected: PLMN mismatch",
+			Payload:  events.S1SetupPayload{ENBName: req.ENBName, ENBID: req.GlobalENBID.ENBID, Success: false},
+		})
 		m.sendS1SetupFailure(enb, streamID)
 		return
 	}
@@ -131,6 +139,13 @@ func (m *MME) handleS1Setup(ctx context.Context, enb *EnbContext, ies []s1ap.Pro
 	if m.metrics != nil {
 		m.metrics.S1SetupRequests.WithLabelValues("success").Inc()
 	}
+	m.emitter.Emit(events.Event{
+		Category: events.SignalingRx,
+		Severity: events.SeverityInfo,
+		Protocol: "s1ap",
+		Message:  "S1 Setup complete",
+		Payload:  events.S1SetupPayload{ENBName: req.ENBName, ENBID: req.GlobalENBID.ENBID, Success: true},
+	})
 
 	m.log.Infof("S1 Setup complete for %s", enb)
 }
@@ -215,9 +230,11 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 		m.metrics.AttachRequests.WithLabelValues().Inc()
 	}
 
-	// --- Allocate UE context ---
+	// --- Allocate UE context and mint journey ID ---
 	mmeUEID := m.allocateUEID()
+	journeyID := events.MintJourneyID()
 	ue := &UEContext{
+		JourneyID:           journeyID,
 		MMEUES1APID:         mmeUEID,
 		ENBUES1APID:         msg.ENBUES1APID,
 		IMSI:                attachReq.IMSI,
@@ -241,13 +258,30 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 		m.metrics.ActiveUEs.WithLabelValues().Inc()
 	}
 
+	m.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Attach Request received",
+		Payload:   events.AttachRequestPayload{IMSI: attachReq.IMSI, AttachType: int(attachReq.AttachType), TAC: msg.TAI.TAC},
+	})
+
 	// --- Fetch auth vector from HSS ---
-	av, err := m.s6a.AuthenticationInformationRequest(attachReq.IMSI)
+	av, err := m.s6a.AuthenticationInformationRequest(attachReq.IMSI, journeyID)
 	if err != nil {
 		m.log.Errorf("HSS auth vector request failed for IMSI=%s: %v", attachReq.IMSI, err)
 		if m.metrics != nil {
 			m.metrics.AttachFailures.WithLabelValues("hss_error").Inc()
 		}
+		m.emitter.Emit(events.Event{
+			JourneyID: journeyID,
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "s6a",
+			Message:   "HSS auth vector request failed",
+			Payload:   events.ErrorPayload{Code: "hss_error", Message: err.Error()},
+		})
 		m.ues.Delete(mmeUEID)
 		return
 	}
@@ -303,6 +337,19 @@ func (m *MME) handleInitialUEMessage(ctx context.Context, enb *EnbContext, ies [
 		m.log.Errorf("Failed to send AUTH REQUEST to eNB: %v", err)
 		return
 	}
+
+	randHex := av.RAND
+	if len(randHex) > 16 {
+		randHex = randHex[:16]
+	}
+	m.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Authentication Request sent",
+		Payload:   events.AuthRequestPayload{IMSI: attachReq.IMSI, RANDHex: randHex},
+	})
 
 	m.log.Infof("Sent AUTH REQUEST to UE (IMSI=%s, MME-UE-S1AP-ID=%d)", attachReq.IMSI, mmeUEID)
 }
@@ -451,11 +498,24 @@ func (m *MME) handleAuthResponse(ue *UEContext, body []byte, streamID uint16) {
 	ueCap := ue.UENetworkCapability
 	ue.mu.RUnlock()
 
+	ue.mu.RLock()
+	journeyID := ue.JourneyID
+	imsiForAuth := ue.IMSI
+	ue.mu.RUnlock()
+
 	if !nas.VerifyAuthResponse(resp.RES, xres) {
 		m.log.Warnf("AUTH FAILURE for UE=%d: RES mismatch", ue.MMEUES1APID)
 		if m.metrics != nil {
 			m.metrics.AttachFailures.WithLabelValues("res_mismatch").Inc()
 		}
+		m.emitter.Emit(events.Event{
+			JourneyID: journeyID,
+			Category:  events.SignalingRx,
+			Severity:  events.SeverityWarn,
+			Protocol:  "nas4g",
+			Message:   "Authentication Response: RES mismatch",
+			Payload:   events.AuthResponsePayload{IMSI: imsiForAuth, Success: false, Cause: "res_mismatch"},
+		})
 		m.ues.Delete(ue.MMEUES1APID)
 		return
 	}
@@ -464,6 +524,14 @@ func (m *MME) handleAuthResponse(ue *UEContext, body []byte, streamID uint16) {
 	if m.metrics != nil {
 		m.metrics.AuthRequests.WithLabelValues("success").Inc()
 	}
+	m.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Authentication Response: verified",
+		Payload:   events.AuthResponsePayload{IMSI: imsiForAuth, Success: true},
+	})
 
 	// Derive NAS keys: EEA0 (null cipher, alg_id=0) and EIA2 (AES-CMAC, alg_id=2)
 	kNASenc, err := nas.DeriveKNASenc(kasme, 0) // EEA0
@@ -528,6 +596,15 @@ func (m *MME) handleAuthResponse(ue *UEContext, body []byte, streamID uint16) {
 		return
 	}
 
+	m.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Security Mode Command sent",
+		Payload:   events.SecurityModePayload{IMSI: imsiForAuth, CipherAlg: 0, IntegAlg: 2},
+	})
+
 	m.log.Infof("Sent SECURITY MODE COMMAND to UE=%d", ue.MMEUES1APID)
 }
 
@@ -539,7 +616,21 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 		return
 	}
 
-	m.log.Infof("Security Mode Complete from UE=%d (IMSI=%s)", ue.MMEUES1APID, ue.IMSI)
+	ue.mu.RLock()
+	secModeJourneyID := ue.JourneyID
+	secModeIMSI := ue.IMSI
+	ue.mu.RUnlock()
+
+	m.log.Infof("Security Mode Complete from UE=%d (IMSI=%s)", ue.MMEUES1APID, secModeIMSI)
+
+	m.emitter.Emit(events.Event{
+		JourneyID: secModeJourneyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Security Mode Complete received",
+		Payload:   events.SecurityModePayload{IMSI: secModeIMSI, CipherAlg: 0, IntegAlg: 2},
+	})
 
 	// Allocate PDN address. Prefer the real SPGW via S11 when available; fall
 	// back to the internal placeholder allocator so control-plane-only runs
@@ -551,19 +642,27 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 	)
 	if m.s11 != nil && m.s11.Enabled() {
 		resp, err := m.s11.CreateSession(&S11CreateSessionRequest{
-			IMSI: ue.IMSI,
+			IMSI: secModeIMSI,
 			APN:  "internet",
 			EBI:  5,
 			PLMN: m.cfg.PLMN,
-		})
+		}, secModeJourneyID)
 		if err != nil {
-			m.log.Warnf("S11 CreateSession failed for IMSI=%s: %v (falling back to local IP allocation)", ue.IMSI, err)
+			m.log.Warnf("S11 CreateSession failed for IMSI=%s: %v (falling back to local IP allocation)", secModeIMSI, err)
 		} else {
 			pdnAddr = resp.UEIP
 			sgwTEID = resp.SGWTEID
 			sgwAddr = resp.SGWAddr
 			m.log.Infof("S11 Create Session OK: IMSI=%s UE-IP=%s SGW-TEID=0x%x SGW=%s",
-				ue.IMSI, pdnAddr, sgwTEID, sgwAddr)
+				secModeIMSI, pdnAddr, sgwTEID, sgwAddr)
+			m.emitter.Emit(events.Event{
+				JourneyID: secModeJourneyID,
+				Category:  events.SignalingRx,
+				Severity:  events.SeverityInfo,
+				Protocol:  "s11",
+				Message:   "S11 Create Session Response: session established",
+				Payload:   events.SessionCreatePayload{IMSI: secModeIMSI, APN: resp.APN, UEIP: resp.UEIP, SGWTEID: resp.SGWTEID},
+			})
 		}
 	}
 	if pdnAddr == "" {
@@ -627,15 +726,47 @@ func (m *MME) handleSecurityModeComplete(ue *UEContext, body []byte, streamID ui
 		return
 	}
 
-	m.log.Infof("Sent INITIAL CONTEXT SETUP REQUEST to eNB for UE=%d (IMSI=%s, IP=%s)", ue.MMEUES1APID, ue.IMSI, pdnAddr)
+	m.log.Infof("Sent INITIAL CONTEXT SETUP REQUEST to eNB for UE=%d (IMSI=%s, IP=%s)", ue.MMEUES1APID, secModeIMSI, pdnAddr)
 	if m.metrics != nil {
 		m.metrics.AttachSuccess.WithLabelValues().Inc()
 	}
+	m.emitter.Emit(events.Event{
+		JourneyID: secModeJourneyID,
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Attach Accept sent (via Initial Context Setup)",
+		Payload:   events.AttachCompletePayload{IMSI: secModeIMSI, UEIP: pdnAddr, SGWTEID: sgwTEID},
+	})
 }
 
 // handleAttachComplete acknowledges the UE's ATTACH COMPLETE and sends EMM INFORMATION.
 func (m *MME) handleAttachComplete(ue *UEContext) {
-	m.log.Infof("ATTACH COMPLETE from UE=%d (IMSI=%s) — UE is now registered", ue.MMEUES1APID, ue.IMSI)
+	ue.mu.RLock()
+	attachJourneyID := ue.JourneyID
+	attachIMSI := ue.IMSI
+	attachIP := ue.PDNAddr
+	attachTEID := ue.SGWTEID
+	ue.mu.RUnlock()
+
+	m.log.Infof("ATTACH COMPLETE from UE=%d (IMSI=%s) — UE is now registered", ue.MMEUES1APID, attachIMSI)
+
+	m.emitter.Emit(events.Event{
+		JourneyID: attachJourneyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "Attach Complete: UE registered",
+		Payload:   events.AttachCompletePayload{IMSI: attachIMSI, UEIP: attachIP, SGWTEID: attachTEID},
+	})
+	m.emitter.Emit(events.Event{
+		JourneyID: attachJourneyID,
+		Category:  events.StateTransition,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas4g",
+		Message:   "UE state: Deregistered → Registered",
+		Payload:   events.StateTransitionPayload{IMSI: attachIMSI, From: "Deregistered", To: "Registered"},
+	})
 
 	// Send EMM INFORMATION (optional) so the UE displays the network name and syncs time.
 	emmInfo := nas.EncodeEMMInformation(m.cfg.Name)
@@ -695,7 +826,11 @@ func (m *MME) handleIdentityResponse(ue *UEContext, body []byte, streamID uint16
 	}
 
 	// Fetch auth vector from HSS
-	av, err := m.s6a.AuthenticationInformationRequest(resp.IMSI)
+	ue.mu.RLock()
+	idRespJourneyID := ue.JourneyID
+	ue.mu.RUnlock()
+
+	av, err := m.s6a.AuthenticationInformationRequest(resp.IMSI, idRespJourneyID)
 	if err != nil {
 		m.log.Errorf("HSS auth vector request failed for IMSI=%s: %v", resp.IMSI, err)
 		if m.metrics != nil {
@@ -863,6 +998,7 @@ func (m *MME) cleanupUE(ue *UEContext) {
 	ue.mu.RLock()
 	tmsi := ue.TMSI
 	imsi := ue.IMSI
+	journeyID := ue.JourneyID
 	hadSession := ue.PDNAddr != ""
 	ue.mu.RUnlock()
 	if tmsi != 0 {
@@ -871,11 +1007,11 @@ func (m *MME) cleanupUE(ue *UEContext) {
 	// Best-effort release of the SPGW session. Run async to keep cleanup fast;
 	// any failure is logged but not surfaced.
 	if hadSession && m.s11 != nil && m.s11.Enabled() && imsi != "" {
-		go func(imsi string) {
-			if err := m.s11.DeleteSession(imsi); err != nil {
+		go func(imsi, journeyID string) {
+			if err := m.s11.DeleteSession(imsi, journeyID); err != nil {
 				m.log.Debugf("S11 DeleteSession for IMSI=%s: %v", imsi, err)
 			}
-		}(imsi)
+		}(imsi, journeyID)
 	}
 	if m.metrics != nil {
 		m.metrics.ActiveUEs.WithLabelValues().Dec()
@@ -1008,17 +1144,26 @@ func (m *MME) handleInitialContextSetupResponse(ctx context.Context, enb *EnbCon
 	ue.ENBTEID = enbTEID
 	ue.ENBAddr = enbAddr
 	imsi := ue.IMSI
+	modJourneyID := ue.JourneyID
 	ue.mu.Unlock()
 
 	if m.s11 != nil && m.s11.Enabled() && imsi != "" && enbAddr != "" && enbTEID != 0 {
 		if err := m.s11.ModifyBearer(imsi, &S11ModifyBearerRequest{
 			ENBTEID: enbTEID,
 			ENBAddr: enbAddr,
-		}); err != nil {
+		}, modJourneyID); err != nil {
 			m.log.Warnf("S11 ModifyBearer failed for IMSI=%s: %v", imsi, err)
 			return
 		}
 		m.log.Infof("S11 ModifyBearer OK: IMSI=%s eNB=%s eNB-TEID=0x%x", imsi, enbAddr, enbTEID)
+		m.emitter.Emit(events.Event{
+			JourneyID: modJourneyID,
+			Category:  events.SignalingRx,
+			Severity:  events.SeverityInfo,
+			Protocol:  "s11",
+			Message:   "S11 Modify Bearer: downlink tunnel established",
+			Payload:   events.ModifyBearerPayload{IMSI: imsi, ENBAddr: enbAddr, ENBTEID: enbTEID},
+		})
 	}
 }
 

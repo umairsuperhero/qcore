@@ -11,6 +11,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/database"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/subscriber"
@@ -105,6 +106,7 @@ func runServer() error {
 		return sqlDB.PingContext(ctx)
 	}
 	api := admin.NewAPI(service, health, log, hssMetrics)
+	api.SetEmitter(events.New(cfg.Telemetry.CollectorURL, "hss", log))
 
 	// Zero-config delight: seed a demo subscriber on first run so curl works immediately.
 	// Uses 3GPP TS 35.208 Test Set 1 — the canonical Milenage test credentials.

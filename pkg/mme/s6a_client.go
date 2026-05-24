@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 )
 
@@ -40,13 +41,22 @@ func NewS6aClient(hssURL string, log logger.Logger) *S6aClient {
 }
 
 // AuthenticationInformationRequest fetches an authentication vector from the HSS
-// for the given IMSI. This is the S6a AIR/AIA equivalent.
-func (c *S6aClient) AuthenticationInformationRequest(imsi string) (*AuthVectorResponse, error) {
+// for the given IMSI. journeyID, when non-empty, is forwarded as a header so
+// the HSS can tag its own events with the same journey ID.
+func (c *S6aClient) AuthenticationInformationRequest(imsi, journeyID string) (*AuthVectorResponse, error) {
 	url := fmt.Sprintf("%s/api/v1/subscribers/%s/auth-vector", c.hssURL, imsi)
 
 	c.log.Debugf("AIR for IMSI=%s -> %s", imsi, url)
 
-	resp, err := c.httpClient.Post(url, "application/json", nil)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building HSS request: %w", err)
+	}
+	if journeyID != "" {
+		req.Header.Set(events.JourneyIDHeader, journeyID)
+	}
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HSS unreachable at %s: %w (is qcore-hss running?)", c.hssURL, err)
 	}

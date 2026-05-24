@@ -69,6 +69,10 @@ type NASAlgorithm struct {
 type UEContext struct {
 	mu sync.RWMutex
 
+	// JourneyID is minted at first contact (AttachRequest) and carried on
+	// every downstream inter-NF call so all events for this UE are correlated.
+	JourneyID string
+
 	// Identity
 	IMSI    string
 	GUTI    string // allocated by MME (e.g., "001-01-1-01-00000001")

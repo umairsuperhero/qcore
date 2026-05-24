@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/config"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/spgw"
@@ -91,6 +92,7 @@ func runServer() error {
 	if spgwMetrics != nil {
 		api.SetMetrics(spgwMetrics)
 	}
+	api.SetEmitter(events.New(cfg.Telemetry.CollectorURL, "spgw", log))
 	apiAddr := fmt.Sprintf("%s:%d", cfg.SPGW.BindAddress, cfg.SPGW.APIPort)
 	apiServer := &http.Server{
 		Addr:         apiAddr,

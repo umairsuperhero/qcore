@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"github.com/qcore-project/qcore/pkg/subscriber"
@@ -42,6 +43,7 @@ type API struct {
 	health  HealthCheckFunc
 	log     logger.Logger
 	metrics *metrics.HSSMetrics
+	emitter events.Emitter
 	router  *mux.Router
 }
 
@@ -59,11 +61,15 @@ func NewAPI(store Store, health HealthCheckFunc, log logger.Logger, m *metrics.H
 		health:  health,
 		log:     log.WithField("component", "subscriber-admin"),
 		metrics: m,
+		emitter: &events.NoopEmitter{},
 		router:  mux.NewRouter(),
 	}
 	a.registerRoutes()
 	return a
 }
+
+// SetEmitter attaches a structured event emitter. Call before serving.
+func (a *API) SetEmitter(e events.Emitter) { a.emitter = e }
 
 func (a *API) Router() *mux.Router {
 	return a.router
@@ -183,15 +189,43 @@ func (a *API) deleteSubscriber(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) generateAuthVector(w http.ResponseWriter, r *http.Request) {
 	imsi := mux.Vars(r)["imsi"]
+	journeyID := r.Header.Get(events.JourneyIDHeader)
+
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s6a",
+		Message:   "Auth vector request received",
+		Payload:   events.AuthVectorPayload{IMSI: imsi},
+	})
+
 	av, err := a.store.GenerateAuthVector(r.Context(), imsi)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
+			a.emitter.Emit(events.Event{
+				JourneyID: journeyID,
+				Category:  events.ErrorEvent,
+				Severity:  events.SeverityWarn,
+				Protocol:  "s6a",
+				Message:   "Auth vector: subscriber not found",
+				Payload:   events.ErrorPayload{Code: "not_found", Message: err.Error()},
+			})
 			respondError(w, http.StatusNotFound, err.Error())
 			return
 		}
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	a.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "s6a",
+		Message:   "Auth vector generated and returned",
+		Payload:   events.AuthVectorPayload{IMSI: imsi},
+	})
 	respondJSON(w, http.StatusOK, APIResponse{Data: av})
 }
 
