@@ -161,7 +161,7 @@ func (g *mockGNB) sendInitialUE(t *testing.T, ranID uint64, regReq []byte) {
 			NRCGI: ngap.NRCGI{PLMN: plmn, NRCellID: 1},
 			TAI:   ngap.TAI{PLMN: plmn, TAC: [3]byte{0, 0, 1}},
 		},
-		RRCEstablishmentCause: ngap.RRCEstablishmentCauseMOSignalling,
+		RRCEstablishmentCause: ngap.RRCMoSignalling,
 	})
 	require.NoError(t, err)
 	require.NoError(t, g.send(msg))
@@ -304,21 +304,24 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	require.NotNil(t, authMsg.AuthenticationRequest, "expected AuthenticationRequest")
 	t.Logf("Auth Request received: RAND=%x", authMsg.AuthenticationRequest.RAND)
 
-	// Step 4: Simulate UE computing RES* from RAND+AUTN using subscriber credentials
+	// Step 4: Simulate UE computing RES* using the RAND received in the Auth Request.
+	// Must use Generate5GAuthVectorWithRAND so the same RAND feeds Milenage,
+	// matching the XRES* that AUSF stored when it called UDM.
 	ki := hd(sub.Ki)
 	opc := hd(sub.OPc)
 	sqn := hd("000000000001")
 	amfParam := hd(sub.AMF)
 
-	var kiArr, opcArr [16]byte
+	var kiArr, opcArr, randArr [16]byte
 	copy(kiArr[:], ki)
 	copy(opcArr[:], opc)
+	copy(randArr[:], authMsg.AuthenticationRequest.RAND[:])
 	var sqnArr [6]byte
 	copy(sqnArr[:], sqn)
 	var amfArr [2]byte
 	copy(amfArr[:], amfParam)
 
-	av, err := subscriber.Generate5GAuthVector(kiArr, opcArr, sqnArr, amfArr, snName)
+	av, err := subscriber.Generate5GAuthVectorWithRAND(kiArr, opcArr, randArr, sqnArr, amfArr, snName)
 	require.NoError(t, err)
 	resStarBytes := hd(av.XRESStar)
 
