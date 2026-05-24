@@ -1,108 +1,91 @@
-# QCore — Claude Code Context
+# QCore — Claude Code Build Brief
 
-## What is QCore
-Open-source 4G/5G core network in Go. GitHub: https://github.com/umairsuperhero/qcore  
-**North star:** "The open-source core network that's actually easy to use" — DX is the differentiator over open5GS/Magma/free5GC.  
-**Long-term ambition:** Beat commercial cores (Attocore, Druid) on 4G + 5G with best-in-class web UI, remote troubleshooting, local AI hotfixes, and a clear monetization layer.
+> Operational companion to `docs/experience-charter.md`. The **charter is
+> authoritative** on *what* QCore is and *why*; this brief covers *how* and *in
+> what order*. When the two conflict, the charter wins. Recommended location:
+> `CLAUDE.md` at the repo root, so Claude Code loads it automatically each session.
 
-## Strategic Direction
-**5G SA is the primary track.** 4G EPC is supported legacy. 3GPP 5G SBA is HTTP/2 + OpenAPI — natively aligned with QCore's REST-first instincts. Private-5G (enterprise/campus/industrial) is where monetization lives. See `docs/rfc/0001-5g-sba-pivot.md` and `docs/ARCHITECTURE.md`.
+## Read first, every session
+1. `docs/experience-charter.md` — especially §1 (what QCore is), §3 (North Star),
+   §5 (persona), §11 (scope), §13 (Decision Log).
+2. This brief.
 
-## Shipped (working, tested)
-- **Phase 1 — HSS:** Milenage verified vs 3GPP TS 35.208. REST API, PostgreSQL, Docker Compose, Prometheus metrics, CLI.
-- **Phase 2 — MME:** Full S1AP/NAS attach — SCTP/TCP, PER codec, NAS security, KDF, AES-CMAC, GUTI attach, Detach, Paging. `TestEndToEndAttachOverWire` green.
-- **Phase 3 — SPGW + GTP-U:** GTP-U v1 codec, collapsed SPGW, UE IP + TEID pools, S11-over-HTTP/JSON, Linux TUN egress (`//go:build linux`), 10 Prometheus metrics. `TestEndToEndUserPlane` green.
+## What QCore is (one paragraph)
+QCore is a development and test environment for cellular networks — **not** a 5G
+core competing on protocol features. Primary user: the RAN/device developer who
+needs a core to test against. QCore wins on experience: fast start, deep
+observability, and AI that explains failures. UX is the product.
 
-## Current Task — v0.5 Subscriber Plane Refactor
-**Goal:** Unified subscriber library usable by both the legacy 4G admin REST API and the 5G SBI faces (UDM/UDR/AUSF).  
-**Milestone:** A subscriber added via CLI is queryable via both the admin REST API (legacy) and N8/Nudr (5G SBI).
+## FIRST TASK — audit before building
+Before implementing anything new, audit the current repository against the
+charter's "Now" scope (§11) and produce a short report covering:
+- Which network functions / protocols are implemented and working — 4G EPC, 5G
+  SA, 5G NSA, and to what degree.
+- Current state of: the dashboard, config validation, the telemetry/event model,
+  any simulator integration, any AI features.
+- A gap list: charter "Now" scope minus what exists today.
+Do not start Phase A until the product lead has reviewed this audit.
 
-### Done
-- `pkg/subscriber` extracted from the old `pkg/hss`: model + validation + DB ops, Milenage (`F2345`, `GenerateOPc`, `GenerateAuthVector`), SQN management. Verified against 3GPP TS 35.208.
-- `pkg/subscriber/admin` hosts the operator-facing REST API (CRUD, CSV import/export, on-demand auth vectors). Consumed by `cmd/hss`.
-- `pkg/hss` retired. `cmd/hss` now imports `pkg/subscriber` + `pkg/subscriber/admin` directly. The `hss` binary name is kept for operator familiarity.
-- `pkg/sbi` Phase 0 sketch: HTTP/2 (h2/h2c) server, client, RFC 7807 ProblemDetails, RequestID/AccessLog/Recover middleware, round-trip test green.
-- `pkg/sbi/nrf` Phase 0 sketch: NFProfile/NFService types, in-memory Client for single-process dev + tests.
-- `pkg/sbi/common` — shared TS 29.571 types (AccessAndMobilitySubscriptionData, AmbrRm, Nssai, Snssai) lifted out of pkg/udm + pkg/udr so cross-NF shapes don't drift.
-- `pkg/udm` Nudm_SDM `GET /nudm-sdm/v2/{supi}/am-data` shipped. Refactored behind an `AmDataSource` interface: `NewStoreSource` wraps pkg/subscriber for direct mode; `NewUDRSource` wraps `pkg/udr.Client` for network mode — the UDM→UDR layering flip is a constructor-arg change.
-- `pkg/udr` Nudr_DataRepository `GET /nudr-dr/v2/subscription-data/{ueId}/{servingPlmnId}/provisioned-data/am-data` shipped. Has a client (`pkg/udr.Client`) with typed errors (`ErrNotFound`, `ErrBadUeID`). End-to-end UDM→UDR chain test (`TestUDM_over_UDR_chain`) exercises both NFs over h2c loopback.
-- 5G-AKA in `pkg/subscriber`: `DeriveKAUSF` (TS 33.501 Annex A.2), `DeriveRESStar` (Annex A.4), `DeriveHXRESStar` (Annex A.5), `DeriveKSEAF` (Annex A.6), `Generate5GAuthVector`. Same Milenage core as 4G EPS-AKA, SQN shared per-subscriber.
-- `pkg/udm` Nudm_UEAU `POST /nudm-ueau/v1/{supi}/security-information/generate-auth-data` shipped. `AuthSource` seam parallels `AmDataSource`; attach with `WithAuthSource`. Returns `AuthenticationInfoResult` with `Av5gHeAka`. Resync (AUTS) returns 501 until Milenage reverse is wired.
-- `pkg/udm.Client` — consumer for Nudm_SDM + Nudm_UEAU (mirrors pkg/udr.Client shape, typed ErrNotFound / ErrBadSupi from 404/400).
-- `pkg/ausf` Nausf_UEAuthentication shipped: `POST /nausf-auth/v1/ue-authentications` creates an auth ctx (fetches Av5gHeAka from UDM, derives HXRES*, returns Av5gAka + Location), and `PUT .../{ctx}/5g-aka-confirmation` verifies RES* vs XRES* in constant time and returns KSEAF on success. In-memory ctx store, consumed on terminal result. End-to-end `TestAUSF_EndToEnd` drives AMF→AUSF→UDM→subscriber over two h2c loopback servers.
-- `pkg/subscriber/admin` tested: `Store` interface extracted from `*subscriber.Service` and a `HealthCheckFunc` seam added; `api_test.go` covers health, list/get/create/update/delete, auth-vector, CSV import/export, and the recovery-middleware panic path via `httptest` + fake store. Compile-time assertion pins `*subscriber.Service` to `Store`. `cmd/hss` updated to pass a `db.PingContext` closure.
-- `pkg/udr` SQN writeback shipped: `PATCH /nudr-dr/v2/subscription-data/{ueId}/authentication-data/authentication-subscription` accepts an RFC 6902 JSON Patch; only `replace /sequenceNumber/sqn` is honored today (other ops → 422). `Client.UpdateAuthSubscriptionSQN` is the typed consumer. `SubscriberStore` grew `SetSQN`; `pkg/subscriber.Service.SetSQN` validates 12-hex and updates the row.
-- `pkg/udm` `NewUDRAuthSource` shipped — the UEAU twin of `NewUDRSource`. On each `GenerateAv` it GETs auth-subscription from UDR, runs Milenage locally, then `IncrementSQNHex` + PATCHes SQN back to UDR so the next vector won't replay. `TestUDM_UEAU_over_UDR_chain` proves AUTN advances and the store ends at the expected SQN after two calls.
+## Build order — the re-sequenced roadmap
+The pre-charter roadmap optimized for protocol coverage and parked zero-config,
+5G, and AI as late "advanced features." The charter makes those the core of the
+product. Build in this order instead:
 
-### Remaining
-- `pkg/udm` — still to do: `Nudm_UECM` serving-AMF registration (needs pkg/amf).
+### Phase A — Substrate (foundation; everything depends on it)
+- **Structured telemetry & event model.** Every signaling message, network-
+  function state change, and config change emitted as structured, machine-
+  readable events. This is the substrate the observability UI and the AI both
+  consume — design it model-friendly from day one (charter §9.5).
+- **Input-time configuration validation framework** (charter principle 3).
+- **5G SA core** brought to the same maturity as the 4G EPC, if the audit shows
+  a gap. 5G SA is the lead — the Golden Path, demo, and positioning are built
+  around it; 4G/EPC remains fully supported but is not the headline (charter D11).
 
-## Roadmap (after v0.5)
-- **v0.6** — NGAP + 5G-NAS + AMF + NRF. Milestone: UERANSIM 5G UE completes REGISTRATION.
-- **v0.7** — PFCP + SMF + UPF (dual-mode). Milestone: UERANSIM 5G PDU session + ping.
-- **v0.8** — Dashboard (Next.js): subscriber CRUD, service topology, live attach flow visualiser.
-- **v0.9** — 4G legacy refactor on unified subscriber plane.
-- **v1.0** — OTel tracing, mTLS, Helm chart, conformance suite.
+### Phase B — The Golden Path (happy path)
+- One-command, zero-config launch (Golden Path 1–2).
+- Dashboard: system-health landing view (Pillar 1).
+- Guided, validated subscriber + network configuration in the UI (Pillar 2).
+- **Simulator integration:** bundle and orchestrate an existing open-source
+  RAN/UE simulator — UERANSIM for 5G, srsRAN or similar for 4G. **Do not build a
+  simulator from scratch.** Add one-click start and controllable error/
+  misconfiguration injection. Target fidelity: a scriptable control-plane tool,
+  not an RF emulator.
+- Live "see it work" observability view (Pillar 4).
+- **Exit criteria:** TTFC < 5 min in simulator mode, demonstrable end to end.
 
-## Package Map
-| Package | Purpose | Status |
-|---------|---------|--------|
-| `pkg/subscriber` | Subscriber storage + Milenage (unified 4G/5G) | Shipping |
-| `pkg/subscriber/admin` | Operator-facing REST API (CRUD, CSV, auth vectors) | Shipping |
-| `pkg/mme` | MME + S1AP + S6a client + S11 client | Shipping |
-| `pkg/s1ap` | S1AP PER codec | Shipping → PER will extract to `pkg/asn1per` |
-| `pkg/nas` | NAS codec + security | Shipping → will split nas4g/nas5g |
-| `pkg/sctp` | SCTP + TCP fallback | Shipping |
-| `pkg/gtp` | GTP-U v1 codec | Shipping |
-| `pkg/spgw` | SPGW + TUN egress + metrics | Shipping → will evolve to `pkg/upf` |
-| `pkg/sbi` | HTTP/2 + RFC 7807 SBI framework | Phase 0 sketch (v0.5) |
-| `pkg/sbi/common` | Shared TS 29.571 types | Shipping |
-| `pkg/sbi/nrf` | NRF types + in-memory client for dev/tests | Phase 0 sketch (v0.5) |
-| `pkg/udm` | Nudm SBI face (SDM + UEAU) + AmDataSource / AuthSource seams | Shipping (SDM am-data, UEAU 5G-AKA); UECM pending |
-| `pkg/udr` | Nudr SBI face + client | Shipping (DR am-data + authentication-subscription GET/PATCH SQN) |
-| `pkg/ausf` | Nausf SBI face + in-memory auth-ctx store | Shipping (5G-AKA create + confirm) |
-| `pkg/nrf` | NRF service (Nnrf over SBI) | Planned (v0.6) |
-| `pkg/amf` | AMF core | Planned (v0.6) |
+### Phase C — The diagnostic flagship (the AI-native core)
+- Structured diagnostic knowledge layer — a curated symptom→cause catalog.
+- AI Level 1 (Explain): cause-code decoding, signaling narration.
+- AI Level 2 (Diagnose): root-cause analysis + proposed fix, reasoning over the
+  Phase A event trace. **This is the flagship.**
+- Embedded SLM for bounded cases; optional bring-your-own-key frontier-model
+  escalation for hard cases (charter §9.3).
+- RAN/device config reconciliation against the core's config.
+- **Exit criteria:** TTRC targets met (charter §4).
 
-## Tech Stack
-- **Go 1.23**, logrus, cobra+viper, gorm, gorilla/mux, prometheus/client_golang, golang.org/x/sys
-- **PostgreSQL 16**, Docker Compose
-- **Next.js + TypeScript** (dashboard, v0.8)
-- Go module: `github.com/qcore-project/qcore`
+### Phase D — Iterate & adopt-into-workflow
+- Scenario authoring + execution against the simulator (Golden Path 7).
+- Learning Mode (secondary persona).
+- CI integration hooks (Golden Path 8).
 
-## Dev Environment
-- Windows machine (XPS-15), working via WSL Ubuntu-24.04
-- Project path: `/mnt/c/Users/XPS-15/Documents/Software/qcore` (WSL)
-- Docker Desktop must be running for integration tests
+Visual polish is the last 10% — after the experience is sound, not before.
 
-## Common Commands
-```bash
-# Build everything
-go build ./...
+## Explicitly deferred — do NOT build now
+Per charter §11 "Not Now": carrier-scale performance and HA; embedded-core
+productization; protocol feature-count parity with open5GS/free5GC; AI Levels
+3–4; team/hosted features. If a task drifts toward any of these, flag it rather
+than building it.
 
-# Run all tests
-go test ./...
+## Build principles
+- **Substrate before AI** — the AI is only as good as the telemetry it reasons over.
+- The dashboard is the source of truth; YAML is an export path, never required.
+- Validate configuration at input time, not at runtime.
+- Every error names its cause and its fix.
+- AI reliability comes from the structured diagnostic layer + ground-truth
+  telemetry — not from the model's parametric knowledge.
 
-# Run HSS self-tests (crypto verification)
-go run ./cmd/hss test
-
-# Start HSS server
-go run ./cmd/hss start
-
-# Start with Docker (full stack)
-docker compose up
-```
-
-## Code Conventions
-- Error wrapping: `fmt.Errorf("context: %w", err)`
-- Table-driven tests with testify/assert
-- Structured logging via `pkg/logger` (never import logrus directly)
-- Config via `pkg/config` (viper, YAML + env vars with QCORE_ prefix)
-- Linux-only code uses `//go:build linux` build tags
-- All crypto verified against 3GPP TS 35.208 test vectors
-
-## Design Principles
-1. **DX first** — prefer HTTP/JSON over obscure binary protocols where standards allow
-2. **Test vectors** — all crypto must be verified against 3GPP TS 35.208 test sets
-3. **No magic** — errors are explicit, logs are structured, metrics are Prometheus
-4. **Honest feedback** — push back on tech debt and short-term thinking
+## How this project is run
+The product lead is a product manager, not a programmer, and directs the build
+in plain English. Explain technical tradeoffs accordingly. When a request
+conflicts with the charter or this brief, flag it and explain why before
+proceeding.

@@ -1,6 +1,7 @@
 # QCore — Product Experience North Star & Charter
 
-> **Status:** v0.2 of the charter · supersedes the v0.1 draft · **Stage:** product at v0.6
+> **Status:** v0.3 of the charter · supersedes v0.2 · **Stage:** product at v0.6
+> **v0.3 change:** two open questions resolved — simulator scope and the 5G SA lead (see D10, D11).
 > **Owner:** Product
 >
 > **What this document is.** The single source of truth for *what QCore is, who it is
@@ -351,22 +352,19 @@ the *what*. Add an entry whenever a major decision is made or reversed.
 | D7 | **Build the deterministic substrate first** (observability + validation), designed model-friendly from day one. AI-native ≠ AI-first in build order. | The AI is only as good as the telemetry it reasons over. |
 | D8 | Commercial model: **bottom-up adoption, top-down monetization.** v1 success = adoption and engineer love, not revenue. | Resolves the willingness-to-pay inversion that has kept open-source cores from becoming businesses. Architecture is built so monetization is a later switch, not a rewrite. |
 | D9 | Small-operator/shared-spectrum is **expansion**; embedded-core and education are a later monetization path and a product mode respectively — none is the wedge. | "It can't be all things to everyone." Each fails at least one wedge test in §1/D2 (puzzle-piece dependency, no magical first-run, or weak economic gravity). |
+| D10 | The built-in RAN/UE simulator is bounded to a **scriptable control-plane tool with error injection** — not an RF/physical-layer emulator — and QCore **bundles existing open-source simulators** (UERANSIM for 5G; srsRAN or similar for 4G) rather than building its own. | The wedge user tests their own hardware against QCore; the simulator's job is zero-hardware demo, CI, and producing failures for the diagnostic layer to reason about. High RF fidelity would mean building a second hard product off-wedge. |
+| D11 | The Golden Path, demo, and positioning **lead with 5G SA.** 4G/EPC remains fully supported but is not the headline. | New RAN/device development is overwhelmingly 5G and the pain narrative is sharpest there. 4G/EPC stays because it is already built, many devices are still 4G, and 5G NSA depends on it. Implication: 5G SA core work is promoted to v1-critical (see build brief, Phase A). |
 
 ---
 
 ## 14. Open Questions
 
-The remaining agenda. Persona and positioning are now settled (§5, §13); these are not.
+The remaining agenda. Persona, positioning, simulator scope, and the 5G SA lead
+are now settled (§5, §13); these are not.
 
-1. **Simulator fidelity.** The built-in RAN/UE simulator is in scope and
-   strategically central (it is what makes QCore useful with zero hardware). How
-   realistic must it be for v1 — enough for the happy-path Golden Path, or
-   realistic enough to be a genuine test target?
-2. **4G vs 5G lead.** QCore supports both. Most of the world still runs 4G/LTE.
-   Does the Golden Path lead with 5G, with 4G, or stay neutral?
-3. **SLM selection & packaging.** Which small model, how it ships, container size
+1. **SLM selection & packaging.** Which small model, how it ships, container size
    budget, and the update path.
-4. **Monetization timing.** When does the first paid (team/hosted) tier appear,
+2. **Monetization timing.** When does the first paid (team/hosted) tier appear,
    and what is the precise free/paid line.
 
 ---
