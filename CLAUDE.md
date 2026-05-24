@@ -16,32 +16,48 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## FIRST TASK — audit before building
-Before implementing anything new, audit the current repository against the
-charter's "Now" scope (§11) and produce a short report covering:
-- Which network functions / protocols are implemented and working — 4G EPC, 5G
-  SA, 5G NSA, and to what degree.
-- Current state of: the dashboard, config validation, the telemetry/event model,
-  any simulator integration, any AI features.
-- A gap list: charter "Now" scope minus what exists today.
-Do not start Phase A until the product lead has reviewed this audit.
+## Current baseline — the v0.6 audit
+The codebase has been audited against the charter's "Now" scope; the baseline is
+recorded in `docs/audit-v0.6.md`. In brief: the 4G EPC (HSS, MME, SPGW) is
+complete and end-to-end verified; 5G SA is partially built (a "well-structured
+sketch"); the event model, the web dashboard, simulator bundling, and the AI
+layer do not exist yet. The build order below reflects that baseline. Re-audit
+only if the codebase has changed substantially since 2026-05-23.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
 5G, and AI as late "advanced features." The charter makes those the core of the
-product. Build in this order instead:
+product. The v0.6 audit then refined this further: the 4G EPC works end-to-end
+today, while 5G SA still needs major build. So the experience layer is built and
+proven against the 4G EPC first, and 5G SA completion runs as a separate
+parallel track (charter D12). v1 still ships 5G-SA-leading (charter D11).
 
-### Phase A — Substrate (foundation; everything depends on it)
-- **Structured telemetry & event model.** Every signaling message, network-
-  function state change, and config change emitted as structured, machine-
-  readable events. This is the substrate the observability UI and the AI both
-  consume — design it model-friendly from day one (charter §9.5).
-- **Input-time configuration validation framework** (charter principle 3).
-- **5G SA core** brought to the same maturity as the 4G EPC, if the audit shows
-  a gap. 5G SA is the lead — the Golden Path, demo, and positioning are built
-  around it; 4G/EPC remains fully supported but is not the headline (charter D11).
+### Phase A — The Event Model (the substrate; sole gate for Phases B and C)
+- **Build the structured event model.** Every signaling message, NF state
+  transition, and config change emitted as a structured, protocol-agnostic
+  event, with correlation IDs threading a single UE's journey across all
+  network functions. This is the substrate the observability UI and the AI both
+  consume. Detailed plan: `docs/phase-a-event-model.md`.
+- Input-time configuration validation is already implemented for 4G (charter
+  principle 3); 5G config fields are added on the 5G SA Track.
+- **Exit criterion:** the existing 4G end-to-end test produces one correlated,
+  queryable, streamable event trace.
 
-### Phase B — The Golden Path (happy path)
+### 5G SA Track (parallel — does NOT gate Phases B or C)
+Per the v0.6 audit, 5G SA is a "well-structured sketch": five NFs (AMF, AUSF,
+UDM, UDR, NRF) are partially built with no binary entrypoints, and SMF, UPF, and
+the PFCP/N4 codec do not exist.
+- Finish the five partial NFs: complete stubbed endpoints (e.g. the UDM 501s)
+  and GUTI re-registration; add binary entrypoints and containers.
+- Build SMF and UPF (5G session management and user plane) and the PFCP/N4 codec.
+- **Native SCTP transport** for S1AP/NGAP — currently TCP-fallback only.
+  Wedge-critical: real gNodeBs speak NGAP over SCTP, and the wedge is testing
+  real RAN/devices.
+- Instrument the 5G NFs against the Phase A event schema as they mature.
+- **Exit criterion:** a 5G SA end-to-end registration + session test passes
+  against UERANSIM in 5G mode, equivalent to the 4G end-to-end test.
+
+### Phase B — The Golden Path (built protocol-agnostically; proven on 4G first)
 - One-command, zero-config launch (Golden Path 1–2).
 - Dashboard: system-health landing view (Pillar 1).
 - Guided, validated subscriber + network configuration in the UI (Pillar 2).
@@ -51,6 +67,7 @@ product. Build in this order instead:
   misconfiguration injection. Target fidelity: a scriptable control-plane tool,
   not an RF emulator.
 - Live "see it work" observability view (Pillar 4).
+- Built against the 4G EPC first; works for 5G SA once that track lands.
 - **Exit criteria:** TTFC < 5 min in simulator mode, demonstrable end to end.
 
 ### Phase C — The diagnostic flagship (the AI-native core)

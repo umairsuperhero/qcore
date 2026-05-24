@@ -1,7 +1,7 @@
 # QCore — Product Experience North Star & Charter
 
-> **Status:** v0.3 of the charter · supersedes v0.2 · **Stage:** product at v0.6
-> **v0.3 change:** two open questions resolved — simulator scope and the 5G SA lead (see D10, D11).
+> **Status:** v0.4 of the charter · supersedes v0.3 · **Stage:** product at v0.6
+> **v0.4 change:** build order clarified after the v0.6 codebase audit — the experience layer is built on the 4G EPC first, with 5G SA completion as a parallel track (see D12).
 > **Owner:** Product
 >
 > **What this document is.** The single source of truth for *what QCore is, who it is
@@ -353,7 +353,8 @@ the *what*. Add an entry whenever a major decision is made or reversed.
 | D8 | Commercial model: **bottom-up adoption, top-down monetization.** v1 success = adoption and engineer love, not revenue. | Resolves the willingness-to-pay inversion that has kept open-source cores from becoming businesses. Architecture is built so monetization is a later switch, not a rewrite. |
 | D9 | Small-operator/shared-spectrum is **expansion**; embedded-core and education are a later monetization path and a product mode respectively — none is the wedge. | "It can't be all things to everyone." Each fails at least one wedge test in §1/D2 (puzzle-piece dependency, no magical first-run, or weak economic gravity). |
 | D10 | The built-in RAN/UE simulator is bounded to a **scriptable control-plane tool with error injection** — not an RF/physical-layer emulator — and QCore **bundles existing open-source simulators** (UERANSIM for 5G; srsRAN or similar for 4G) rather than building its own. | The wedge user tests their own hardware against QCore; the simulator's job is zero-hardware demo, CI, and producing failures for the diagnostic layer to reason about. High RF fidelity would mean building a second hard product off-wedge. |
-| D11 | The Golden Path, demo, and positioning **lead with 5G SA.** 4G/EPC remains fully supported but is not the headline. | New RAN/device development is overwhelmingly 5G and the pain narrative is sharpest there. 4G/EPC stays because it is already built, many devices are still 4G, and 5G NSA depends on it. Implication: 5G SA core work is promoted to v1-critical (see build brief, Phase A). |
+| D11 | The Golden Path, demo, and positioning **lead with 5G SA.** 4G/EPC remains fully supported but is not the headline. | New RAN/device development is overwhelmingly 5G and the pain narrative is sharpest there. 4G/EPC stays because it is already built, many devices are still 4G, and 5G NSA depends on it. Implication: 5G SA completion is v1-critical (see build brief, 5G SA Track). |
+| D12 | The experience layer (event model, dashboard, AI diagnosis) is built **protocol-agnostically and proven against the working 4G EPC first**; 5G SA completion runs as a parallel track and does not gate it. v1 still ships 5G-SA-leading (D11 unchanged). | The v0.6 audit found 5G SA needs major build — SMF, UPF, and the PFCP codec do not exist. Gating all experience work behind 5G completion would rebuild the product backwards — the exact error this charter exists to prevent. The 4G EPC works end-to-end today, so building the experience on it reaches a demonstrable product far sooner; 4G is permanently supported (D11), so the work is not throwaway. |
 
 ---
 
