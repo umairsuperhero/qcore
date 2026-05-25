@@ -39,3 +39,8 @@ Thumbs.db
 # Build
 tmp/
 .cache/
+
+# Dashboard frontend — commit the built bundle (dist/) so `go build` works
+# without Node installed; ignore intermediate npm state.
+pkg/dashboard/web/node_modules/
+pkg/dashboard/web/.parcel-cache/

@@ -11,6 +11,7 @@ type Config struct {
 	HSS       HSSConfig       `mapstructure:"hss"`
 	MME       MMEConfig       `mapstructure:"mme"`
 	SPGW      SPGWConfig      `mapstructure:"spgw"`
+	Dashboard DashboardConfig `mapstructure:"dashboard"`
 	Database  DatabaseConfig  `mapstructure:"database"`
 	Logging   LoggingConfig   `mapstructure:"logging"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
@@ -57,6 +58,18 @@ type SPGWConfig struct {
 	Egress      string `mapstructure:"egress"`      // "log" (default) or "tun" (Linux only)
 	TUNName     string `mapstructure:"tun_name"`    // Linux TUN device name (default "qcore0")
 	TUNMTU      int    `mapstructure:"tun_mtu"`     // Linux TUN MTU (default 1400 to fit under typical L2 after GTP overhead)
+}
+
+// DashboardConfig is the BFF that the browser talks to. It is the only
+// process that aggregates state from every NF — see docs/phase-b-golden-path.md.
+type DashboardConfig struct {
+	BindAddress  string `mapstructure:"bind_address"`
+	Port         int    `mapstructure:"port"`
+	HSSURL       string `mapstructure:"hss_url"`
+	MMEURL       string `mapstructure:"mme_url"`
+	MMES1APAddr  string `mapstructure:"mme_s1ap_addr"` // host:port for the built-in simulator
+	SPGWURL      string `mapstructure:"spgw_url"`
+	CollectorURL string `mapstructure:"collector_url"`
 }
 
 type DatabaseConfig struct {
@@ -127,6 +140,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.port", 9090)
 
 	v.SetDefault("telemetry.collector_url", "http://localhost:9099")
+
+	v.SetDefault("dashboard.bind_address", "0.0.0.0")
+	v.SetDefault("dashboard.port", 3000)
+	v.SetDefault("dashboard.hss_url", "http://localhost:8080")
+	v.SetDefault("dashboard.mme_url", "http://localhost:8081")
+	v.SetDefault("dashboard.mme_s1ap_addr", "localhost:36412")
+	v.SetDefault("dashboard.spgw_url", "http://localhost:8082")
+	v.SetDefault("dashboard.collector_url", "http://localhost:9099")
 }
 
 func Load(path string) (*Config, error) {

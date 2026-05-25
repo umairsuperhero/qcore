@@ -1,0 +1,28 @@
+FROM golang:1.23-alpine AS builder
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+    -o /qcore-collector ./cmd/qcore-collector
+
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates wget
+
+COPY --from=builder /qcore-collector /usr/local/bin/qcore-collector
+
+# 9099 = event ingest, SSE stream, journey queries
+EXPOSE 9099
+
+ENTRYPOINT ["qcore-collector"]
+CMD ["start", "--bind", "0.0.0.0", "--port", "9099"]

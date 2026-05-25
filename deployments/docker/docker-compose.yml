@@ -15,6 +15,18 @@ services:
       timeout: 5s
       retries: 5
 
+  collector:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.collector
+    ports:
+      - "9099:9099"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9099/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   hss:
     build:
       context: ../..
@@ -25,6 +37,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      collector:
+        condition: service_healthy
     environment:
       QCORE_DATABASE_HOST: postgres
       QCORE_DATABASE_PORT: "5432"
@@ -33,6 +47,7 @@ services:
       QCORE_DATABASE_NAME: qcore
       QCORE_DATABASE_SSL_MODE: disable
       QCORE_LOGGING_FORMAT: json
+      QCORE_TELEMETRY_COLLECTOR_URL: http://collector:9099
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
       interval: 5s
@@ -47,11 +62,15 @@ services:
       - "2152:2152/udp"
       - "8082:8082"
       - "9092:9092"
+    depends_on:
+      collector:
+        condition: service_healthy
     environment:
       QCORE_SPGW_BIND_ADDRESS: 0.0.0.0
       QCORE_SPGW_SGW_U1_ADDR: spgw
       QCORE_METRICS_PORT: "9092"
       QCORE_LOGGING_FORMAT: json
+      QCORE_TELEMETRY_COLLECTOR_URL: http://collector:9099
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/v1/health"]
       interval: 5s
@@ -71,12 +90,38 @@ services:
         condition: service_healthy
       spgw:
         condition: service_healthy
+      collector:
+        condition: service_healthy
     environment:
       QCORE_MME_HSS_URL: http://hss:8080
       QCORE_MME_SPGW_URL: http://spgw:8082
       QCORE_MME_BIND_ADDRESS: 0.0.0.0
       QCORE_MME_SCTP_MODE: tcp
       QCORE_METRICS_PORT: "9091"
+      QCORE_LOGGING_FORMAT: json
+      QCORE_TELEMETRY_COLLECTOR_URL: http://collector:9099
+
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      hss:
+        condition: service_healthy
+      spgw:
+        condition: service_healthy
+      collector:
+        condition: service_healthy
+    environment:
+      QCORE_DASHBOARD_BIND_ADDRESS: 0.0.0.0
+      QCORE_DASHBOARD_PORT: "3000"
+      QCORE_DASHBOARD_HSS_URL: http://hss:8080
+      QCORE_DASHBOARD_MME_URL: http://mme:8081
+      QCORE_DASHBOARD_MME_S1AP_ADDR: mme:36412
+      QCORE_DASHBOARD_SPGW_URL: http://spgw:8082
+      QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
       QCORE_LOGGING_FORMAT: json
 
 volumes:
