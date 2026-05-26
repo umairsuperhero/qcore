@@ -16,13 +16,13 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline — the v0.6 audit
-The codebase has been audited against the charter's "Now" scope; the baseline is
-recorded in `docs/audit-v0.6.md`. In brief: the 4G EPC (HSS, MME, SPGW) is
-complete and end-to-end verified; 5G SA is partially built (a "well-structured
-sketch"); the event model, the web dashboard, simulator bundling, and the AI
-layer do not exist yet. The build order below reflects that baseline. Re-audit
-only if the codebase has changed substantially since 2026-05-23.
+## Current baseline — post-Phase B (2026-05-25)
+Phase A (event model) and Phase B (dashboard, simulator, one-command launch) are
+**shipped**. The 4G EPC is complete and end-to-end verified. The 5G SA Track is
+in progress (T1 next). Phase C (diagnostic AI) comes after the 5G SA Track
+lands. See `docs/5g-sa-track.md` for the 5G plan and `docs/audit-v0.6.md` for
+the original audit baseline. Re-audit only if the codebase has changed
+substantially from what is described here.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
@@ -100,6 +100,22 @@ than building it.
 - Every error names its cause and its fix.
 - AI reliability comes from the structured diagnostic layer + ground-truth
   telemetry — not from the model's parametric knowledge.
+
+## Keeping project status current
+
+When a phase or track milestone ships, update these three things before closing
+the session:
+
+1. **README.md** — flip the relevant row in the Project Status table from
+   "In progress" to "✅ Shipped" and update the Quick Start if the launch
+   command or key URL changed.
+2. **CLAUDE.md** (this file) — update the "Current baseline" section so the
+   next session starts with the right picture. Do not leave it pointing at a
+   prior state.
+3. **Memory** — update `project_state.md` in the session memory to match.
+
+Do not wait to be asked. A stale status block misleads the next session and
+causes wasted re-audit work.
 
 ## How this project is run
 The product lead is a product manager, not a programmer, and directs the build
