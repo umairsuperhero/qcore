@@ -90,10 +90,14 @@ func runServer() error {
 	m := metrics.New()
 	hssMetrics := metrics.RegisterHSSMetrics(m)
 
-	// Parse PLMN
-	plmnID, err := subscriber.ParsePLMN("00101")
+	// Parse PLMN — use MME.PLMN so HSS and MME stay in sync
+	plmnSrc := cfg.MME.PLMN
+	if plmnSrc == "" {
+		plmnSrc = "00101"
+	}
+	plmnID, err := subscriber.ParsePLMN(plmnSrc)
 	if err != nil {
-		return fmt.Errorf("parsing PLMN: %w", err)
+		return fmt.Errorf("parsing PLMN %q: %w", plmnSrc, err)
 	}
 
 	// Create subscriber service + admin API

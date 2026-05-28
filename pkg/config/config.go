@@ -16,6 +16,63 @@ type Config struct {
 	Logging   LoggingConfig   `mapstructure:"logging"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	Telemetry TelemetryConfig `mapstructure:"telemetry"`
+
+	// 5G SA NFs
+	NRF  NRFConfig  `mapstructure:"nrf"`
+	UDR  UDRConfig  `mapstructure:"udr"`
+	UDM  UDMConfig  `mapstructure:"udm"`
+	AUSF AUSFConfig `mapstructure:"ausf"`
+	AMF  AMFConfig  `mapstructure:"amf"`
+}
+
+// NRFConfig is the 5G Network Repository Function (TS 29.510).
+type NRFConfig struct {
+	BindAddress string `mapstructure:"bind_address"`
+	Port        int    `mapstructure:"port"`
+}
+
+// UDRConfig is the 5G Unified Data Repository (TS 29.504 / 29.505).
+// Shares the database with the HSS (same subscriber table).
+type UDRConfig struct {
+	BindAddress string `mapstructure:"bind_address"`
+	Port        int    `mapstructure:"port"`
+	NRFURL      string `mapstructure:"nrf_url"`
+}
+
+// UDMConfig is the 5G Unified Data Management (TS 29.503).
+// Reads from UDR for network-mode deployments; direct-DB for dev.
+type UDMConfig struct {
+	BindAddress string `mapstructure:"bind_address"`
+	Port        int    `mapstructure:"port"`
+	NRFURL      string `mapstructure:"nrf_url"`
+	UDRURL      string `mapstructure:"udr_url"` // empty = direct-DB mode
+	PLMN        string `mapstructure:"plmn"`    // serving PLMN for UDR URL construction
+}
+
+// AUSFConfig is the 5G Authentication Server Function (TS 29.509).
+type AUSFConfig struct {
+	BindAddress string `mapstructure:"bind_address"`
+	Port        int    `mapstructure:"port"`
+	NRFURL      string `mapstructure:"nrf_url"`
+	UDMURL      string `mapstructure:"udm_url"`
+}
+
+// AMFConfig is the 5G Access and Mobility Management Function (TS 23.501 / 38.413).
+// NGAPAddr is derived from BindAddress + NGAPPort at startup.
+type AMFConfig struct {
+	BindAddress        string `mapstructure:"bind_address"`
+	NGAPPort           int    `mapstructure:"ngap_port"`
+	APIPort            int    `mapstructure:"api_port"`
+	PLMN               string `mapstructure:"plmn"`
+	SCTPMode           string `mapstructure:"sctp_mode"`           // "tcp" (dev) or "sctp"
+	ServingNetworkName string `mapstructure:"serving_network_name"` // "5G:mnc<MNC>.mcc<MCC>.3gppnetwork.org"
+	NRFURL             string `mapstructure:"nrf_url"`
+	AUSFURL            string `mapstructure:"ausf_url"`
+	AMFInstanceID      string `mapstructure:"amf_instance_id"` // UUID for NRF registration
+	AMFRegionID        uint8  `mapstructure:"amf_region_id"`
+	AMFSetID           uint16 `mapstructure:"amf_set_id"`
+	AMFPointer         uint8  `mapstructure:"amf_pointer"`
+	TAC                uint16 `mapstructure:"tac"`
 }
 
 // TelemetryConfig controls the structured event pipeline. When CollectorURL
@@ -140,6 +197,39 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.port", 9090)
 
 	v.SetDefault("telemetry.collector_url", "http://localhost:9099")
+
+	// 5G SA NFs
+	v.SetDefault("nrf.bind_address", "0.0.0.0")
+	v.SetDefault("nrf.port", 8083)
+
+	v.SetDefault("udr.bind_address", "0.0.0.0")
+	v.SetDefault("udr.port", 8084)
+	v.SetDefault("udr.nrf_url", "http://localhost:8083")
+
+	v.SetDefault("udm.bind_address", "0.0.0.0")
+	v.SetDefault("udm.port", 8085)
+	v.SetDefault("udm.nrf_url", "http://localhost:8083")
+	v.SetDefault("udm.udr_url", "")
+	v.SetDefault("udm.plmn", "00101")
+
+	v.SetDefault("ausf.bind_address", "0.0.0.0")
+	v.SetDefault("ausf.port", 8086)
+	v.SetDefault("ausf.nrf_url", "http://localhost:8083")
+	v.SetDefault("ausf.udm_url", "http://localhost:8085")
+
+	v.SetDefault("amf.bind_address", "0.0.0.0")
+	v.SetDefault("amf.ngap_port", 38412)
+	v.SetDefault("amf.api_port", 8087)
+	v.SetDefault("amf.plmn", "00101")
+	v.SetDefault("amf.sctp_mode", "tcp")
+	v.SetDefault("amf.serving_network_name", "5G:mnc001.mcc001.3gppnetwork.org")
+	v.SetDefault("amf.nrf_url", "http://localhost:8083")
+	v.SetDefault("amf.ausf_url", "http://localhost:8086")
+	v.SetDefault("amf.amf_instance_id", "00000000-0000-0000-0000-000000000001")
+	v.SetDefault("amf.amf_region_id", 1)
+	v.SetDefault("amf.amf_set_id", 1)
+	v.SetDefault("amf.amf_pointer", 0)
+	v.SetDefault("amf.tac", 1)
 
 	v.SetDefault("dashboard.bind_address", "0.0.0.0")
 	v.SetDefault("dashboard.port", 3000)

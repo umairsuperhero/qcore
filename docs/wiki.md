@@ -1,0 +1,348 @@
+# QCore Wiki
+
+> Living reference. Updated at the end of each build session.
+> Last updated: 2026-05-26
+>
+> **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order)
+
+---
+
+## Table of Contents
+
+1. [What QCore Is](#1-what-qcore-is)
+2. [Project Status](#2-project-status)
+3. [Architecture](#3-architecture)
+4. [Package Map](#4-package-map)
+5. [5G SA Track](#5-5g-sa-track)
+6. [4G EPC — How It Works](#6-4g-epc--how-it-works)
+7. [Event Model (Phase A)](#7-event-model-phase-a)
+8. [Dashboard (Phase B)](#8-dashboard-phase-b)
+9. [Phase C — Diagnostic AI](#9-phase-c--diagnostic-ai)
+10. [Running QCore Locally](#10-running-qcore-locally)
+11. [Key Design Decisions](#11-key-design-decisions)
+12. [Glossary](#12-glossary)
+
+---
+
+## 1. What QCore Is
+
+QCore is a **development and test environment** for cellular networks — not a production 5G core competing on protocol features.
+
+**Primary user:** the RAN/device developer who needs a core to test against.
+
+**How QCore wins:** fast start (< 5 min to first attach), deep observability (every signaling message is a structured, queryable event), and AI that explains failures in plain language — not log dumps.
+
+QCore is **not** trying to be open5GS or free5GC. Those optimize for spec coverage. QCore optimizes for developer joy inside a well-defined subset of the spec.
+
+---
+
+## 2. Project Status
+
+| Track | What | Status |
+|-------|------|--------|
+| 4G EPC | HSS, MME (S1AP, NAS, Milenage, KASME), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
+| Phase A — Event model | `pkg/events` structured schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
+| Phase B — Golden Path | `make up` one-command launch. Dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in simulator with 4 error-injection scenarios. | ✅ Shipped |
+| 5G SA Track | Binary entrypoints (T1 ✅ done), PFCP codec (T2 **next**), SMF (T3), UPF (T4), end-to-end test (T5). AMF/AUSF/UDM/UDR/NRF have binary entrypoints + Dockerfiles + compose entries. SMF/UPF/PFCP do not exist yet. | 🔭 In progress |
+| Phase C — Diagnostic AI | Symptom→cause catalog, AI Level 1 (explain), AI Level 2 (root-cause + fix). Starts after 5G SA T7 lands. | Planned |
+| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | Planned |
+
+---
+
+## 3. Architecture
+
+### 4G (today — shipped)
+
+```
++-----------+         +----------+         +----------+
+|  eNodeB   |---S1--->|   MME    |---S6a-->|   HSS    |
++-----------+         +----------+         +----------+
+      |                    |
+      |               S11 (HTTP/JSON)
+      |                    |
+      |               +----v-----+
+      +---- S1-U ---->|  SPGW    |--SGi--> Internet
+           (GTP-U)    +----------+
+
+All NFs emit structured events to:
+
++------------+      SSE      +------------+
+| Collector  |<----------+-->| Dashboard  |  http://localhost:3000
++------------+              +------------+
+```
+
+### 5G SA (target — in progress)
+
+```
+gNB ──N2 NGAP──▶ AMF ──SBI──▶ AUSF ──SBI──▶ UDM ──SBI──▶ UDR
+                  │                            │
+                  └──SBI──▶ SMF ──N4 PFCP──▶ UPF ──N3 GTP-U──▶ gNB
+                              │
+                         NRF (discovery)
+```
+
+All NFs self-register with NRF on startup and look up dependencies via NRF. Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisioning a subscriber once works for both protocols.
+
+---
+
+## 4. Package Map
+
+### Core infrastructure
+
+| Package | What it does |
+|---------|-------------|
+| `pkg/events` | Structured event schema, journey-ID correlation, HTTP emitter. The substrate Phase C AI reasons over. |
+| `pkg/collector` | Collects events from all NFs; exposes SSE stream + journey store. Binary: `cmd/qcore-collector`. |
+| `pkg/config` | Viper-based config loading with input-time validation (`config.Validate()`). |
+| `pkg/logger` | Structured JSON logging with per-UE correlation IDs. |
+| `pkg/metrics` | Prometheus metrics (one endpoint per NF). |
+| `pkg/subscriber` | Unified subscriber store — Milenage, 5G-AKA, SUCI/SUPI, KASME/K_AUSF/K_SEAF, SQN management, PostgreSQL persistence. Shared by all NFs; no network exposure. |
+| `pkg/database` | PostgreSQL connection + migrations. |
+
+### 4G EPC (shipped)
+
+| Package | What it does |
+|---------|-------------|
+| `pkg/hss` | Subscriber management + S6a facade over `pkg/subscriber`. Binary: `cmd/hss`. |
+| `pkg/mme` | S1AP listener, NAS attach, authentication, security mode, bearer setup. Binary: `cmd/mme`. |
+| `pkg/spgw` | GTP-U user plane, S11 (HTTP/JSON), IP pool, TUN egress (Linux). Binary: `cmd/spgw`. |
+| `pkg/s1ap` | S1AP ASN.1 PER codec. |
+| `pkg/nas` | 4G NAS message framing, security, Milenage key derivation. |
+| `pkg/gtp` | GTP-U v1 codec. Shared by SPGW (4G) and future UPF (5G). |
+| `pkg/simulator` | Built-in S1AP/NAS simulator with error-injection scenarios (wrong Ki, wrong PLMN, unprovisioned IMSI, wrong MME address). |
+
+### 5G NFs (partial — in progress)
+
+| Package | State | What it does |
+|---------|-------|-------------|
+| `pkg/amf` | ~900 LOC, no binary | NGAP listener, registration flow, key derivation. `TestAMF_RegistrationFlow` passes. |
+| `pkg/ausf` | ~430 LOC, no binary | Full 5G-AKA create + confirm (TS 33.501). Tests green. |
+| `pkg/udm` | ~700 LOC, no binary | Nudm_SDM + Nudm_UEAU + UECM. Tests green. |
+| `pkg/udr` | ~390 LOC, no binary | AM-data + authentication-subscription GET. Tests green. |
+| `pkg/nrf` | ~580 LOC, no binary | In-memory NF registration + discovery. Tests green. |
+| `pkg/smf` | **Does not exist** | Session management, PFCP→UPF, Nsmf_PDUSession |
+| `pkg/upf` | **Does not exist** | GTP-U N3, PFCP N4, TUN egress N6 |
+| `pkg/pfcp` | **Does not exist** | PFCP/N4 binary codec |
+
+### 5G protocol codecs
+
+| Package | State | What it does |
+|---------|-------|-------------|
+| `pkg/ngap` | ~2600 LOC, shipped | NGAP ASN.1 PER codec. Used by AMF. |
+| `pkg/nas5g` | ~1200 LOC, shipped | 5G-NAS message codec. Used by AMF. |
+| `pkg/sctp` | TCP fallback only | Transport for NGAP. Native SCTP pending (T6). |
+| `pkg/sbi` | Shipped | HTTP/2 server + client, RFC 7807 ProblemDetails, NRF client. |
+
+### Dashboard
+
+| Package | What it does |
+|---------|-------------|
+| `pkg/dashboard` | Go backend: health aggregation, SSE proxy, RAN config snippets, simulator control, static asset serving. Binary: `cmd/dashboard`. |
+
+---
+
+## 5. 5G SA Track
+
+Full plan: `docs/5g-sa-track.md`. Critical path: **T1 → T2 → T3 → T4 → T5**.
+
+### T1 — Binary entrypoints (next)
+Add `cmd/amf`, `cmd/ausf`, `cmd/udm`, `cmd/udr`, `cmd/nrf` with Dockerfiles, docker-compose entries, config sections, and NRF-based discovery wiring. After T1: `make up` starts the 5G control plane.
+
+### T2 — PFCP/N4 codec
+New `pkg/pfcp` package. Encode/decode for Heartbeat, Association Setup, Session Establishment/Modification/Deletion + load-bearing IEs (F-TEID, PDI, FAR, PDR, QER, URR, Apply Action, Forwarding Parameters).
+
+### T3 — SMF
+New `pkg/smf` + `cmd/smf`. Nsmf_PDUSession endpoints. On Create SM Context: fetch SM data from UDM, establish PFCP session with UPF (allocate TEIDs, install PDR/FAR), return PDU session info to AMF.
+
+### T4 — UPF
+New `pkg/upf` + `cmd/upf`. PFCP N4 listener (Association + Session from SMF). GTP-U N3 listener. Forwards based on installed PDR/FAR rules. Reuses `pkg/gtp`.
+
+### T5 — End-to-end test (exit criterion)
+In-process integration test: AMF + AUSF + UDM + UDR + NRF + SMF + UPF, mock gNB, full Registration + PDU Session Establishment, GTP-U tunnel installed and verified.
+
+### T6–T10 (post-T5)
+T6: Native SCTP (Linux kernel; TCP fallback + warning on macOS).
+T7: Phase A event instrumentation for all 5G NFs — **must land before Phase C**.
+T8: 5G simulator (NGAP+NAS-5G, 5G-AKA, error injection).
+T9: Dashboard 5G mode (protocol selector, 5G sim buttons, UDR subscriber view).
+T10: UERANSIM compatibility verification (real gNB+UE in sidecar).
+
+---
+
+## 6. 4G EPC — How It Works
+
+### Attach flow (high level)
+
+1. eNodeB sends S1 Setup Request over TCP (SCTP in production) → **MME**
+2. UE sends Attach Request (in S1AP InitialUEMessage) → MME
+3. MME sends Authentication-Information-Request to **HSS** (S6a / HTTP-JSON facade)
+4. HSS computes Milenage authentication vector (RAND, AUTN, XRES, KASME), returns to MME
+5. MME sends Authentication Request to UE; UE responds with RES
+6. MME compares RES vs XRES — auth success
+7. MME sends Security Mode Command (NAS security activated, KASME derived)
+8. MME tells **SPGW** to create a bearer (S11/HTTP)
+9. SPGW allocates IP from pool, creates GTP-U tunnel, returns S1-U TEID
+10. MME sends Attach Accept + Activate Default Bearer
+11. UE is attached — data flows UE ↔ eNodeB ↔ SPGW (GTP-U) ↔ TUN interface
+
+All steps 1–11 emit structured events to the Collector. Journey ID threads through every event for a single UE's attach.
+
+### Error-injection scenarios (built-in simulator)
+
+| Scenario | What happens |
+|----------|-------------|
+| `wrong_ki` | Milenage auth vectors don't match → MME sends Authentication Reject |
+| `wrong_plmn` | PLMN in Attach Request rejected by MME |
+| `unprovisioned_imsi` | HSS returns Unknown Subscriber error |
+| `wrong_mme_address` | Simulator cannot connect — connection error |
+
+---
+
+## 7. Event Model (Phase A)
+
+Every signaling message, NF state transition, and config change is emitted as a structured Go event (`pkg/events`). Events are:
+
+- **Protocol-agnostic** — same schema for 4G and 5G
+- **Correlated** — each event carries a Journey ID that threads a single UE's session across all NFs
+- **Streamable** — the Collector exposes an SSE endpoint; the dashboard subscribes live
+- **Queryable** — the Collector stores events in an in-memory journey store
+
+Event types (4G, shipped): `S1SetupPayload`, `AttachRequestPayload`, `AuthRequestPayload`, `AuthResponsePayload`, `SecurityModePayload`, `AttachAcceptPayload`, `BearerCreatePayload`.
+
+5G event types (T7, pending): `NGSetupPayload`, `RegistrationRequestPayload`, `AuthRequest5GPayload`, `SecurityModeCommand5GPayload`, `RegistrationAcceptPayload`, `PDUSessionEstablishmentPayload`, `PFCPAssociationPayload`, `PFCPSessionEstablishmentPayload`.
+
+---
+
+## 8. Dashboard (Phase B)
+
+URL: `http://localhost:3000`
+
+| View | What it shows |
+|------|---------------|
+| Health | Aggregated NF status (green/red per NF) + system-wide health |
+| Subscribers | CRUD table; add/edit/delete subscribers; CSV import/export |
+| Live Trace | Real-time SSE event stream; per-journey trace timeline |
+| RAN Connect | Config snippets for eNodeB (4G) / gNB (5G) pointing at QCore |
+| Simulator | Start/stop; error-injection buttons |
+
+Backend: `pkg/dashboard` (Go, port 3000). Proxies subscriber API from HSS (port 8080). Proxies event SSE from Collector.
+
+---
+
+## 9. Phase C — Diagnostic AI
+
+**Planned. Starts after 5G SA Track T7 lands.**
+
+Layers:
+1. **Structured diagnostic knowledge layer** — curated symptom→cause catalog tied to event types
+2. **AI Level 1 (Explain)** — cause-code decoding, signaling narration in plain English
+3. **AI Level 2 (Diagnose)** — root-cause analysis + proposed fix, reasoning over the Phase A event trace. **This is the flagship.**
+
+Model strategy: embedded SLM for bounded/common cases; optional bring-your-own-key frontier-model escalation for hard cases. AI reliability comes from the structured diagnostic layer + ground-truth telemetry — not parametric knowledge.
+
+TTRC targets (from charter §4): < 2 min to root cause for common failures.
+
+---
+
+## 10. Running QCore Locally
+
+```bash
+# Prerequisites: Go 1.23+, Docker
+
+# Start the full stack (builds images, starts all NFs + collector + dashboard)
+make up
+
+# Open the dashboard
+open http://localhost:3000
+
+# Run all tests (with race detector)
+make test
+
+# Build all binaries to bin/
+make build
+
+# Stop the stack
+make down
+```
+
+### End-to-end tests
+
+```bash
+go test -v -run TestEndToEndAttachOverWire ./pkg/mme/
+go test -v -run TestEndToEndUserPlane ./pkg/mme/
+go test -v -run TestSimulatorHappyPath ./pkg/simulator/
+```
+
+### Simulator via curl
+
+```bash
+# Start a happy-path attach
+curl -X POST http://localhost:3000/api/simulator/start
+
+# Error injection
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_ki
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_plmn
+curl -X POST http://localhost:3000/api/simulator/inject/unprovisioned_imsi
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_mme_address
+```
+
+### Add a subscriber manually
+
+```bash
+curl -X POST http://localhost:8080/api/v1/subscribers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "imsi": "001010000000001",
+    "ki":   "465b5ce8b199b49faa5f0a2ee238a6bc",
+    "opc":  "cd63cb71954a9f4e48a5994e37a02baf",
+    "amf":  "8000"
+  }'
+```
+
+The demo subscriber (3GPP TS 35.208 Test Set 1) is seeded automatically on first `make up`.
+
+---
+
+## 11. Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Pure Go, no C dependencies | Static binary, no kernel modules, cross-platform builds, simple CI |
+| Single subscriber store (`pkg/subscriber`) shared by 4G and 5G | Provisioning a subscriber once works for both protocols; no dual-write bugs |
+| `make up` as the primary dev entry point | TTFC (time to first attach) < 5 min is a charter requirement |
+| Dashboard is source of truth; YAML is an export path | Users should not need to hand-edit config files |
+| Validate configuration at input time, not at runtime | Every config error names its cause and its fix before anything starts |
+| Event model before AI | The AI is only as good as the telemetry it reasons over — substrate first |
+| SMF + UPF as separate packages from SPGW | 5G session management (PFCP) is different enough from 4G (HTTP/S11) to warrant separate code; GTP-U is shared via `pkg/gtp` |
+| TCP fallback for SCTP in dev | Real gNBs speak NGAP over SCTP; macOS has no native SCTP. T6 adds Linux native SCTP with a clear dev-mode warning on macOS |
+
+---
+
+## 12. Glossary
+
+| Term | Meaning |
+|------|---------|
+| AMF | Access and Mobility Management Function (5G) |
+| AUSF | Authentication Server Function (5G) |
+| EPC | Evolved Packet Core (4G) |
+| GTP-U | GPRS Tunneling Protocol — User plane |
+| HSS | Home Subscriber Server (4G) |
+| MME | Mobility Management Entity (4G) |
+| NAS | Non-Access Stratum (UE ↔ MME/AMF signaling) |
+| NGAP | Next Generation Application Protocol (gNB ↔ AMF, 5G) |
+| NRF | Network Repository Function (5G service discovery) |
+| PFCP | Packet Forwarding Control Protocol (SMF ↔ UPF, 5G) |
+| S1AP | S1 Application Protocol (eNodeB ↔ MME, 4G) |
+| SA | Standalone (5G mode without LTE anchor) |
+| SBI | Service-Based Interface (HTTP/2+JSON between 5G NFs) |
+| SCTP | Stream Control Transmission Protocol (transport for S1AP/NGAP) |
+| SMF | Session Management Function (5G) |
+| SPGW | Serving/PDN Gateway (4G combined SGW+PGW) |
+| SUCI | Subscription Concealed Identifier (5G) |
+| SUPI | Subscription Permanent Identifier (5G equivalent of IMSI) |
+| TTFC | Time To First Call/Connect — charter performance target |
+| TTRC | Time To Root Cause — Phase C AI performance target |
+| UDM | Unified Data Management (5G) |
+| UDR | Unified Data Repository (5G) |
+| UPF | User Plane Function (5G, evolves from SPGW) |
+| UERANSIM | Open-source gNB+UE simulator used for 5G testing |

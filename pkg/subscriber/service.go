@@ -329,16 +329,31 @@ func (s *Service) SetSQN(ctx context.Context, imsi, newSQN string) error {
 	return nil
 }
 
-// ParsePLMN converts a PLMN string like "00101" to a 3-byte array.
+// ParsePLMN converts a PLMN string like "00101" (MCC=001, MNC=01) into the
+// 3-byte 3GPP BCD wire format defined in TS 24.008 §10.5.1.13:
+//
+//	Octet 1: MCC digit 2 | MCC digit 1
+//	Octet 2: MNC digit 3 (0xF for 2-digit MNC) | MCC digit 3
+//	Octet 3: MNC digit 2 | MNC digit 1
 func ParsePLMN(plmn string) ([3]byte, error) {
 	if len(plmn) != 5 && len(plmn) != 6 {
 		return [3]byte{}, fmt.Errorf("PLMN must be 5 or 6 digits (MCC+MNC), got %q", plmn)
 	}
-	b, err := hex.DecodeString(plmn + strings.Repeat("0", 6-len(plmn)))
-	if err != nil {
-		return [3]byte{}, fmt.Errorf("decoding PLMN: %w", err)
+	for _, ch := range plmn {
+		if ch < '0' || ch > '9' {
+			return [3]byte{}, fmt.Errorf("PLMN must contain only digits, got %q", plmn)
+		}
 	}
-	var result [3]byte
-	copy(result[:], b[:3])
-	return result, nil
+	mcc := plmn[:3]
+	mnc := plmn[3:]
+	var out [3]byte
+	out[0] = (mcc[1]-'0')<<4 | (mcc[0] - '0')
+	if len(mnc) == 2 {
+		out[1] = 0xF0 | (mcc[2] - '0')
+		out[2] = (mnc[1]-'0')<<4 | (mnc[0] - '0')
+	} else {
+		out[1] = (mnc[2]-'0')<<4 | (mcc[2] - '0')
+		out[2] = (mnc[1]-'0')<<4 | (mnc[0] - '0')
+	}
+	return out, nil
 }

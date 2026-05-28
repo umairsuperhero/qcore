@@ -124,5 +124,132 @@ services:
       QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
       QCORE_LOGGING_FORMAT: json
 
+  # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order)
+  nrf:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.nrf
+    ports:
+      - "8083:8083"
+    environment:
+      QCORE_NRF_BIND_ADDRESS: 0.0.0.0
+      QCORE_NRF_PORT: "8083"
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  udr:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.udr
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nrf:
+        condition: service_healthy
+    environment:
+      QCORE_UDR_BIND_ADDRESS: 0.0.0.0
+      QCORE_UDR_PORT: "8084"
+      QCORE_UDR_NRF_URL: http://nrf:8083
+      QCORE_DATABASE_HOST: postgres
+      QCORE_DATABASE_PORT: "5432"
+      QCORE_DATABASE_USER: qcore
+      QCORE_DATABASE_PASSWORD: qcore
+      QCORE_DATABASE_NAME: qcore
+      QCORE_DATABASE_SSL_MODE: disable
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  udm:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.udm
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nrf:
+        condition: service_healthy
+    environment:
+      QCORE_UDM_BIND_ADDRESS: 0.0.0.0
+      QCORE_UDM_PORT: "8085"
+      QCORE_UDM_NRF_URL: http://nrf:8083
+      QCORE_UDM_UDR_URL: ""
+      QCORE_UDM_PLMN: "00101"
+      QCORE_DATABASE_HOST: postgres
+      QCORE_DATABASE_PORT: "5432"
+      QCORE_DATABASE_USER: qcore
+      QCORE_DATABASE_PASSWORD: qcore
+      QCORE_DATABASE_NAME: qcore
+      QCORE_DATABASE_SSL_MODE: disable
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ausf:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.ausf
+    ports:
+      - "8086:8086"
+    depends_on:
+      udm:
+        condition: service_healthy
+      nrf:
+        condition: service_healthy
+    environment:
+      QCORE_AUSF_BIND_ADDRESS: 0.0.0.0
+      QCORE_AUSF_PORT: "8086"
+      QCORE_AUSF_NRF_URL: http://nrf:8083
+      QCORE_AUSF_UDM_URL: http://udm:8085
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  amf:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.amf
+    ports:
+      - "38412:38412"
+      - "8087:8087"
+    depends_on:
+      ausf:
+        condition: service_healthy
+      nrf:
+        condition: service_healthy
+    environment:
+      QCORE_AMF_BIND_ADDRESS: 0.0.0.0
+      QCORE_AMF_NGAP_PORT: "38412"
+      QCORE_AMF_API_PORT: "8087"
+      QCORE_AMF_PLMN: "00101"
+      QCORE_AMF_SCTP_MODE: tcp
+      QCORE_AMF_SERVING_NETWORK_NAME: "5G:mnc001.mcc001.3gppnetwork.org"
+      QCORE_AMF_NRF_URL: http://nrf:8083
+      QCORE_AMF_AUSF_URL: http://ausf:8086
+      QCORE_AMF_AMF_INSTANCE_ID: "00000000-0000-0000-0000-000000000001"
+      QCORE_LOGGING_FORMAT: json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8087/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   pgdata:

@@ -112,6 +112,26 @@ func TestSubscriber_Validate(t *testing.T) {
 	}
 }
 
+func TestParsePLMN(t *testing.T) {
+	// Reference: TS 24.008 §10.5.1.13 BCD encoding.
+	// MCC=001, MNC=01 → [0x00, 0xF1, 0x10]
+	// MCC=262, MNC=01 → [0x62, 0xF2, 0x10]
+	// MCC=001, MNC=001 → [0x00, 0x01, 0x10]
+	tests := []struct {
+		in   string
+		want [3]byte
+	}{
+		{"00101", [3]byte{0x00, 0xF1, 0x10}},
+		{"26201", [3]byte{0x62, 0xF2, 0x10}},
+		{"001001", [3]byte{0x00, 0x01, 0x10}},
+	}
+	for _, tt := range tests {
+		got, err := ParsePLMN(tt.in)
+		require.NoError(t, err)
+		assert.Equal(t, tt.want, got, "ParsePLMN(%q)", tt.in)
+	}
+}
+
 func TestSubscriber_KiBytes(t *testing.T) {
 	sub := Subscriber{Ki: "465b5ce8b199b49faa5f0a2ee238a6bc"}
 	ki, err := sub.KiBytes()

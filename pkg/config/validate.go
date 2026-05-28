@@ -137,7 +137,11 @@ func (s *SPGWConfig) validate(errs *validationErrors) {
 	if s.SGWU1Addr == "" {
 		errs.addf("spgw.sgw_u1_addr", "must be set — this is the IP the MME tells the eNB to send GTP-U to")
 	} else if ip := net.ParseIP(s.SGWU1Addr); ip == nil {
-		errs.addf("spgw.sgw_u1_addr", "invalid IP %q — use e.g. '127.0.0.1' for local dev", s.SGWU1Addr)
+		// Also accept hostnames for Docker / k8s environments where service
+		// names (e.g. "spgw") resolve at runtime via container DNS.
+		if !isValidHostname(s.SGWU1Addr) {
+			errs.addf("spgw.sgw_u1_addr", "invalid IP or hostname %q — use an IP (e.g. '127.0.0.1') or a DNS name (e.g. 'spgw' in Docker)", s.SGWU1Addr)
+		}
 	}
 
 	switch strings.ToLower(s.Egress) {
@@ -289,6 +293,26 @@ func validateTAI(errs *validationErrors, field, tai, plmn string) {
 	if tac == 0 {
 		errs.addf(field, "TAI %q has TAC=0 which is reserved — use a non-zero value", tai)
 	}
+}
+
+// isValidHostname returns true if h is a plausible DNS hostname (letters,
+// digits, hyphens, dots). Used to allow Docker/k8s service names in fields
+// that otherwise expect an IP address.
+func isValidHostname(h string) bool {
+	if len(h) == 0 || len(h) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(h, ".") {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+		for _, c := range label {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ---------- error aggregation ----------

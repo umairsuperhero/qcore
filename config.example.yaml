@@ -50,3 +50,41 @@ metrics:
 
 telemetry:
   collector_url: "http://localhost:9099"
+
+# 5G SA NFs — only needed when running the 5G stack
+nrf:
+  bind_address: "0.0.0.0"
+  port: 8083
+
+udr:
+  bind_address: "0.0.0.0"
+  port: 8084
+  nrf_url: "http://localhost:8083"
+
+udm:
+  bind_address: "0.0.0.0"
+  port: 8085
+  nrf_url: "http://localhost:8083"
+  udr_url: ""         # empty = direct-DB mode (dev); set to UDR URL for network mode
+  plmn: "00101"
+
+ausf:
+  bind_address: "0.0.0.0"
+  port: 8086
+  nrf_url: "http://localhost:8083"
+  udm_url: "http://localhost:8085"
+
+amf:
+  bind_address: "0.0.0.0"
+  ngap_port: 38412
+  api_port: 8087
+  plmn: "00101"
+  sctp_mode: "tcp"    # "sctp" for native SCTP (UERANSIM), "tcp" for dev
+  serving_network_name: "5G:mnc001.mcc001.3gppnetwork.org"
+  nrf_url: "http://localhost:8083"
+  ausf_url: "http://localhost:8086"
+  amf_instance_id: "00000000-0000-0000-0000-000000000001"
+  amf_region_id: 1
+  amf_set_id: 1
+  amf_pointer: 0
+  tac: 1

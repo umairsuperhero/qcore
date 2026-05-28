@@ -37,7 +37,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		path string
 	}{
 		{"hss", s.cfg.Dashboard.HSSURL, "/api/v1/health"},
-		{"mme", s.cfg.Dashboard.MMEURL, "/health"},
+		{"mme", s.cfg.Dashboard.MMEURL, "/api/v1/health"},
 		{"spgw", s.cfg.Dashboard.SPGWURL, "/api/v1/health"},
 		{"collector", s.cfg.Dashboard.CollectorURL, "/health"},
 	}

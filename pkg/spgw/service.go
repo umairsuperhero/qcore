@@ -50,6 +50,13 @@ func New(cfg *config.SPGWConfig, log logger.Logger) (*Service, error) {
 
 	sgwIP := net.ParseIP(cfg.SGWU1Addr)
 	if sgwIP == nil {
+		// cfg.SGWU1Addr may be a hostname (e.g. a Docker service name).
+		// Try DNS resolution so container environments work out of the box.
+		if addrs, err := net.LookupHost(cfg.SGWU1Addr); err == nil && len(addrs) > 0 {
+			sgwIP = net.ParseIP(addrs[0])
+		}
+	}
+	if sgwIP == nil {
 		// Fall back to loopback so single-host dev still works.
 		sgwIP = net.ParseIP("127.0.0.1")
 	}
