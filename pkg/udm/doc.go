@@ -15,11 +15,9 @@
 //	GET  /nudm-sdm/v2/{supi}/am-data   — AccessAndMobilitySubscriptionData
 //
 // That single endpoint is enough to hit the v0.5 milestone: a subscriber
-// added via the admin REST API is queryable over 5G SBI. UEAU and UECM
-// are stubbed for v0.6 when AMF + AUSF land — UEAU specifically needs the
-// 5G-AKA derivation from TS 33.501 Annex A, which the current Milenage in
-// pkg/subscriber doesn't yet produce (it yields a 4G EPS-AKA vector with
-// KASME, not a 5G vector with KAUSF + RES*).
+// added via the admin REST API is queryable over 5G SBI. UEAU is fully
+// implemented to support 5G-AKA auth vectors. UECM is implemented as an
+// in-memory registry for AMF anchoring.
 //
 // UDM here intentionally talks to pkg/subscriber directly through a small
 // SubscriberStore interface rather than to a pkg/udr client. In a strict

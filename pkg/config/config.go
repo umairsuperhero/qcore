@@ -23,6 +23,8 @@ type Config struct {
 	UDM  UDMConfig  `mapstructure:"udm"`
 	AUSF AUSFConfig `mapstructure:"ausf"`
 	AMF  AMFConfig  `mapstructure:"amf"`
+
+	AI AIConfig `mapstructure:"ai"`
 }
 
 // NRFConfig is the 5G Network Repository Function (TS 29.510).
@@ -80,6 +82,12 @@ type AMFConfig struct {
 // silently discarded (NoopEmitter).
 type TelemetryConfig struct {
 	CollectorURL string `mapstructure:"collector_url"`
+}
+
+type AIConfig struct {
+	Provider string `mapstructure:"provider"`
+	Model    string `mapstructure:"model"`
+	APIKey   string `mapstructure:"api_key"`
 }
 
 type HSSConfig struct {
@@ -197,6 +205,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.port", 9090)
 
 	v.SetDefault("telemetry.collector_url", "http://localhost:9099")
+
+	v.SetDefault("ai.provider", "gemini")
+	v.SetDefault("ai.model", "gemini-2.5-flash")
+	v.SetDefault("ai.api_key", "")
 
 	// 5G SA NFs
 	v.SetDefault("nrf.bind_address", "0.0.0.0")

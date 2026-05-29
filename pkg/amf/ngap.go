@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/ngap"
 	"github.com/qcore-project/qcore/pkg/sctp"
@@ -85,6 +86,20 @@ func (s *gNBSession) handleNGSetupRequest(ies []ngap.ProtocolIE) error {
 	s.gnbName = req.RANNodeName
 	s.log.WithField("gnb_name", req.RANNodeName).Info("amf: NGSetup from gNB")
 
+	s.amf.emitter.Emit(events.Event{
+		NF:       "amf",
+		Category: events.SignalingRx,
+		Severity: events.SeverityInfo,
+		Protocol: "ngap",
+		Message:  "NGSetupRequest received",
+		Payload: events.NGSetupPayload{
+			GNBName: req.RANNodeName,
+			GNBID:   uint64(req.GlobalRANNodeID.GNBID),
+			PLMN:    fmt.Sprintf("%x", req.GlobalRANNodeID.PLMN),
+			Success: true,
+		},
+	})
+
 	resp := &ngap.NGSetupResponse{
 		AMFName:          s.amf.cfg.AMFName,
 		RelativeCapacity: 255,
@@ -110,10 +125,21 @@ func (s *gNBSession) handleInitialUEMessage(ctx context.Context, ies []ngap.Prot
 	amfID := s.amf.allocUEID()
 	ue := newUEContext(amfID, msg.RANUENGAPID, s)
 	ue.UserLocation = msg.UserLocationInfo
+	ue.JourneyID = events.MintJourneyID()
 	s.amf.addUE(ue)
 
 	s.log.WithField("amf_ue_ngap_id", amfID).WithField("ran_ue_ngap_id", msg.RANUENGAPID).
+		WithField("journey_id", ue.JourneyID).
 		Info("amf: new UE attached")
+
+	s.amf.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "ngap",
+		Message:   "InitialUEMessage received",
+	})
 
 	return s.amf.handleNASPDU(ctx, ue, msg.NASPDU)
 }

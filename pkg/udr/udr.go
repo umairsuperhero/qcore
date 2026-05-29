@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/sbi/common"
@@ -23,21 +24,26 @@ type SubscriberStore interface {
 
 // Service is the UDR NF. Hand Handler() to pkg/sbi.NewServer.
 type Service struct {
-	store SubscriberStore
-	log   logger.Logger
-	mux   *http.ServeMux
+	store   SubscriberStore
+	log     logger.Logger
+	mux     *http.ServeMux
+	emitter events.Emitter
 }
 
 // NewService wires a UDR over the given store.
 func NewService(store SubscriberStore, log logger.Logger) *Service {
 	s := &Service{
-		store: store,
-		log:   log.WithField("nf", "udr"),
-		mux:   http.NewServeMux(),
+		store:   store,
+		log:     log.WithField("nf", "udr"),
+		mux:     http.NewServeMux(),
+		emitter: &events.NoopEmitter{},
 	}
 	s.registerRoutes()
 	return s
 }
+
+// SetEmitter attaches a structured event emitter.
+func (s *Service) SetEmitter(e events.Emitter) { s.emitter = e }
 
 // Handler returns the raw mux for pkg/sbi to wrap.
 func (s *Service) Handler() http.Handler {

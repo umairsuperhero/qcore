@@ -68,6 +68,7 @@ func NewServer(cfg ServerConfig, log logger.Logger, mux http.Handler) *Server {
 		Middlewares: []Middleware{
 			Recover(log),
 			RequestID(),
+			JourneyID(),
 			AccessLog(log),
 		},
 	}

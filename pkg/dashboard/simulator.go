@@ -32,6 +32,7 @@ type SimulatorStatus struct {
 	LastScenario string         `json:"last_scenario,omitempty"` // empty for normal start
 	LastError    string         `json:"last_error,omitempty"`
 	FailedStep   string         `json:"failed_step,omitempty"`
+	Mode         string         `json:"mode,omitempty"`
 	StartedAt    *time.Time     `json:"started_at,omitempty"`
 	EndedAt      *time.Time     `json:"ended_at,omitempty"`
 }
@@ -71,13 +72,18 @@ func (c *SimulatorController) Status() SimulatorStatus {
 }
 
 // Start kicks off a happy-path attach.
-func (c *SimulatorController) Start() {
-	c.run("")
+func (c *SimulatorController) Start(mode string) {
+	c.run(mode, "", nil)
 }
 
 // Inject kicks off an attach with the named error-injection scenario.
-func (c *SimulatorController) Inject(scenario string) {
-	c.run(scenario)
+func (c *SimulatorController) Inject(mode, scenario string) {
+	c.run(mode, scenario, nil)
+}
+
+// RunCustom kicks off an attach with a custom YAML scenario definition.
+func (c *SimulatorController) RunCustom(def *simulator.ScenarioDefinition) {
+	c.run(def.Mode, "custom", def)
 }
 
 // Stop is a no-op in B4: each attach runs to completion in seconds. We keep
@@ -95,23 +101,41 @@ func (c *SimulatorController) Stop() {
 	c.status = SimulatorStatus{State: SimulatorIdle}
 }
 
-func (c *SimulatorController) run(scenario string) {
+func (c *SimulatorController) run(mode, scenario string, customDef *simulator.ScenarioDefinition) {
 	c.mu.Lock()
 	if c.status.State == SimulatorRunning {
 		c.mu.Unlock()
 		return
 	}
 	now := time.Now().UTC()
+	scenarioName := scenario
+	if customDef != nil && customDef.Name != "" {
+		scenarioName = customDef.Name
+	}
 	c.status = SimulatorStatus{
 		State:        SimulatorRunning,
-		LastScenario: scenario,
+		LastScenario: scenarioName,
+		Mode:         mode,
 		StartedAt:    &now,
 	}
 	c.mu.Unlock()
 
 	go func() {
 		opts := c.template
+		if mode != "" {
+			opts.Mode = mode
+		}
 		opts.Scenario = scenario
+
+		if customDef != nil {
+			if err := customDef.Apply(&opts); err != nil {
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.status.State = SimulatorFailed
+				c.status.LastError = err.Error()
+				return
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -140,8 +164,14 @@ func (s *Server) handleSimulatorStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.sim.Status())
 }
 
+type startReq struct {
+	Mode string `json:"mode"`
+}
+
 func (s *Server) handleSimulatorStart(w http.ResponseWriter, r *http.Request) {
-	s.sim.Start()
+	var req startReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	s.sim.Start(req.Mode)
 	writeJSON(w, http.StatusAccepted, s.sim.Status())
 }
 
@@ -158,7 +188,9 @@ func (s *Server) handleSimulatorInject(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	s.sim.Inject(scenario)
+	var req startReq
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	s.sim.Inject(req.Mode, scenario)
 	writeJSON(w, http.StatusAccepted, s.sim.Status())
 }
 
@@ -174,4 +206,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (s *Server) handleSimulatorCustom(w http.ResponseWriter, r *http.Request) {
+	def, err := simulator.LoadScenario(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid scenario YAML: " + err.Error(),
+		})
+		return
+	}
+	s.sim.RunCustom(def)
+	writeJSON(w, http.StatusAccepted, s.sim.Status())
 }

@@ -79,6 +79,10 @@ func runServer() error {
 	subsvc := subscriber.NewService(db, log, nil, [3]byte{})
 	udrSvc := udr.NewService(subsvc, log)
 
+	if err := seedDemoSubscriberIfEmpty(context.Background(), subsvc, log); err != nil {
+		log.Warnf("Could not seed demo subscriber (not fatal): %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/", udrSvc.Handler())
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -117,4 +121,37 @@ func runServer() error {
 	shutCtx, shutCancel := context.WithCancel(ctx)
 	defer shutCancel()
 	return sbiSrv.Shutdown(shutCtx)
+}
+
+// seedDemoSubscriberIfEmpty creates a single demo subscriber when the database
+// is empty, so new users can hit the API with zero setup. The IMSI and keys
+// come from 3GPP TS 35.208 Test Set 1 — verified test vectors, not secrets.
+func seedDemoSubscriberIfEmpty(ctx context.Context, service *subscriber.Service, log logger.Logger) error {
+	if os.Getenv("QCORE_SKIP_SEED") == "true" {
+		return nil
+	}
+
+	_, total, err := service.ListSubscribers(ctx, 1, 1, "")
+	if err != nil {
+		return fmt.Errorf("checking subscriber count: %w", err)
+	}
+	if total > 0 {
+		return nil // don't touch existing data
+	}
+
+	demo := &subscriber.Subscriber{
+		IMSI:   "001010000000001",
+		Ki:     "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:    "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:    "8000",
+		SQN:    "000000000000",
+		APN:    "internet",
+		Status: 0, // active
+	}
+	if err := service.CreateSubscriber(ctx, demo); err != nil {
+		return err
+	}
+
+	log.Infof("🎉 Seeded demo subscriber (IMSI=%s) in UDR.", demo.IMSI)
+	return nil
 }

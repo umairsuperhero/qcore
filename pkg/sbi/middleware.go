@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 )
 
@@ -47,6 +48,20 @@ func RequestID() Middleware {
 			w.Header().Set(HeaderRequestID, id)
 			ctx := context.WithValue(r.Context(), ctxKeyRequestID, id)
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// JourneyID extracts the journey ID from the request header and stashes it in the context.
+func JourneyID() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if id := r.Header.Get(events.JourneyIDHeader); id != "" {
+				ctx := events.WithJourneyID(r.Context(), id)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

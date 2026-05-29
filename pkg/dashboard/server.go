@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/qcore-project/qcore/pkg/ai"
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
@@ -33,7 +34,8 @@ type Server struct {
 	spgwURL      *url.URL
 	collectorURL *url.URL
 
-	sim *SimulatorController
+	sim      *SimulatorController
+	aiEngine *ai.Engine
 }
 
 // New constructs a Server. URL fields are parsed once; bad URLs return an
@@ -63,6 +65,7 @@ func New(cfg *config.Config, log logger.Logger) (*Server, error) {
 		mmeURL:       mmeURL,
 		spgwURL:      spgwURL,
 		collectorURL: collectorURL,
+		aiEngine:     ai.NewEngine(cfg.AI, log),
 	}
 
 	// Build the simulator template from config + the demo subscriber.
@@ -115,6 +118,10 @@ func (s *Server) routes() {
 	api.HandleFunc("/simulator/start", s.handleSimulatorStart).Methods(http.MethodPost)
 	api.HandleFunc("/simulator/stop", s.handleSimulatorStop).Methods(http.MethodPost)
 	api.HandleFunc("/simulator/inject/{scenario}", s.handleSimulatorInject).Methods(http.MethodPost)
+	api.HandleFunc("/simulator/custom", s.handleSimulatorCustom).Methods(http.MethodPost)
+
+	// Diagnostics
+	api.HandleFunc("/diagnostics/journey/{id}", s.handleDiagnoseJourney).Methods(http.MethodGet)
 
 	// Static frontend at /. Catch-all is last so /api/* wins.
 	r.PathPrefix("/").Handler(staticHandler())

@@ -114,16 +114,17 @@ func TestSubscriber_Validate(t *testing.T) {
 
 func TestParsePLMN(t *testing.T) {
 	// Reference: TS 24.008 §10.5.1.13 BCD encoding.
-	// MCC=001, MNC=01 → [0x00, 0xF1, 0x10]
-	// MCC=262, MNC=01 → [0x62, 0xF2, 0x10]
-	// MCC=001, MNC=001 → [0x00, 0x01, 0x10]
+	// For a 3-digit MNC: octet2 = MNC3|MCC3, octet3 = MNC2|MNC1.
+	// MCC=001, MNC=01  → [0x00, 0xF1, 0x10]
+	// MCC=262, MNC=01  → [0x62, 0xF2, 0x10]
+	// MCC=001, MNC=001 → [0x00, 0x11, 0x00]  (octet2 = MNC3(1)|MCC3(1), octet3 = MNC2(0)|MNC1(0))
 	tests := []struct {
 		in   string
 		want [3]byte
 	}{
 		{"00101", [3]byte{0x00, 0xF1, 0x10}},
 		{"26201", [3]byte{0x62, 0xF2, 0x10}},
-		{"001001", [3]byte{0x00, 0x01, 0x10}},
+		{"001001", [3]byte{0x00, 0x11, 0x00}},
 	}
 	for _, tt := range tests {
 		got, err := ParsePLMN(tt.in)

@@ -28,10 +28,12 @@ export default function HealthView({ onStartSim }: Props) {
     return () => clearInterval(t);
   }, []);
 
+  const [mode, setMode] = useState<"4g" | "5g">("5g");
+
   const startSim = async () => {
     setBusy(true);
     try {
-      await api.simulatorStart();
+      await api.simulatorStart(mode);
       onStartSim();
     } catch (e) {
       setErr((e as Error).message);
@@ -67,6 +69,30 @@ export default function HealthView({ onStartSim }: Props) {
               ? "Start the built-in simulator to run your first attach."
               : "Wait for all network functions to report healthy. If this persists, check the logs."}
           </p>
+          {health.ready_for_use && (
+            <div className="mt-4 flex gap-4 text-sm font-medium">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sim_mode"
+                  value="4g"
+                  checked={mode === "4g"}
+                  onChange={() => setMode("4g")}
+                />
+                4G EPC
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sim_mode"
+                  value="5g"
+                  checked={mode === "5g"}
+                  onChange={() => setMode("5g")}
+                />
+                5G SA
+              </label>
+            </div>
+          )}
         </div>
         <button
           className="btn-primary"

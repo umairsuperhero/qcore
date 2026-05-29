@@ -251,5 +251,55 @@ services:
       timeout: 3s
       retries: 10
 
+  ueransim:
+    image: free5gc/ueransim:latest
+    depends_on:
+      amf:
+        condition: service_healthy
+    environment:
+      - AMF_IP=amf
+    # UERANSIM requires NET_ADMIN for TUN interfaces and SCTP
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+
+  smf:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.smf
+    ports:
+      - "8002:8002"
+    depends_on:
+      nrf:
+        condition: service_healthy
+    environment:
+      SBI_BINDADDRESS: 0.0.0.0
+      SBI_PORT: "8002"
+      SBI_NRFURL: http://nrf:8083
+      SMF_IPPOOLCIDR: "10.45.0.0/16"
+      SMF_UPFPFCPADDR: "upf:8805"
+      SMF_LOCALPFCPIP: "smf"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  upf:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.upf
+    ports:
+      - "8805:8805/udp"
+      - "2152:2152/udp"
+    cap_add:
+      - NET_ADMIN
+    environment:
+      UPF_PFCPBINDADDR: 0.0.0.0:8805
+      UPF_GTPUBINDADDR: 0.0.0.0:2152
+      UPF_TUNDEVICENAME: "qcore-upf"
+
+
 volumes:
   pgdata:

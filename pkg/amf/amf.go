@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/ngap"
 	"github.com/qcore-project/qcore/pkg/sctp"
@@ -56,6 +57,7 @@ type Service struct {
 	cfg     Config
 	log     logger.Logger
 	ausfCli *ausf.Client
+	emitter events.Emitter
 
 	// nextAMFUENGAPID atomically assigns IDs to UE contexts.
 	nextID atomic.Uint64
@@ -71,9 +73,13 @@ func NewService(cfg Config, ausfCli *ausf.Client, log logger.Logger) *Service {
 		cfg:     cfg,
 		log:     log.WithField("nf", "amf"),
 		ausfCli: ausfCli,
+		emitter: &events.NoopEmitter{},
 		ues:     make(map[uint64]*UEContext),
 	}
 }
+
+// SetEmitter attaches a structured event emitter.
+func (s *Service) SetEmitter(e events.Emitter) { s.emitter = e }
 
 // Serve listens for gNB NGAP connections and handles them in goroutines.
 // Blocks until ctx is cancelled.
@@ -87,11 +93,15 @@ func (s *Service) Serve(ctx context.Context) error {
 		mode = sctp.ModeTCP
 	}
 
+	if mode == sctp.ModeTCP {
+		s.log.Warn("amf: Running in ModeTCP. Real gNBs and UERANSIM require ModeSCTP. This mode is for local dev only.")
+	}
+
 	ln, err := sctp.Listen(mode, addr)
 	if err != nil {
 		return fmt.Errorf("amf: listen %s: %w", addr, err)
 	}
-	s.log.WithField("addr", ln.Addr()).Info("AMF NGAP listener ready")
+	s.log.WithField("addr", ln.Addr()).WithField("mode", mode).Info("AMF NGAP listener ready")
 	defer ln.Close()
 
 	go func() {

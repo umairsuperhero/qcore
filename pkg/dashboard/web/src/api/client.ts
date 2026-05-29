@@ -4,6 +4,7 @@ import type {
   SubscriberListResponse,
   RANConfig,
   SimulatorStatus,
+  DiagnosticResult,
 } from "./types";
 
 async function jsonGet<T>(path: string): Promise<T> {
@@ -43,8 +44,20 @@ export const api = {
     jsonSend<unknown>("DELETE", `/api/subscribers/${imsi}`),
 
   simulatorStatus: () => jsonGet<SimulatorStatus>("/api/simulator/status"),
-  simulatorStart: () => jsonSend<SimulatorStatus>("POST", "/api/simulator/start"),
+  simulatorStart: (mode: string = "4g") => jsonSend<SimulatorStatus>("POST", "/api/simulator/start", { mode }),
   simulatorStop: () => jsonSend<SimulatorStatus>("POST", "/api/simulator/stop"),
-  simulatorInject: (scenario: string) =>
-    jsonSend<SimulatorStatus>("POST", `/api/simulator/inject/${scenario}`),
+  simulatorInject: (mode: string = "4g", scenario: string) =>
+    jsonSend<SimulatorStatus>("POST", `/api/simulator/inject/${scenario}`, { mode }),
+  simulatorCustom: (yamlContent: string) =>
+    fetch("/api/simulator/custom", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: yamlContent,
+    }).then((r) => {
+      if (!r.ok) throw new Error("Failed to run custom scenario");
+      return r.json() as Promise<SimulatorStatus>;
+    }),
+
+  diagnoseJourney: (journeyID: string) =>
+    jsonGet<DiagnosticResult>(`/api/diagnostics/journey/${journeyID}`),
 };

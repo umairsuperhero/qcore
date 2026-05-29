@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
@@ -63,22 +64,27 @@ type discoveryResponse struct {
 
 // Server exposes Nnrf_NFManagement and Nnrf_NFDiscovery over SBI HTTP/2.
 type Server struct {
-	store nrfclient.Client
-	log   logger.Logger
-	mux   *http.ServeMux
+	store   nrfclient.Client
+	log     logger.Logger
+	mux     *http.ServeMux
+	emitter events.Emitter
 }
 
 // NewServer creates an NRF server backed by the provided store.
 // Pass nrfclient.NewInMemory() for single-binary dev mode.
 func NewServer(store nrfclient.Client, log logger.Logger) *Server {
 	s := &Server{
-		store: store,
-		log:   log.WithField("nf", "nrf"),
-		mux:   http.NewServeMux(),
+		store:   store,
+		log:     log.WithField("nf", "nrf"),
+		mux:     http.NewServeMux(),
+		emitter: &events.NoopEmitter{},
 	}
 	s.registerRoutes()
 	return s
 }
+
+// SetEmitter attaches a structured event emitter.
+func (s *Server) SetEmitter(e events.Emitter) { s.emitter = e }
 
 // Handler returns the http.Handler for pkg/sbi.NewServer.
 func (s *Server) Handler() http.Handler { return s.mux }

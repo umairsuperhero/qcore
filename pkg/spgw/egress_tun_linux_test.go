@@ -30,8 +30,8 @@ func TestTUNEgress_RealKernel(t *testing.T) {
 
 	eg, err := NewTUNEgress(log, devName, 1400)
 	if err != nil {
-		if isPermissionError(err) {
-			t.Skipf("TUN smoke requires CAP_NET_ADMIN; re-run under sudo to exercise this path. Got: %v", err)
+		if isTUNUnavailableError(err) {
+			t.Skipf("TUN smoke requires /dev/net/tun and CAP_NET_ADMIN; re-run under sudo on a host with the tun device to exercise this path. Got: %v", err)
 		}
 		t.Fatalf("NewTUNEgress(%q): %v", devName, err)
 	}
@@ -130,16 +130,21 @@ func ipv4Checksum(hdr []byte) uint16 {
 	return ^uint16(sum)
 }
 
-func isPermissionError(err error) bool {
+// isTUNUnavailableError reports whether the environment simply can't exercise
+// the real /dev/net/tun path — either because we lack CAP_NET_ADMIN
+// (EPERM/EACCES) or because the tun device node isn't present at all (ENOENT,
+// common in minimal containers). In both cases the test skips so a plain
+// `go test ./...` stays green; the CI integration job runs it for real.
+func isTUNUnavailableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, os.ErrPermission) {
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, os.ErrNotExist) {
 		return true
 	}
 	var errno unix.Errno
 	if errors.As(err, &errno) {
-		return errno == unix.EPERM || errno == unix.EACCES
+		return errno == unix.EPERM || errno == unix.EACCES || errno == unix.ENOENT
 	}
 	return false
 }

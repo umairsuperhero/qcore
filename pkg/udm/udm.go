@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/sbi/common"
@@ -80,24 +81,29 @@ func (s *storeSource) GetAmData(ctx context.Context, supi string) (*common.Acces
 // auth is optional: without it, the /nudm-ueau routes respond 501.
 // Attach one with WithAuthSource.
 type Service struct {
-	source AmDataSource
-	auth   AuthSource
-	uecm   *uecmStore
-	log    logger.Logger
-	mux    *http.ServeMux
+	source  AmDataSource
+	auth    AuthSource
+	uecm    *uecmStore
+	log     logger.Logger
+	mux     *http.ServeMux
+	emitter events.Emitter
 }
 
 // NewService wires a UDM over the given AmDataSource. For direct mode
 // pass NewStoreSource(store); for UDR-backed mode pass a pkg/udr.Client.
 func NewService(source AmDataSource, log logger.Logger) *Service {
 	s := &Service{
-		source: source,
-		log:    log.WithField("nf", "udm"),
-		mux:    http.NewServeMux(),
+		source:  source,
+		log:     log.WithField("nf", "udm"),
+		mux:     http.NewServeMux(),
+		emitter: &events.NoopEmitter{},
 	}
 	s.registerRoutes()
 	return s
 }
+
+// SetEmitter attaches a structured event emitter.
+func (s *Service) SetEmitter(e events.Emitter) { s.emitter = e }
 
 // Handler returns the raw mux so pkg/sbi (or a test harness) can wrap it
 // with its own middleware chain.

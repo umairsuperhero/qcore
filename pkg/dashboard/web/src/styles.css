@@ -40,3 +40,24 @@
     @apply text-slateblue-900 border-slateblue-700;
   }
 }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes subtleGlow {
+  0% { box-shadow: 0 0 0px rgba(99, 102, 241, 0.1); }
+  50% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); }
+  100% { box-shadow: 0 0 0px rgba(99, 102, 241, 0.1); }
+}
+
+@layer utilities {
+  .animate-slide-in {
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .animate-glow {
+    animation: subtleGlow 3s ease-in-out infinite;
+  }
+}
+

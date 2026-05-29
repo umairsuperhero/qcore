@@ -41,13 +41,14 @@ const (
 )
 
 // Listen creates a new listener on the given address.
-// For now, only TCP mode is implemented. Native SCTP will be added in Session 10.
 func Listen(mode Mode, addr string) (Listener, error) {
 	switch mode {
 	case ModeTCP, "":
 		return listenTCP(addr)
+	case ModeSCTP:
+		return listenSCTP(addr)
 	default:
-		return nil, fmt.Errorf("unsupported SCTP mode %q (available: tcp)", mode)
+		return nil, fmt.Errorf("unsupported SCTP mode %q (available: tcp, sctp)", mode)
 	}
 }
 
@@ -56,7 +57,9 @@ func Dial(mode Mode, addr string) (Association, error) {
 	switch mode {
 	case ModeTCP, "":
 		return dialTCP(addr)
+	case ModeSCTP:
+		return dialSCTP(addr)
 	default:
-		return nil, fmt.Errorf("unsupported SCTP mode %q (available: tcp)", mode)
+		return nil, fmt.Errorf("unsupported SCTP mode %q (available: tcp, sctp)", mode)
 	}
 }

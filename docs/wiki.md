@@ -1,9 +1,10 @@
 # QCore Wiki
 
-> Living reference. Updated at the end of each build session.
-> Last updated: 2026-05-26
+> Living reference. Refreshed at the end of each build session, on every milestone,
+> and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
+> Last updated: 2026-05-29
 >
-> **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order)
+> **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4)
 
 ---
 
@@ -41,11 +42,18 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | Track | What | Status |
 |-------|------|--------|
 | 4G EPC | HSS, MME (S1AP, NAS, Milenage, KASME), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
-| Phase A — Event model | `pkg/events` structured schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
-| Phase B — Golden Path | `make up` one-command launch. Dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in simulator with 4 error-injection scenarios. | ✅ Shipped |
-| 5G SA Track | Binary entrypoints (T1 ✅ done), PFCP codec (T2 **next**), SMF (T3), UPF (T4), end-to-end test (T5). AMF/AUSF/UDM/UDR/NRF have binary entrypoints + Dockerfiles + compose entries. SMF/UPF/PFCP do not exist yet. | 🔭 In progress |
-| Phase C — Diagnostic AI | Symptom→cause catalog, AI Level 1 (explain), AI Level 2 (root-cause + fix). Starts after 5G SA T7 lands. | Planned |
-| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | Planned |
+| Phase A — Event model | `pkg/events` structured schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented; 5G NFs partial (T7 pending). | ✅ Shipped (4G) |
+| Phase B — Golden Path | `make up` one-command launch. Dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in simulator with error-injection scenarios. | ✅ Shipped |
+| 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test over **native SCTP** (Linux). | ✅ Works in E2E |
+| 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel). | ✅ Builds + E2E |
+| Phase C — Diagnostic AI | `pkg/ai`: symptom→cause catalog (heuristics) + optional Gemini escalation; wired to the dashboard diagnose endpoint. | ✅ Wired |
+| **Interop hardening (I1–I4)** | D-1 PLMN codec · D-2 NRF discovery · D-3 SUCI · D-4 N11 AMF→SMF. **Required before claiming real-RAN/UERANSIM compatibility.** See `docs/audit-v1.0.md`. | 🔭 Planned |
+| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
+
+> **Verification note:** as of 2026-05-29 every package compiles, `go vet` is clean, and
+> `go test ./...` passes (verified in `golang:1.23`; the dashboard front-end type-checks
+> with `tsc --noEmit`). "Works in E2E" / "Builds + E2E" mean the automated test passes —
+> **not** that a real external gNB/UE has been validated. That gate is the I1–I4 track.
 
 ---
 
@@ -81,7 +89,12 @@ gNB ──N2 NGAP──▶ AMF ──SBI──▶ AUSF ──SBI──▶ UDM �
                          NRF (discovery)
 ```
 
-All NFs self-register with NRF on startup and look up dependencies via NRF. Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisioning a subscriber once works for both protocols.
+> **Status caveat (D-2):** NRF-based registration/discovery is the *target* design but is
+> **not yet wired** — NFs are currently connected by static config/URLs. Real
+> `Nnrf_NFManagement` + `Nnrf_NFDiscovery` is decision **D-2** on the Interop-Hardening
+> track. See `docs/audit-v1.0.md`.
+
+Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisioning a subscriber once works for both protocols.
 
 ---
 
@@ -120,9 +133,9 @@ All NFs self-register with NRF on startup and look up dependencies via NRF. Both
 | `pkg/udm` | ~700 LOC, no binary | Nudm_SDM + Nudm_UEAU + UECM. Tests green. |
 | `pkg/udr` | ~390 LOC, no binary | AM-data + authentication-subscription GET. Tests green. |
 | `pkg/nrf` | ~580 LOC, no binary | In-memory NF registration + discovery. Tests green. |
-| `pkg/smf` | **Does not exist** | Session management, PFCP→UPF, Nsmf_PDUSession |
-| `pkg/upf` | **Does not exist** | GTP-U N3, PFCP N4, TUN egress N6 |
-| `pkg/pfcp` | **Does not exist** | PFCP/N4 binary codec |
+| `pkg/smf` | Builds, `cmd/smf` | Session management, IPAM, PFCP client to UPF, `Nsmf_PDUSession` SM-context endpoint. (AMF→SMF N11 call pending — D-4.) |
+| `pkg/upf` | Builds, `cmd/upf` | PFCP N4 server, GTP-U N3 (uplink/downlink), TUN egress N6 (Linux; dummy egress elsewhere). |
+| `pkg/pfcp` | Builds, unit-tested | PFCP/N4 binary codec — header, IEs, Association + Session Establish/Modify/Delete. |
 
 ### 5G protocol codecs
 
@@ -130,8 +143,8 @@ All NFs self-register with NRF on startup and look up dependencies via NRF. Both
 |---------|-------|-------------|
 | `pkg/ngap` | ~2600 LOC, shipped | NGAP ASN.1 PER codec. Used by AMF. |
 | `pkg/nas5g` | ~1200 LOC, shipped | 5G-NAS message codec. Used by AMF. |
-| `pkg/sctp` | TCP fallback only | Transport for NGAP. Native SCTP pending (T6). |
-| `pkg/sbi` | Shipped | HTTP/2 server + client, RFC 7807 ProblemDetails, NRF client. |
+| `pkg/sctp` | Native (Linux) + TCP fallback | Transport for NGAP. Native kernel SCTP on Linux (`sctp_linux.go`); TCP fallback on macOS/other with a dev-mode warning. |
+| `pkg/sbi` | Shipped (no NRF client yet) | HTTP/2 server + client, RFC 7807 ProblemDetails. NRF register/discover client is **not** built yet — D-2. |
 
 ### Dashboard
 
@@ -143,29 +156,34 @@ All NFs self-register with NRF on startup and look up dependencies via NRF. Both
 
 ## 5. 5G SA Track
 
-Full plan: `docs/5g-sa-track.md`. Critical path: **T1 → T2 → T3 → T4 → T5**.
+Critical path **T1 → T5 is landed in code and green in the in-process E2E test.** What
+remains for a *credible, real-RAN-ready* 5G core is the **Interop-Hardening track
+(I1–I4)** plus T7–T10. Long-term decisions behind I1–I4 are recorded in
+`docs/audit-v1.0.md` §4 (D-1…D-4).
 
-### T1 — Binary entrypoints (next)
-Add `cmd/amf`, `cmd/ausf`, `cmd/udm`, `cmd/udr`, `cmd/nrf` with Dockerfiles, docker-compose entries, config sections, and NRF-based discovery wiring. After T1: `make up` starts the 5G control plane.
+| Step | What | State |
+|------|------|-------|
+| T1 | Binary entrypoints (`cmd/amf|ausf|udm|udr|nrf`), Dockerfiles, compose, config | ✅ Done |
+| T2 | `pkg/pfcp` codec (header, IEs, Association + Session Establish/Modify/Delete) | ✅ Done |
+| T3 | `pkg/smf` + `cmd/smf` (IPAM, PFCP client, `Nsmf_PDUSession` SM-context) | ✅ Done |
+| T4 | `pkg/upf` + `cmd/upf` (PFCP N4, GTP-U N3, TUN egress N6) | ✅ Done |
+| T5 | In-process E2E: Registration → PDU session → GTP-U tunnel | ✅ Passes |
+| T6 | Native SCTP (Linux kernel; TCP fallback + warning elsewhere) | ✅ Done |
 
-### T2 — PFCP/N4 codec
-New `pkg/pfcp` package. Encode/decode for Heartbeat, Association Setup, Session Establishment/Modification/Deletion + load-bearing IEs (F-TEID, PDI, FAR, PDR, QER, URR, Apply Action, Forwarding Parameters).
+### Interop hardening — required before T10 / "real-RAN ready"
 
-### T3 — SMF
-New `pkg/smf` + `cmd/smf`. Nsmf_PDUSession endpoints. On Create SM Context: fetch SM data from UDM, establish PFCP session with UPF (allocate TEIDs, install PDR/FAR), return PDU session info to AMF.
+| Step | Decision (see audit §4) | Why it gates real-RAN |
+|------|-------------------------|------------------------|
+| I1 | **D-1** Single standards-correct PLMN codec + golden vectors | Two private encoders disagree; a real gNB/UE would be misparsed |
+| I2 | **D-3** Real SUCI (null-scheme first) + wire simulator IMSI | Placeholder SUCI; `unprovisioned_imsi` scenario doesn't actually test rejection |
+| I3 | **D-2** NRF register/discover + Phase-A discovery events | NFs are statically wired; no real discovery, and we lose discovery telemetry |
+| I4 | **D-4** N11 AMF→SMF; drop the test's direct-SMF shortcut | AMF doesn't yet drive the SMF — UP isn't real end-to-end through the control flow |
 
-### T4 — UPF
-New `pkg/upf` + `cmd/upf`. PFCP N4 listener (Association + Session from SMF). GTP-U N3 listener. Forwards based on installed PDR/FAR rules. Reuses `pkg/gtp`.
-
-### T5 — End-to-end test (exit criterion)
-In-process integration test: AMF + AUSF + UDM + UDR + NRF + SMF + UPF, mock gNB, full Registration + PDU Session Establishment, GTP-U tunnel installed and verified.
-
-### T6–T10 (post-T5)
-T6: Native SCTP (Linux kernel; TCP fallback + warning on macOS).
-T7: Phase A event instrumentation for all 5G NFs — **must land before Phase C**.
-T8: 5G simulator (NGAP+NAS-5G, 5G-AKA, error injection).
+### Then: T7–T10
+T7: Phase A event instrumentation for all 5G NFs — **must land before Phase C reasons over 5G traces**.
+T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI).
 T9: Dashboard 5G mode (protocol selector, 5G sim buttons, UDR subscriber view).
-T10: UERANSIM compatibility verification (real gNB+UE in sidecar).
+T10: UERANSIM compatibility verification (real gNB+UE in sidecar) — **honest only after I1–I4**.
 
 ---
 
@@ -231,7 +249,7 @@ Backend: `pkg/dashboard` (Go, port 3000). Proxies subscriber API from HSS (port 
 
 ## 9. Phase C — Diagnostic AI
 
-**Planned. Starts after 5G SA Track T7 lands.**
+**Shipped.**
 
 Layers:
 1. **Structured diagnostic knowledge layer** — curated symptom→cause catalog tied to event types
@@ -314,7 +332,11 @@ The demo subscriber (3GPP TS 35.208 Test Set 1) is seeded automatically on first
 | Validate configuration at input time, not at runtime | Every config error names its cause and its fix before anything starts |
 | Event model before AI | The AI is only as good as the telemetry it reasons over — substrate first |
 | SMF + UPF as separate packages from SPGW | 5G session management (PFCP) is different enough from 4G (HTTP/S11) to warrant separate code; GTP-U is shared via `pkg/gtp` |
-| TCP fallback for SCTP in dev | Real gNBs speak NGAP over SCTP; macOS has no native SCTP. T6 adds Linux native SCTP with a clear dev-mode warning on macOS |
+| TCP fallback for SCTP in dev | Real gNBs speak NGAP over SCTP; macOS has no native SCTP. Linux uses native kernel SCTP; macOS/other keep TCP fallback with a dev-mode warning |
+| **D-1: one standards-correct identifier codec** | The wedge is real-RAN interop. Two private PLMN encoders that agree only with each other pass CI and fail the first real device. Consolidate PLMN/TAC/S-NSSAI/GUAMI on a TS-correct codec validated by golden vectors from real stacks |
+| **D-2: NRF is the discovery backbone, static config is the fallback** | SBA discovery is the standards-correct design *and* a diagnostic-AI observability surface ("SMF never registered"). But zero-config fast-start must never be gated on a discovery race — so discovery is layered, not mandatory |
+| **D-3: real SUCI, null-scheme first** | A simulator scenario that silently doesn't test what it claims erodes trust in the simulator — and the simulator's credibility is the product. Null-scheme covers UERANSIM test defaults; ECIES A/B layer in behind the same interface later |
+| **D-4: implement N11 (AMF→SMF)** | The data plane is half of "test against a core." A 5G core that can't carry a PDU session through the real control flow isn't credible by 2030 |
 
 ---
 

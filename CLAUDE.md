@@ -16,13 +16,25 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline — post-Phase B (2026-05-25)
-Phase A (event model) and Phase B (dashboard, simulator, one-command launch) are
-**shipped**. The 4G EPC is complete and end-to-end verified. The 5G SA Track is
-in progress (T1 next). Phase C (diagnostic AI) comes after the 5G SA Track
-lands. See `docs/5g-sa-track.md` for the 5G plan and `docs/audit-v0.6.md` for
-the original audit baseline. Re-audit only if the codebase has changed
-substantially from what is described here.
+## Current baseline (2026-05-29)
+Phase A (event model), Phase B (dashboard, simulator, one-command launch), and Phase C
+(Diagnostic AI) are **shipped**. The 4G EPC is complete and end-to-end verified. The 5G
+SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
+end-to-end test (Registration → PDU session → GTP-U tunnel) over **native SCTP** on
+Linux. As of this date **every package compiles, `go vet` is clean, and `go test ./...`
+passes** (verified in `golang:1.23` — there is no Go toolchain on the host).
+
+**Before the 5G SA track can be called "shipped" or claim real-RAN/UERANSIM
+compatibility, the Interop-Hardening track (I1–I4) must land** — four long-term
+decisions recorded in `docs/audit-v1.0.md` §4:
+  - **D-1** one standards-correct PLMN/identifier codec (two private encoders disagree today);
+  - **D-2** real NRF register/discover (NFs are statically wired today);
+  - **D-3** real SUCI in NAS + simulator (placeholder today; one error scenario is a no-op);
+  - **D-4** N11 AMF→SMF (the E2E test fakes the AMF's SMF call today).
+
+Then T7 (5G event instrumentation) → T8/T9 (5G simulator + dashboard) → T10 (UERANSIM).
+Phase D (Workflow adoption) follows. See `docs/audit-v1.0.md` for the living audit;
+**re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
@@ -116,6 +128,22 @@ the session:
 
 Do not wait to be asked. A stale status block misleads the next session and
 causes wasted re-audit work.
+
+### Documentation cadence (audit doc + wiki)
+
+`docs/audit-v1.0.md` (living baseline audit + long-term decision log D-1…) and
+`docs/wiki.md` (living reference) are kept current on a cadence, not ad hoc:
+
+1. **Every milestone** (a T-/I-step or phase landing) and **end of every build
+   session**: bump the audit revision log, re-verify the build/vet/test claims, reconcile
+   the status tables in both docs against reality, and update the wiki "Last updated" date.
+2. **Recurring sweep** (default weekly): re-run
+   `docker run --rm -v "$PWD":/src -w /src -v qcore-gomod:/go/pkg/mod golang:1.23 sh -c "go build ./... && go vet ./... && go test ./..."`
+   plus `tsc --noEmit` for the dashboard; if anything drifted, update the audit §3 status
+   table + revision log and refresh the wiki in the same pass.
+3. **Trust rule:** never mark a status row ✅ because code exists — only when build + vet +
+   tests pass. Distinguish "works in our E2E test" from "validated against a real
+   external gNB/UE"; the latter is gated on the Interop-Hardening track (I1–I4).
 
 ## How this project is run
 The product lead is a product manager, not a programmer, and directs the build

@@ -20,8 +20,8 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | Phase A — Event model | `pkg/events` structured event schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
 | 5G SA Track | Binary entrypoints, SMF, UPF, PFCP/N4 codec, native SCTP. AMF/AUSF/UDM/UDR/NRF are partially built; SMF/UPF/PFCP do not exist yet. Plan: `docs/5g-sa-track.md`. | 🔭 In progress |
-| Phase C — Diagnostic AI | Symptom→cause catalog, AI Level 1 (explain) + Level 2 (root-cause + fix). Runs after 5G SA Track so it covers both protocols. | Planned |
-| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | Planned |
+| Phase C — Diagnostic AI | Symptom→cause catalog, AI Level 1 (explain) + Level 2 (root-cause + fix). Runs after 5G SA Track so it covers both protocols. | ✅ Shipped |
+| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 In progress |
 
 ---
 

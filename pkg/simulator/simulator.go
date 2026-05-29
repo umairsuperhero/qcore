@@ -28,7 +28,8 @@ import (
 // Options drives one attach attempt. Defaults give a successful happy-path
 // attach against the seeded demo subscriber.
 type Options struct {
-	MMEAddr  string  // host:port for the MME's S1AP listener
+	Mode     string  // "4g" or "5g", defaults to "4g"
+	MMEAddr  string  // host:port for the MME/AMF SCTP listener
 	PLMN     [3]byte // packed PLMN (e.g. {0x00, 0xF1, 0x10} = "00101")
 	TAC      uint16
 	IMSI     string // 15 digits
@@ -54,12 +55,13 @@ type Client struct {
 	log     logger.Logger
 
 	assoc      sctp.Association
-	enbUES1ID  uint32
-	mmeUES1ID  uint32
+	enbUES1ID  uint32 // also used as RANUENGAPID in 5g mode
+	mmeUES1ID  uint32 // also used as AMFUENGAPID in 5g mode
 	journeyID  string
 	streamID   uint16
 	ulNASCount uint32 // post-security uplink NAS counter
-	kNASint    []byte
+	kNASint    []byte // EIA2 (4g) or NIA2 (5g) integrity key
+	kNASenc    []byte // NEA0 ciphering key (5g)
 }
 
 // Run executes one attach attempt end-to-end (or stops at the first error).
@@ -82,10 +84,16 @@ func Run(ctx context.Context, opts Options, emitter events.Emitter, log logger.L
 		StartedAt: time.Now().UTC(),
 	}
 
-	c.emit(events.SignalingTx, events.SeverityInfo, "s1ap",
-		"Simulator starting attach for IMSI "+opts.IMSI, nil)
+	c.emit(events.SignalingTx, events.SeverityInfo, "sctp",
+		fmt.Sprintf("Simulator starting %s attach for IMSI %s", opts.Mode, opts.IMSI), nil)
 
-	step, err := c.attach(ctx)
+	var step string
+	var err error
+	if opts.Mode == "5g" {
+		step, err = c.attach5g(ctx)
+	} else {
+		step, err = c.attach(ctx)
+	}
 	res.EndedAt = time.Now().UTC()
 	if err != nil {
 		res.Success = false

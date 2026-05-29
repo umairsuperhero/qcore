@@ -29,6 +29,9 @@ type UEContext struct {
 	// Back-reference to the gNB session carrying this UE
 	gNB *gNBSession
 
+	// JourneyID is minted at first contact and propagated everywhere
+	JourneyID string
+
 	// 5G identifiers
 	SUPI    string // filled after auth confirmation
 	SUCI    []byte // raw mobile identity bytes from Registration Request

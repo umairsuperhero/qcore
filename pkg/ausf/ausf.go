@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/subscriber"
@@ -88,23 +89,28 @@ type UDMClient interface {
 // Service is the AUSF NF. One UDM client per instance (single-UDM dev
 // posture; v0.6+ may grow NRF-based UDM discovery per-request).
 type Service struct {
-	udm    UDMClient
-	log    logger.Logger
-	mux    *http.ServeMux
-	store  *ctxStore
+	udm     UDMClient
+	log     logger.Logger
+	mux     *http.ServeMux
+	emitter events.Emitter
+	store   *ctxStore
 }
 
 // NewService wires an AUSF over the given UDM client.
 func NewService(udmClient UDMClient, log logger.Logger) *Service {
 	s := &Service{
-		udm:   udmClient,
-		log:   log.WithField("nf", "ausf"),
-		mux:   http.NewServeMux(),
-		store: newCtxStore(),
+		udm:     udmClient,
+		log:     log.WithField("nf", "ausf"),
+		mux:     http.NewServeMux(),
+		emitter: &events.NoopEmitter{},
+		store:   newCtxStore(),
 	}
 	s.registerRoutes()
 	return s
 }
+
+// SetEmitter attaches a structured event emitter.
+func (s *Service) SetEmitter(e events.Emitter) { s.emitter = e }
 
 // Handler returns the raw mux for pkg/sbi to wrap.
 func (s *Service) Handler() http.Handler {
@@ -131,6 +137,16 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	s.emitter.Emit(events.Event{
+		JourneyID: events.JourneyIDFromContext(r.Context()),
+		NF:        "ausf",
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "sbi",
+		Message:   "UEAuthentication Request",
+	})
+
 	if req.SupiOrSuci == "" {
 		sbi.WriteProblem(w, &sbi.ProblemDetails{
 			Status: http.StatusBadRequest,

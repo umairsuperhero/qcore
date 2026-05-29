@@ -51,6 +51,11 @@ metrics:
 telemetry:
   collector_url: "http://localhost:9099"
 
+ai:
+  provider: "gemini"                      # "gemini" or "local" (for rule-based only)
+  model: "gemini-2.5-flash"
+  api_key: ""                             # Required if provider=gemini
+
 # 5G SA NFs — only needed when running the 5G stack
 nrf:
   bind_address: "0.0.0.0"

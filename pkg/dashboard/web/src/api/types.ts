@@ -84,3 +84,11 @@ export interface RANConfig {
   };
   config_snippet: Record<string, string>;
 }
+
+export interface DiagnosticResult {
+  Matched: boolean;
+  Explanation: string;
+  RootCause: string;
+  Fix: string;
+}
+

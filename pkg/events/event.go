@@ -4,13 +4,29 @@
 // live observability UI (Phase B) and the AI diagnostic layer (Phase C).
 package events
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // JourneyIDHeader is the HTTP header used to propagate a journey ID across
 // network function boundaries. Every inter-NF request from the MME outward
 // carries this header so downstream NFs can tag their own events with the
 // same ID without doing any identity translation.
 const JourneyIDHeader = "X-QCore-Journey-ID"
+
+type journeyCtxKey struct{}
+
+// WithJourneyID embeds the journey ID into the context.
+func WithJourneyID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, journeyCtxKey{}, id)
+}
+
+// JourneyIDFromContext extracts the journey ID from the context.
+func JourneyIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(journeyCtxKey{}).(string)
+	return id
+}
 
 // Category classifies what kind of event occurred.
 type Category string
@@ -130,4 +146,61 @@ type ModifyBearerPayload struct {
 	IMSI    string `json:"imsi"`
 	ENBAddr string `json:"enb_addr,omitempty"`
 	ENBTEID uint32 `json:"enb_teid,omitempty"`
+}
+
+// --- 5G SA payload types ---
+
+// NGSetupPayload carries gNB identification from NG Setup.
+type NGSetupPayload struct {
+	GNBName string `json:"gnb_name,omitempty"`
+	GNBID   uint64 `json:"gnb_id"`
+	PLMN    string `json:"plmn,omitempty"`
+	Success bool   `json:"success"`
+}
+
+// RegistrationRequestPayload carries NAS 5G Registration Request fields.
+type RegistrationRequestPayload struct {
+	SUCI         string `json:"suci,omitempty"`
+	RegType      int    `json:"reg_type"`
+	RequestedNSSAI []string `json:"requested_nssai,omitempty"`
+}
+
+// AuthRequestPayload5G carries the outbound 5G NAS Authentication Request.
+type AuthRequestPayload5G struct {
+	SUPI    string `json:"supi"`
+	RANDHex string `json:"rand_prefix"` // first 16 chars of RAND hex (8 bytes)
+}
+
+// SecurityModeCommandPayload5G carries 5G NAS Security Mode Command/Complete detail.
+type SecurityModeCommandPayload5G struct {
+	SUPI      string `json:"supi"`
+	CipherAlg uint8  `json:"cipher_alg"`
+	IntegAlg  uint8  `json:"integ_alg"`
+}
+
+// RegistrationAcceptPayload records a UE reaching 5GMM-REGISTERED.
+type RegistrationAcceptPayload struct {
+	SUPI string `json:"supi"`
+	GUTI string `json:"guti,omitempty"`
+}
+
+// PDUSessionEstablishmentPayload carries Nsmf_PDUSession Create/Modify fields.
+type PDUSessionEstablishmentPayload struct {
+	SUPI         string `json:"supi"`
+	PDUSessionID uint8  `json:"pdu_session_id"`
+	DNN          string `json:"dnn,omitempty"`
+	UEIP         string `json:"ue_ip,omitempty"`
+	UPFTEID      uint32 `json:"upf_teid,omitempty"`
+}
+
+// PFCPAssociationPayload carries N4 Association Setup detail.
+type PFCPAssociationPayload struct {
+	NodeID  string `json:"node_id"`
+	Success bool   `json:"success"`
+}
+
+// PFCPSessionEstablishmentPayload carries N4 Session Establishment detail.
+type PFCPSessionEstablishmentPayload struct {
+	FSEID   uint64 `json:"fseid"`
+	UPFTEID uint32 `json:"upf_teid,omitempty"`
 }

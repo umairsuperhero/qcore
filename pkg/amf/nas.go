@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/nas5g"
 )
 
@@ -77,11 +78,25 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	// For real deployments, SUCI would be sent as-is to AUSF which resolves it via SIDF.
 	supiOrSuci := s.suciToString(ue.SUCI)
 
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas5g",
+		Message:   "Registration Request received",
+		Payload: events.RegistrationRequestPayload{
+			SUCI:    supiOrSuci,
+			RegType: int(req.RegistrationType),
+		},
+	})
+
 	// Call AUSF for 5G-AKA authentication vector
 	ausfReq := &ausf.AuthenticationInfo{
 		SupiOrSuci:         supiOrSuci,
 		ServingNetworkName: s.cfg.ServingNetworkName,
 	}
+	ctx = events.WithJourneyID(ctx, ue.JourneyID)
 	authCtx, confirmURL, err := s.ausfCli.CreateUEAuth(ctx, ausfReq)
 	if err != nil {
 		s.log.WithError(err).WithField("supi", supiOrSuci).Error("amf: AUSF auth failed")
@@ -103,6 +118,19 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	copy(ue.RAND[:], randBytes)
 	copy(ue.AUTN[:], autnBytes)
 	ue.AuthCtxURL = confirmURL
+
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas5g",
+		Message:   "Authentication Request sent",
+		Payload: events.AuthRequestPayload5G{
+			SUPI:    ue.SUPI,
+			RANDHex: hex.EncodeToString(ue.RAND[:8]),
+		},
+	})
 
 	// Send NAS Authentication Request to UE
 	authReq := nas5g.EncodeAuthenticationRequest(&nas5g.AuthenticationRequest{
@@ -126,8 +154,22 @@ func (s *Service) handleAuthenticationResponse(ctx context.Context, ue *UEContex
 	}
 	resStarHex := hex.EncodeToString(resp.ResStar)
 
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingRx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas5g",
+		Message:   "Authentication Response received",
+		Payload: events.AuthResponsePayload{
+			IMSI:    ue.SUPI,
+			Success: true,
+		},
+	})
+
 	// Confirm with AUSF
 	confirmURL := ue.AuthCtxURL
+	ctx = events.WithJourneyID(ctx, ue.JourneyID)
 	confResp, err := s.ausfCli.ConfirmAuth(ctx, confirmURL, resStarHex)
 	if err != nil {
 		s.log.WithError(err).Error("amf: AUSF confirmation failed")
@@ -171,6 +213,20 @@ func (s *Service) handleAuthenticationResponse(ctx context.Context, ue *UEContex
 	ue.KgNB = kgNB
 
 	s.log.WithField("supi", ue.SUPI).Info("amf: authentication succeeded, sending SMC")
+
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas5g",
+		Message:   "Security Mode Command sent",
+		Payload: events.SecurityModeCommandPayload5G{
+			SUPI:      ue.SUPI,
+			CipherAlg: ue.EncAlgID,
+			IntegAlg:  ue.IntAlgID,
+		},
+	})
 
 	// Build and send Security Mode Command (integrity-protected with new context)
 	secAlgoByte := (ue.EncAlgID & 0x0F) | ((ue.IntAlgID & 0x0F) << 4)
@@ -226,6 +282,19 @@ func (s *Service) handleSecurityModeComplete(ctx context.Context, ue *UEContext,
 
 	// Send InitialContextSetupRequest to gNB with Registration Accept piggybacked
 	ue.State = StateRegistered
+
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.StateTransition,
+		Severity:  events.SeverityInfo,
+		Protocol:  "nas5g",
+		Message:   "5GMM-REGISTERED",
+		Payload: events.RegistrationAcceptPayload{
+			SUPI: ue.SUPI,
+		},
+	})
+
 	return ue.gNB.sendInitialContextSetup(ue, regAcceptProtected)
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"golang.org/x/net/http2"
 )
 
@@ -76,6 +77,9 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, in, out any) e
 	}
 	if rid := RequestIDFromContext(ctx); rid != "" {
 		req.Header.Set(HeaderRequestID, rid)
+	}
+	if jid := events.JourneyIDFromContext(ctx); jid != "" {
+		req.Header.Set(events.JourneyIDHeader, jid)
 	}
 	if c.NFType != "" {
 		req.Header.Set("X-Qcore-NFType", c.NFType)
