@@ -353,6 +353,93 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	t.Log("✓ Full 5G registration flow complete")
 }
 
+// TestAMF_UnprovisionedIMSI verifies that when the AUSF cannot find a
+// subscriber (unprovisioned IMSI), the AMF sends a NAS Registration Reject to
+// the UE rather than silently timing out. This is the A2 acceptance criterion
+// for the unprovisioned_imsi error scenario.
+func TestAMF_UnprovisionedIMSI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in -short mode")
+	}
+
+	const (
+		imsi      = "001010000000001"
+		snName    = "5G:mnc001.mcc001.3gppnetwork.org"
+		badIMSI   = "001019999999999" // provisioned subscriber is imsi, badIMSI is not
+	)
+
+	sub := &subscriber.Subscriber{
+		IMSI: imsi,
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+
+	ausfURL := startAUSFandUDM(t, sub)
+	log := logger.New("info", "text")
+
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	amfPort := pickPort(t)
+	cfg := Config{
+		NGAPAddr: "127.0.0.1:" + strconv.Itoa(amfPort),
+		NGAPMode: sctp.ModeTCP,
+		AMFName:  "QCore-AMF-test",
+		GUAMI:    ngap.GUAMI{PLMN: plmn, AMFRegionID: 0x01, AMFSetID: 0x001, AMFPointer: 0x00},
+		PLMNSupportList: []ngap.PLMNSupportItem{
+			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
+		},
+		ServingNetworkName: snName,
+	}
+	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
+	amfSvc := NewService(cfg, ausfCli, log)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = amfSvc.Serve(ctx) }()
+	time.Sleep(80 * time.Millisecond)
+
+	conn, err := sctp.Dial(sctp.ModeTCP, "127.0.0.1:"+strconv.Itoa(amfPort))
+	require.NoError(t, err)
+	defer conn.Close()
+	gNB := &mockGNB{conn: conn}
+
+	gNB.ngSetup(t)
+
+	// Send a Registration Request for an IMSI that is NOT provisioned.
+	// MSIN of badIMSI with MNC=01 (2-digit) is digits 5..14 = "9999999999".
+	// BCD: 0x99 x 5
+	suci := nas5g.EncodeSUCI(nas5g.SUCI{
+		PLMN:             [3]byte{0x00, 0xF1, 0x10},
+		RoutingIndicator: [2]byte{0xFF, 0xFF},
+		ProtectionScheme: 0x00,
+		HomeNetworkPKID:  0x00,
+		MSIN:             []byte{0x99, 0x99, 0x99, 0x99, 0x99},
+	})
+	regReq := nas5g.EncodeRegistrationRequest(&nas5g.RegistrationRequest{
+		RegistrationType:     nas5g.RegistrationTypeInitialRegistration,
+		NASKeySetID:          7,
+		MobileIdentity:       suci,
+		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00},
+	})
+	gNB.sendInitialUE(t, 0x1001, regReq)
+
+	// AMF must respond with a NAS Registration Reject (not timeout).
+	_, nasPDU := gNB.recvDownlinkNAS(t)
+	require.GreaterOrEqual(t, len(nasPDU), 3, "NAS PDU too short")
+
+	hdr, err := nas5g.DecodeHeader(nasPDU)
+	require.NoError(t, err)
+	assert.Equal(t, nas5g.MsgTypeRegistrationReject, hdr.MessageType,
+		"expected Registration Reject for unprovisioned IMSI %s", badIMSI)
+
+	if len(nasPDU) > 3 {
+		cause := nas5g.Cause5GMM(nasPDU[3])
+		t.Logf("5GMM cause: 0x%02X", uint8(cause))
+	}
+	t.Log("✓ Unprovisioned IMSI correctly triggers Registration Reject")
+}
+
 // TestAMF_KeyDerivation verifies the 5G key chain: KSEAF→KAMF→KNASint.
 func TestAMF_KeyDerivation(t *testing.T) {
 	// Test vector: arbitrary KSEAF for key derivation sanity check.
