@@ -279,7 +279,7 @@ B2 is the long pole and is independent of Track A).
 
 | Task | Charter ref | Effort | Status |
 |------|-------------|--------|--------|
-| A1 PLMN codec | D-1, §4 correctness | S | ☐ not started |
+| A1 PLMN codec | D-1, §4 correctness | S | ✅ PR #15 — merged to main |
 | A2 SUCI | D-3, §7 | S–M | ☐ |
 | A3 NRF discovery | D-2, §9 observability | M | ☐ |
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ☐ |
