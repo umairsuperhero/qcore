@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/events"
+	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/nas5g"
 	"github.com/qcore-project/qcore/pkg/ngap"
 	"github.com/qcore-project/qcore/pkg/subscriber"
@@ -87,14 +88,27 @@ func (c *Client) ngSetup() error {
 func (c *Client) initialUE5g() error {
 	imsi := c.opts.IMSI
 	if c.opts.Scenario == "unprovisioned_imsi" {
+		// Use an IMSI that will not be found in any subscriber store, keeping
+		// the same MCC/MNC so the PLMN portion of the SUCI is valid.
 		imsi = "999999999999999"
 	}
 
-	// TODO: encode a proper SUCI from imsi. Until then the IMSI (including the
-	// unprovisioned_imsi scenario override) is not carried on the wire, so that
-	// scenario does not yet exercise a real unknown-subscriber rejection.
-	_ = imsi
-	suciBytes := []byte{0x01, 0x00, 0x00, 0x00, 0x00} // Dummy SUCI placeholder - needs proper encoding
+	// Build a real null-scheme SUCI from the IMSI (TS 24.501 §9.11.3.4).
+	// Decode the PLMN to find the MNC length, then extract the MSIN.
+	_, mnc := ident.DecodePLMN(c.opts.PLMN)
+	msinStart := 3 + len(mnc) // MCC(3) + MNC(2 or 3) digits
+	msin := ""
+	if msinStart < len(imsi) {
+		msin = imsi[msinStart:]
+	}
+
+	suciBytes := nas5g.EncodeSUCI(nas5g.SUCI{
+		PLMN:             c.opts.PLMN,
+		RoutingIndicator: [2]byte{0xFF, 0xFF},
+		ProtectionScheme: 0x00, // null scheme
+		HomeNetworkPKID:  0x00,
+		MSIN:             encodeMSINBCD(msin),
+	})
 	req := &nas5g.RegistrationRequest{
 		RegistrationType: 0x01,
 		MobileIdentity:   suciBytes,
@@ -130,11 +144,21 @@ func (c *Client) readAuthRequest5g(_ context.Context) (*nas5g.AuthenticationRequ
 	if err != nil {
 		return nil, fmt.Errorf("parse NAS header: %w", err)
 	}
-	if hdr.MessageType == nas5g.MsgTypeAuthenticationReject {
+	switch hdr.MessageType {
+	case nas5g.MsgTypeAuthenticationReject:
 		return nil, fmt.Errorf("AMF sent Authentication Reject (likely unprovisioned subscriber)")
-	}
-	if hdr.MessageType != nas5g.MsgTypeAuthenticationRequest {
-		return nil, fmt.Errorf("expected Authentication Request, got message type %d", hdr.MessageType)
+	case nas5g.MsgTypeRegistrationReject:
+		// AMF sends this when AUSF lookup fails (e.g. unprovisioned IMSI).
+		// Byte 3 carries the 5GMM cause code.
+		cause := nas5g.Cause5GMM(0)
+		if len(nasPDU) > 3 {
+			cause = nas5g.Cause5GMM(nasPDU[3])
+		}
+		return nil, fmt.Errorf("AMF sent Registration Reject (cause 0x%02X)", uint8(cause))
+	case nas5g.MsgTypeAuthenticationRequest:
+		// expected — fall through
+	default:
+		return nil, fmt.Errorf("expected Authentication Request, got message type 0x%02X", uint8(hdr.MessageType))
 	}
 	const nasHeaderLen = 3 // plain 5GMM header: EPD + SecurityHeaderType + MessageType
 	body := nasPDU[nasHeaderLen:]
@@ -309,4 +333,25 @@ func (c *Client) readDownlinkNAS5g(timeout time.Duration) ([]byte, uint64, error
 		return nil, 0, fmt.Errorf("decode Downlink NAS: %w", err)
 	}
 	return dl.NASPDU, dl.AMFUENGAPID, nil
+}
+
+// encodeMSINBCD converts a digit string to packed BCD with low nibble first.
+// Each byte holds two consecutive digits: lo nibble = earlier, hi nibble = later.
+// An odd-length string gets a 0xF filler in the last high nibble.
+// Example: "0000000001" → [0x00, 0x00, 0x00, 0x00, 0x10]
+func encodeMSINBCD(msin string) []byte {
+	n := (len(msin) + 1) / 2
+	b := make([]byte, n)
+	for i, ch := range msin {
+		d := uint8(ch - '0')
+		if i%2 == 0 {
+			b[i/2] = d // low nibble of byte (first of the pair)
+		} else {
+			b[i/2] |= d << 4 // high nibble of byte (second of the pair)
+		}
+	}
+	if len(msin)%2 == 1 {
+		b[n-1] |= 0xF0 // pad final high nibble
+	}
+	return b
 }
