@@ -8,6 +8,7 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/ausf"
 	"github.com/qcore-project/qcore/pkg/events"
+	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/nas5g"
 )
 
@@ -330,24 +331,15 @@ func (s *Service) suciToString(mobileID []byte) string {
 }
 
 // nullSchemeSUCItoSUPI decodes a null-scheme SUCI mobile identity IE to
-// "imsi-<MCC><MNC><MSIN>" using the PLMN BCD layout from TS 24.501 §9.11.3.4.
+// "imsi-<MCC><MNC><MSIN>" using the canonical PLMN BCD layout from
+// TS 24.008 §10.5.1.13 via pkg/ident.
 func nullSchemeSUCItoSUPI(mobileID []byte) string {
 	if len(mobileID) < 9 {
 		return ""
 	}
-	// Decode PLMN (bytes 1-3): layout mirrors PLMNFromMCCMNC in pkg/ngap.
-	// byte1: hi=MCC2, lo=MCC1; byte2: hi=MNC1, lo=MCC3; byte3: hi=MNC3, lo=MNC2
-	p := mobileID[1:4]
-	mcc := fmt.Sprintf("%d%d%d", p[0]&0x0F, (p[0]>>4)&0x0F, p[1]&0x0F)
-	mnc1 := (p[1] >> 4) & 0x0F
-	mnc2 := p[2] & 0x0F
-	mnc3 := (p[2] >> 4) & 0x0F
-	var mnc string
-	if mnc3 == 0xF {
-		mnc = fmt.Sprintf("%d%d", mnc1, mnc2)
-	} else {
-		mnc = fmt.Sprintf("%d%d%d", mnc1, mnc2, mnc3)
-	}
+	// Decode PLMN (bytes 1-3) using the canonical TS 24.008 layout:
+	//   byte 0 of PLMN: MCC2|MCC1; byte 1: MNC3|MCC3; byte 2: MNC2|MNC1
+	mcc, mnc := ident.DecodePLMN([3]byte(mobileID[1:4]))
 
 	// Decode MSIN (bytes 8+): packed BCD, lo nibble = earlier digit.
 	var msin strings.Builder
