@@ -36,6 +36,13 @@ Then T7 (5G event instrumentation) → T8/T9 (5G simulator + dashboard) → T10 
 Phase D (Workflow adoption) follows. See `docs/audit-v1.0.md` for the living audit;
 **re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
+**The executable v1 gap-closure plan is `docs/v1-gap-closure-plan.md`** — tracks A
+(interop hardening I1–I4 / D-1…D-4), B (catalog depth + embedded SLM), C (5G
+telemetry/sim/dashboard, T7–T9), D (UERANSIM, T10), E (reconciliation, scenarios, CI).
+It is self-contained with per-task acceptance criteria + verify commands and is the
+doc to hand an executing agent. Critical path to v1: A1→A2→A4→C1→T10 (5G-leading) and
+B1→B2 (offline AI).
+
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
 5G, and AI as late "advanced features." The charter makes those the core of the
