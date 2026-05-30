@@ -1,0 +1,11 @@
+# Keep the Docker build context small and host-arch artifacts out of images.
+# node_modules in particular must never be copied in: the host installs
+# darwin/arm64 binaries (e.g. esbuild) that are useless and break inside the
+# linux build stages — the dashboard's web stage runs its own `npm ci`.
+**/node_modules
+.git
+.gitignore
+bin/
+coverage.out
+coverage.html
+*.log

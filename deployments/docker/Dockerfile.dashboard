@@ -1,3 +1,22 @@
+# --- Stage 1: build the React bundle from source ---
+# Built fresh on every image so the embedded UI can never drift from
+# pkg/dashboard/web/src. The committed pkg/dashboard/web/dist is only a
+# convenience for a plain local `go build`; this stage overwrites it in the
+# image, which closes the "stale checked-in bundle" trap.
+FROM node:22-alpine AS web
+
+WORKDIR /web
+
+# Install deps first (cached unless package*.json changes). The lockfile is
+# committed, so npm ci gives a deterministic install.
+COPY pkg/dashboard/web/package.json pkg/dashboard/web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+# Then the source and build (esbuild + tailwind -> dist/).
+COPY pkg/dashboard/web/ ./
+RUN npm run build
+
+# --- Stage 2: build the Go binary (embeds the freshly built bundle) ---
 FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
@@ -6,6 +25,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Replace the checked-in bundle with the one just built from source, BEFORE the
+# `//go:embed all:web/dist` in pkg/dashboard/static.go is compiled in.
+COPY --from=web /web/dist ./pkg/dashboard/web/dist
 
 ARG VERSION=dev
 ARG COMMIT=none
