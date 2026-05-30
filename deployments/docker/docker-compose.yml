@@ -124,8 +124,12 @@ services:
       QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
       QCORE_LOGGING_FORMAT: json
 
-  # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order)
+  # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order).
+  # All 5G services are behind the "5g" Compose profile so the default
+  # `make up` brings up only the 4G golden path. Start 5G with `make up-5g`
+  # (or `COMPOSE_PROFILES=5g docker compose ... up`).
   nrf:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.nrf
@@ -142,6 +146,7 @@ services:
       retries: 10
 
   udr:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.udr
@@ -170,6 +175,7 @@ services:
       retries: 10
 
   udm:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.udm
@@ -200,6 +206,7 @@ services:
       retries: 10
 
   ausf:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.ausf
@@ -223,6 +230,7 @@ services:
       retries: 10
 
   amf:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.amf
@@ -252,6 +260,7 @@ services:
       retries: 10
 
   ueransim:
+    profiles: ["5g"]
     image: free5gc/ueransim:latest
     depends_on:
       amf:
@@ -265,6 +274,7 @@ services:
       - "/dev/net/tun:/dev/net/tun"
 
   smf:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.smf
@@ -287,12 +297,18 @@ services:
       retries: 10
 
   upf:
+    profiles: ["5g"]
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile.upf
-    ports:
-      - "8805:8805/udp"
-      - "2152:2152/udp"
+    # N3 (GTP-U 2152) and N4 (PFCP 8805) are reached in-network as upf:2152 /
+    # upf:8805 by the bundled gNB/SMF, so they are NOT published to the host.
+    # This avoids colliding with the 4G SPGW, which owns host UDP 2152. If you
+    # ever attach an external gNB to the UPF, stop the 4G spgw and add a host
+    # port mapping here.
+    expose:
+      - "8805/udp"
+      - "2152/udp"
     cap_add:
       - NET_ADMIN
     environment:

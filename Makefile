@@ -1,4 +1,4 @@
-.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up down web docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
+.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up up-5g down web docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -65,8 +65,18 @@ up:
 	@echo "Tail logs with: docker compose -f deployments/docker/docker-compose.yml logs -f"
 	@echo "Tear down with: make down"
 
+# Opt-in 5G SA stack (NRF, UDR, UDM, AUSF, AMF, SMF, UPF + UERANSIM). These
+# services live behind the "5g" Compose profile, so the default `make up` does
+# not start them. Note: real NGAP-over-SCTP + UERANSIM TUN needs a Linux host;
+# on macOS the 5G control plane runs in SCTP tcp-fallback mode.
+up-5g:
+	COMPOSE_PROFILES=5g docker compose -f deployments/docker/docker-compose.yml up -d --build
+	@echo ""
+	@echo "QCore 4G + 5G stack starting. Dashboard: http://localhost:3000"
+	@echo "Tear down everything with: make down"
+
 down:
-	docker compose -f deployments/docker/docker-compose.yml down
+	COMPOSE_PROFILES=5g docker compose -f deployments/docker/docker-compose.yml down
 
 docker-build: docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard
 
