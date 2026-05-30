@@ -40,11 +40,12 @@ var testGNBID = GlobalGNBID{
 
 func TestPLMNEncoding(t *testing.T) {
 	plmn := PLMNFromMCCMNC("001", "01")
-	// MCC=001 → digits 0,0,1; MNC=01 → digits 0,1
-	// byte0: (mcc[1]<<4)|mcc[0] = (0<<4)|0 = 0x00
-	// byte1: (mnc[0]<<4)|mcc[2] = (0<<4)|1 = 0x01 (2-digit MNC: mnc[0]=0, mcc[2]=1)
-	// byte2: (mnc[2]<<4)|mnc[1] = (F<<4)|1 = 0xF1
-	assert.Equal(t, PLMN{0x00, 0x01, 0xF1}, plmn)
+	// TS 24.008 §10.5.1.13 canonical layout (verified against UERANSIM config):
+	// MCC=001 MNC=01 (2-digit → MNC3=0xF filler):
+	//   byte0: MCC2|MCC1 = (0<<4)|0 = 0x00
+	//   byte1: MNC3|MCC3 = (F<<4)|1 = 0xF1
+	//   byte2: MNC2|MNC1 = (1<<4)|0 = 0x10
+	assert.Equal(t, PLMN{0x00, 0xF1, 0x10}, plmn)
 }
 
 func TestTAIRoundTrip(t *testing.T) {

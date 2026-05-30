@@ -280,7 +280,7 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	assert.Equal(t, "QCore-AMF-E2E", ngResp.AMFName)
 
 	suci := nas5g.EncodeSUCI(nas5g.SUCI{
-		PLMN:             [3]byte{0x00, 0x01, 0xF1},
+		PLMN:             [3]byte{0x00, 0xF1, 0x10}, // canonical TS 24.008: MCC=001, MNC=01
 		RoutingIndicator: [2]byte{0xFF, 0xFF},
 		ProtectionScheme: 0x00,
 		HomeNetworkPKID:  0x00,

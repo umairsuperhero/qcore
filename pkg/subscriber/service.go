@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/metrics"
 	"gorm.io/gorm"
@@ -335,25 +336,9 @@ func (s *Service) SetSQN(ctx context.Context, imsi, newSQN string) error {
 //	Octet 1: MCC digit 2 | MCC digit 1
 //	Octet 2: MNC digit 3 (0xF for 2-digit MNC) | MCC digit 3
 //	Octet 3: MNC digit 2 | MNC digit 1
+// ParsePLMN parses a 5- or 6-digit PLMN string (e.g. "00101") into the 3-byte
+// BCD format defined by TS 24.008 §10.5.1.13. Delegates to pkg/ident so the
+// encoding is guaranteed identical to ngap.PLMNFromMCCMNC.
 func ParsePLMN(plmn string) ([3]byte, error) {
-	if len(plmn) != 5 && len(plmn) != 6 {
-		return [3]byte{}, fmt.Errorf("PLMN must be 5 or 6 digits (MCC+MNC), got %q", plmn)
-	}
-	for _, ch := range plmn {
-		if ch < '0' || ch > '9' {
-			return [3]byte{}, fmt.Errorf("PLMN must contain only digits, got %q", plmn)
-		}
-	}
-	mcc := plmn[:3]
-	mnc := plmn[3:]
-	var out [3]byte
-	out[0] = (mcc[1]-'0')<<4 | (mcc[0] - '0')
-	if len(mnc) == 2 {
-		out[1] = 0xF0 | (mcc[2] - '0')
-		out[2] = (mnc[1]-'0')<<4 | (mnc[0] - '0')
-	} else {
-		out[1] = (mnc[2]-'0')<<4 | (mcc[2] - '0')
-		out[2] = (mnc[1]-'0')<<4 | (mnc[0] - '0')
-	}
-	return out, nil
+	return ident.ParsePLMNString(plmn)
 }

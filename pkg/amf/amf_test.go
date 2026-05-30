@@ -278,7 +278,7 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	// SUCI for null-scheme: PLMN=00101, RI=FFFF, PS=0, PKID=0, MSIN=BCD of IMSI digits
 	// MSIN "0000000001" packed BCD (low nibble first): 00 00 00 00 10
 	suci := nas5g.EncodeSUCI(nas5g.SUCI{
-		PLMN:             [3]byte{0x00, 0x01, 0xF1}, // MCC=001, MNC=01
+		PLMN:             [3]byte{0x00, 0xF1, 0x10}, // MCC=001, MNC=01 — canonical TS 24.008 layout
 		RoutingIndicator: [2]byte{0xFF, 0xFF},
 		ProtectionScheme: 0x00,
 		HomeNetworkPKID:  0x00,

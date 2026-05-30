@@ -7,7 +7,11 @@
 // type shapes differ from S1AP.
 package ngap
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/qcore-project/qcore/pkg/ident"
+)
 
 // PDUType identifies the outer NGAP-PDU CHOICE alternative (TS 38.413 §9.1).
 type PDUType int
@@ -128,25 +132,11 @@ type PLMN [3]byte
 
 // PLMNFromMCCMNC converts string MCC and MNC to PLMN bytes.
 // MCC is always 3 digits; MNC is 2 or 3 digits.
+// PLMNFromMCCMNC encodes an MCC and MNC string pair into the 3-byte PLMN
+// identity defined by TS 24.008 §10.5.1.13. Delegates to pkg/ident so the
+// encoding is guaranteed identical to subscriber.ParsePLMN and SUCI handling.
 func PLMNFromMCCMNC(mcc, mnc string) PLMN {
-	// PLMN encoding per TS 24.501 §9.11.3.4:
-	// byte 0: MCC digit 2 | MCC digit 1
-	// byte 1: MNC digit 1 | MCC digit 3
-	// byte 2: MNC digit 3 | MNC digit 2
-	// For 2-digit MNC, MNC digit 1 = 0xF
-	mccDigits := [3]uint8{}
-	for i := 0; i < 3 && i < len(mcc); i++ {
-		mccDigits[i] = mcc[i] - '0'
-	}
-	mncDigits := [3]uint8{0xF, 0xF, 0xF}
-	for i := 0; i < len(mnc) && i < 3; i++ {
-		mncDigits[i] = mnc[i] - '0'
-	}
-	return PLMN{
-		(mccDigits[1] << 4) | mccDigits[0],
-		(mncDigits[0] << 4) | mccDigits[2],
-		(mncDigits[2] << 4) | mncDigits[1],
-	}
+	return PLMN(ident.EncodePLMN(mcc, mnc))
 }
 
 // TAI is a 5G Tracking Area Identity. TAC is 3 bytes (vs 2 bytes in S1AP).
