@@ -39,6 +39,32 @@ real RAN, and an **AI that is load-bearing and works offline** (§9.3/D5).
 
 ---
 
+## 0.5 Product framing: the two Gates (added 2026-05-30)
+
+A first-principles pass on *who tries this in the first 10 minutes* sharpened the
+sequencing. The product lead's first-10-minutes spec: **download/run → a real gNB
+connects → a clear "core is connected" status → and if not connected, exactly why and
+what to do next.** That reframes v1 around two gates the tracks below feed into:
+
+- **Gate 1 — "It connects."** A real gNB completes **NG Setup** with the AMF and the
+  dashboard says so, in plain language — with deterministic diagnosis of the 5 NG Setup
+  failure modes (PLMN/TAC mismatch, no connection, slice mismatch, malformed) when it
+  fails. *Key realization:* NG Setup is gNB↔AMF only — it needs **A1** (done), not the
+  full stack. So Gate 1 is mostly **experience**, not protocol: the hero screen (C3) +
+  NG-Setup events/diagnostics (C1). **Landed in PR #20.**
+- **Gate 2 — "It's QCore, not just another core."** Failures explain themselves and the
+  journey is watchable: the live signaling trace (C3, PR #21) + the offline diagnostic
+  AI (B1/B2). This is the moat.
+
+**Design contract for all dashboard work:** `docs/ui-ux-design.md` (Apple/Tesla
+language, the single-question "Is your gNB connected?" hero screen + its three states).
+The dashboard's hero is the gNB connection status — **not** an NF-health grid.
+
+Mapping to the tracks: Gate 1 = A1 + C1(NG-Setup slice) + C3(hero). Gate 2 = C3(trace)
++ B1 + B2. Track A (interop) is the prerequisite for both and is now **complete**.
+
+---
+
 ## 1. Track A — Interop Hardening (makes the 5G headline real)
 
 > These are the four decisions D-1…D-4 from the audit, turned into tasks. They gate
@@ -285,9 +311,9 @@ B2 is the long pole and is independent of Track A).
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
 | B1 catalog depth | §9.1, §4 | M | ☐ |
 | B2 embedded SLM | §9.3, D5, OpenQ1 | L | ☐ |
-| C1 5G telemetry (T7) | §8 Pillar 4 | M | ☐ |
+| C1 5G telemetry (T7) | §8 Pillar 4 | M | ◑ NG-Setup events + deterministic diagnostics landed (PR #20); registration/session events pending |
 | C2 5G simulator (T8) | D10, §7 | M | ☐ |
-| C3 dashboard 5G (T9) | §7, §8 | M | ☐ |
+| C3 dashboard 5G (T9) | §7, §8 | M | ◑ Gate-1 hero screen merged (PR #20); live signaling trace in review (PR #21); design contract in `docs/ui-ux-design.md` (PR #18) |
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ☐ |
 | E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ☐ |
 | E2 scenario authoring | §7 Step 7 | S–M | ☐ |
