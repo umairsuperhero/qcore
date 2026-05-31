@@ -10,8 +10,10 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/ausf"
 	"github.com/qcore-project/qcore/pkg/config"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
 	"github.com/qcore-project/qcore/pkg/udm"
 	"github.com/spf13/cobra"
 )
@@ -85,6 +87,22 @@ func runServer() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// NRF: self-register (non-fatal if NRF is down).
+	nrfCli := nrfclient.NewHTTPClient(cfg.AUSF.NRFURL, "AUSF", false)
+	ausfProfile := &nrfclient.NFProfile{
+		NFInstanceID: "ausf-" + cfg.AUSF.BindAddress,
+		NFType:       nrfclient.NFTypeAUSF,
+		NFStatus:     nrfclient.StatusRegistered,
+		Services: []nrfclient.NFService{{
+			ServiceName: "nausf-auth",
+			Versions:    []string{"v1"},
+			Scheme:      "http",
+			IPAddr:      cfg.AUSF.BindAddress,
+			Port:        cfg.AUSF.Port,
+		}},
+	}
+	go nrfclient.NewLifecycleManager(nrfCli, ausfProfile, cfg.AUSF.NRFURL, &events.NoopEmitter{}, log).Start(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

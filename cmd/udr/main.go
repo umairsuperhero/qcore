@@ -10,8 +10,10 @@ import (
 
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/database"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 	"github.com/qcore-project/qcore/pkg/udr"
 	"github.com/spf13/cobra"
@@ -98,6 +100,22 @@ func runServer() error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// NRF: self-register (non-fatal if NRF is down).
+	nrfCli := nrfclient.NewHTTPClient(cfg.UDR.NRFURL, "UDR", false)
+	udrProfile := &nrfclient.NFProfile{
+		NFInstanceID: "udr-" + cfg.UDR.BindAddress,
+		NFType:       nrfclient.NFTypeUDR,
+		NFStatus:     nrfclient.StatusRegistered,
+		Services: []nrfclient.NFService{{
+			ServiceName: "nudr-dr",
+			Versions:    []string{"v1"},
+			Scheme:      "http",
+			IPAddr:      cfg.UDR.BindAddress,
+			Port:        cfg.UDR.Port,
+		}},
+	}
+	go nrfclient.NewLifecycleManager(nrfCli, udrProfile, cfg.UDR.NRFURL, &events.NoopEmitter{}, log).Start(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
