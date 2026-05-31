@@ -2,9 +2,13 @@ package amf
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"strings"
 
+	"github.com/qcore-project/qcore/pkg/diag"
 	"github.com/qcore-project/qcore/pkg/events"
+	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/ngap"
 	"github.com/qcore-project/qcore/pkg/sctp"
@@ -13,9 +17,10 @@ import (
 // gNBSession handles all NGAP messages for one gNB connection.
 // Each gNB gets its own goroutine; UE contexts are shared with the Service.
 type gNBSession struct {
-	amf  *Service
-	conn sctp.Association
-	log  logger.Logger
+	amf        *Service
+	conn       sctp.Association
+	log        logger.Logger
+	gnbAssocID string // stable ID for event correlation, set at accept time
 
 	// gNB identity set during NGSetup
 	globalGNBID *ngap.GlobalGNBID
@@ -77,26 +82,139 @@ func (s *gNBSession) dispatch(ctx context.Context, raw []byte) error {
 }
 
 // handleNGSetupRequest processes a gNB NG Setup Request and replies.
+// It emits one structured event per lifecycle step so the hero screen
+// (docs/ui-ux-design.md §2) can show exactly what happened and why.
 func (s *gNBSession) handleNGSetupRequest(ies []ngap.ProtocolIE) error {
+	// ── decode ────────────────────────────────────────────────────────────────
 	req, err := ngap.DecodeNGSetupRequest(ies)
 	if err != nil {
+		result := diag.DiagnoseNGSetupMalformed(err)
+		s.amf.emitter.Emit(events.Event{
+			NF:       "amf",
+			Category: events.ErrorEvent,
+			Severity: events.SeverityError,
+			Protocol: "ngap",
+			Message:  "NGSetupRequest malformed — could not decode",
+			Payload: events.NGSetupPayload{
+				GNBAssocID:     s.gnbAssocID,
+				Success:        false,
+				FailureCause:   result.Cause,
+				FailureExplain: result.Explanation,
+				FixGNBSide:     result.FixGNBSide,
+				FixQCoreSide:   result.FixQCoreSide,
+			},
+		})
 		return fmt.Errorf("NGSetupRequest: %w", err)
 	}
+
 	s.globalGNBID = &req.GlobalRANNodeID
 	s.gnbName = req.RANNodeName
-	s.log.WithField("gnb_name", req.RANNodeName).Info("amf: NGSetup from gNB")
 
+	// ── decode PLMN with the canonical ident codec (A1) ─────────────────────
+	gnbMCC, gnbMNC := ident.DecodePLMN([3]byte(req.GlobalRANNodeID.PLMN))
+
+	// ── collect offered TACs and S-NSSAIs ────────────────────────────────────
+	var offeredTACs []string
+	var offeredSNSSAIs []events.SNSSAIDesc
+	for _, ta := range req.SupportedTAList {
+		offeredTACs = append(offeredTACs, strings.ToUpper(hex.EncodeToString(ta.TAC[:])))
+		for _, bp := range ta.BroadcastPLMN {
+			for _, s := range bp.SNSSAI {
+				sd := ""
+				if len(s.SD) > 0 {
+					sd = hex.EncodeToString(s.SD)
+				}
+				offeredSNSSAIs = appendSNSSAIIfAbsent(offeredSNSSAIs, events.SNSSAIDesc{SST: s.SST, SD: sd})
+			}
+		}
+	}
+
+	// ── emit "request received" event with all decoded fields ─────────────────
 	s.amf.emitter.Emit(events.Event{
 		NF:       "amf",
 		Category: events.SignalingRx,
 		Severity: events.SeverityInfo,
 		Protocol: "ngap",
 		Message:  "NGSetupRequest received",
+		Payload: events.NGSetupReceivedPayload{
+			GNBAssocID:     s.gnbAssocID,
+			GNBName:        req.RANNodeName,
+			GNBID:          uint64(req.GlobalRANNodeID.GNBID),
+			GNBMCC:         gnbMCC,
+			GNBMNC:         gnbMNC,
+			OfferedTACs:    offeredTACs,
+			OfferedSNSSAIs: offeredSNSSAIs,
+		},
+	})
+
+	s.log.WithField("gnb_name", req.RANNodeName).
+		WithField("plmn", gnbMCC+"/"+gnbMNC).
+		WithField("assoc_id", s.gnbAssocID).
+		Info("amf: NGSetup from gNB")
+
+	// ── run deterministic diagnostic rules ───────────────────────────────────
+	diagCfg := s.amf.diagConfig()
+	result := diag.DiagnoseNGSetup(req, diagCfg)
+
+	if !result.OK {
+		// Emit structured failure event with cause + fix for both sides.
+		firstTAC := ""
+		if len(offeredTACs) > 0 {
+			firstTAC = offeredTACs[0]
+		}
+		s.amf.emitter.Emit(events.Event{
+			NF:       "amf",
+			Category: events.ErrorEvent,
+			Severity: events.SeverityError,
+			Protocol: "ngap",
+			Message:  fmt.Sprintf("NGSetup rejected: %s", result.Cause),
+			Payload: events.NGSetupPayload{
+				GNBAssocID:     s.gnbAssocID,
+				GNBName:        req.RANNodeName,
+				GNBID:          uint64(req.GlobalRANNodeID.GNBID),
+				PLMN:           gnbMCC + "/" + gnbMNC,
+				TAC:            firstTAC,
+				Success:        false,
+				FailureCause:   result.Cause,
+				FailureExplain: result.Explanation,
+				FixGNBSide:     result.FixGNBSide,
+				FixQCoreSide:   result.FixQCoreSide,
+			},
+		})
+
+		s.log.WithField("cause", result.Cause).
+			WithField("assoc_id", s.gnbAssocID).
+			Warn("amf: NGSetup rejected")
+
+		// Send NGAP NGSetupFailure with cause = misc / unspecified.
+		fail, encErr := ngap.EncodeNGSetupFailure(&ngap.NGSetupFailure{
+			CauseGroup: ngap.CauseMisc,
+			CauseValue: 0, // unspecified
+		})
+		if encErr == nil {
+			_ = s.send(fail)
+		}
+		return nil // error already communicated to gNB via NGAP; non-fatal for session
+	}
+
+	// ── success path ──────────────────────────────────────────────────────────
+	firstTAC := ""
+	if len(offeredTACs) > 0 {
+		firstTAC = offeredTACs[0]
+	}
+	s.amf.emitter.Emit(events.Event{
+		NF:       "amf",
+		Category: events.SignalingTx,
+		Severity: events.SeverityInfo,
+		Protocol: "ngap",
+		Message:  "NGSetupResponse sent — gNB accepted",
 		Payload: events.NGSetupPayload{
-			GNBName: req.RANNodeName,
-			GNBID:   uint64(req.GlobalRANNodeID.GNBID),
-			PLMN:    fmt.Sprintf("%x", req.GlobalRANNodeID.PLMN),
-			Success: true,
+			GNBAssocID: s.gnbAssocID,
+			GNBName:    req.RANNodeName,
+			GNBID:      uint64(req.GlobalRANNodeID.GNBID),
+			PLMN:       gnbMCC + "/" + gnbMNC,
+			TAC:        firstTAC,
+			Success:    true,
 		},
 	})
 
@@ -113,6 +231,28 @@ func (s *gNBSession) handleNGSetupRequest(ies []ngap.ProtocolIE) error {
 		return fmt.Errorf("encode NGSetupResponse: %w", err)
 	}
 	return s.send(pdu)
+}
+
+// diagConfig converts the AMF's Config into the diag.AMFConfig the rule engine needs.
+func (s *Service) diagConfig() diag.AMFConfig {
+	cfg := diag.AMFConfig{}
+	for _, item := range s.cfg.PLMNSupportList {
+		cfg.SupportedPLMNs = append(cfg.SupportedPLMNs, item.PLMN)
+		cfg.SupportedSNSSAIs = append(cfg.SupportedSNSSAIs, item.SNSSAIs...)
+	}
+	// TAC: the AMF config doesn't have a formal TAC list — deduplicate from GUAMI isn't
+	// relevant. Leave SupportedTACs empty (= accept any TAC). Callers can populate it
+	// by using a test-only DiagConfig or a future AMFConfig.SupportedTACs field.
+	return cfg
+}
+
+func appendSNSSAIIfAbsent(s []events.SNSSAIDesc, v events.SNSSAIDesc) []events.SNSSAIDesc {
+	for _, x := range s {
+		if x.SST == v.SST && x.SD == v.SD {
+			return s
+		}
+	}
+	return append(s, v)
 }
 
 // handleInitialUEMessage processes the first NAS message from a UE.

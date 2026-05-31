@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
+	"github.com/qcore-project/qcore/pkg/events"
+	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/nas5g"
 	"github.com/qcore-project/qcore/pkg/ngap"
@@ -493,4 +496,281 @@ func TestAMF_NASWrap(t *testing.T) {
 	// MAC will mismatch (DL vs UL direction bits), but we confirm the function parses.
 	_ = err // mismatch is expected here
 	assert.Equal(t, uint8(0x7E), wrapped[0]) // unchanged
+}
+
+// ─── recordingEmitter ──────────────────────────────────────────────────────
+
+// recordingEmitter captures emitted events for assertion in tests.
+type recordingEmitter struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (r *recordingEmitter) Emit(e events.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, e)
+}
+
+func (r *recordingEmitter) all() []events.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := make([]events.Event, len(r.events))
+	copy(cp, r.events)
+	return cp
+}
+
+// findPayload returns the first event whose payload satisfies predicate p.
+func (r *recordingEmitter) findPayload(p func(events.Event) bool) (events.Event, bool) {
+	for _, e := range r.all() {
+		if p(e) {
+			return e, true
+		}
+	}
+	return events.Event{}, false
+}
+
+// ─── NG Setup integration tests ─────────────────────────────────────────────
+
+// startMinimalAMF starts an AMF with the given PLMNSupportList and returns
+// the port, the recording emitter, and a cancel func.
+func startMinimalAMF(t *testing.T, supportList []ngap.PLMNSupportItem) (port int, rec *recordingEmitter, cancel func()) {
+	t.Helper()
+	log := logger.New("error", "text")
+	port = pickPort(t)
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	cfg := Config{
+		NGAPAddr: "127.0.0.1:" + strconv.Itoa(port),
+		NGAPMode: sctp.ModeTCP,
+		AMFName:  "QCore-AMF-test",
+		GUAMI:    ngap.GUAMI{PLMN: plmn, AMFRegionID: 1, AMFSetID: 1, AMFPointer: 0},
+		PLMNSupportList: supportList,
+		ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org",
+	}
+	// ausfCli is unused for NG Setup tests; a nil-safe stub suffices.
+	svc := NewService(cfg, ausf.NewClient("http://127.0.0.1:1", "AMF", false), log)
+	rec = &recordingEmitter{}
+	svc.SetEmitter(rec)
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	go func() { _ = svc.Serve(ctx) }()
+	time.Sleep(60 * time.Millisecond)
+
+	return port, rec, ctxCancel
+}
+
+// sendNGSetup sends a raw NG Setup Request from a mock gNB and returns the raw
+// NGAP response bytes (or error). conn is closed by the caller.
+func sendNGSetup(t *testing.T, port int, req *ngap.NGSetupRequest) ([]byte, error) {
+	t.Helper()
+	conn, err := sctp.Dial(sctp.ModeTCP, "127.0.0.1:"+strconv.Itoa(port))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	raw, err := ngap.EncodeNGSetupRequest(req)
+	require.NoError(t, err)
+	require.NoError(t, conn.Write(raw, 0))
+
+	resp, _, err := conn.Read()
+	return resp, err
+}
+
+// defaultSupportList is a minimal PLMNSupportList for PLMN 001/01 + SST 1.
+func defaultSupportList() []ngap.PLMNSupportItem {
+	return []ngap.PLMNSupportItem{
+		{
+			PLMN:    ngap.PLMNFromMCCMNC("001", "01"),
+			SNSSAIs: []ngap.SNSSAI{{SST: 1}},
+		},
+	}
+}
+
+// TestNGSetup_HappyPath verifies that a matching gNB produces the correct
+// events and receives NGSetupResponse (successful outcome).
+func TestNGSetup_HappyPath(t *testing.T) {
+	port, rec, cancel := startMinimalAMF(t, defaultSupportList())
+	defer cancel()
+
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	req := &ngap.NGSetupRequest{
+		GlobalRANNodeID:  ngap.GlobalGNBID{PLMN: plmn, GNBID: 0xABCDE, GNBIDBits: 22},
+		RANNodeName:      "Nokia-AirScale",
+		DefaultPagingDRX: 1,
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, 0x00, 0x01},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{
+				{PLMN: plmn, SNSSAI: []ngap.SNSSAI{{SST: 1}}},
+			},
+		}},
+	}
+	resp, err := sendNGSetup(t, port, req)
+	require.NoError(t, err)
+
+	// Verify the NGAP response is NGSetupResponse (successful outcome).
+	pdu, err := ngap.DecodePDU(resp)
+	require.NoError(t, err)
+	assert.Equal(t, ngap.PDUSuccessfulOutcome, pdu.Type, "expected SuccessfulOutcome (NGSetupResponse)")
+	assert.Equal(t, ngap.ProcNGSetup, pdu.ProcedureCode)
+
+	// Verify events: GNBConnected + NGSetupReceived + NGSetupAccepted.
+	time.Sleep(40 * time.Millisecond)
+	all := rec.all()
+
+	// GNBConnectedPayload must appear first.
+	_, ok := rec.findPayload(func(e events.Event) bool {
+		_, is := e.Payload.(events.GNBConnectedPayload)
+		return is
+	})
+	assert.True(t, ok, "expected GNBConnectedPayload event")
+
+	// NGSetupReceivedPayload must carry the correct PLMN decoded via ident.
+	ev, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.NGSetupReceivedPayload)
+		return is && p.GNBMCC == "001" && p.GNBMNC == "01"
+	})
+	require.True(t, ok, "expected NGSetupReceivedPayload with MCC=001, MNC=01; got events: %v", all)
+	rxPayload := ev.Payload.(events.NGSetupReceivedPayload)
+	assert.Equal(t, "Nokia-AirScale", rxPayload.GNBName)
+	assert.Equal(t, []string{"000001"}, rxPayload.OfferedTACs)
+	assert.Equal(t, uint8(1), rxPayload.OfferedSNSSAIs[0].SST)
+
+	// NGSetupPayload (success) must appear.
+	_, ok = rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.NGSetupPayload)
+		return is && p.Success
+	})
+	assert.True(t, ok, "expected NGSetupPayload with Success=true")
+}
+
+// TestNGSetup_PLMNMismatch verifies PLMN mismatch produces:
+//   - NGSetupFailure NGAP response
+//   - ErrorEvent with FailureCause="plmn_mismatch" and non-empty fixes
+func TestNGSetup_PLMNMismatch(t *testing.T) {
+	port, rec, cancel := startMinimalAMF(t, defaultSupportList()) // AMF = 001/01
+	defer cancel()
+
+	wrongPLMN := ngap.PLMN(ident.EncodePLMN("310", "260")) // AT&T
+	req := &ngap.NGSetupRequest{
+		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: wrongPLMN, GNBID: 0x001, GNBIDBits: 22},
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, 0x00, 0x01},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{
+				{PLMN: wrongPLMN, SNSSAI: []ngap.SNSSAI{{SST: 1}}},
+			},
+		}},
+	}
+	resp, err := sendNGSetup(t, port, req)
+	require.NoError(t, err)
+
+	pdu, err := ngap.DecodePDU(resp)
+	require.NoError(t, err)
+	assert.Equal(t, ngap.PDUUnsuccessfulOutcome, pdu.Type, "expected UnsuccessfulOutcome (NGSetupFailure)")
+
+	time.Sleep(40 * time.Millisecond)
+	ev, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.NGSetupPayload)
+		return is && !p.Success && p.FailureCause == "plmn_mismatch"
+	})
+	require.True(t, ok, "expected NGSetupPayload with plmn_mismatch; events: %v", rec.all())
+	payload := ev.Payload.(events.NGSetupPayload)
+	assert.NotEmpty(t, payload.FailureExplain)
+	assert.NotEmpty(t, payload.FixGNBSide)
+	assert.NotEmpty(t, payload.FixQCoreSide)
+}
+
+// TestNGSetup_SliceMismatch verifies SST mismatch produces NGSetupFailure
+// with FailureCause="slice_mismatch".
+func TestNGSetup_SliceMismatch(t *testing.T) {
+	port, rec, cancel := startMinimalAMF(t, defaultSupportList()) // AMF SST=1
+	defer cancel()
+
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	req := &ngap.NGSetupRequest{
+		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: plmn, GNBID: 0x001, GNBIDBits: 22},
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, 0x00, 0x01},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{
+				{PLMN: plmn, SNSSAI: []ngap.SNSSAI{{SST: 2}}}, // URLLC, not eMBB
+			},
+		}},
+	}
+	resp, err := sendNGSetup(t, port, req)
+	require.NoError(t, err)
+
+	pdu, _ := ngap.DecodePDU(resp)
+	assert.Equal(t, ngap.PDUUnsuccessfulOutcome, pdu.Type)
+
+	time.Sleep(40 * time.Millisecond)
+	_, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.NGSetupPayload)
+		return is && !p.Success && p.FailureCause == "slice_mismatch"
+	})
+	require.True(t, ok, "expected slice_mismatch event; got: %v", rec.all())
+}
+
+// TestNGSetup_EventsContainSourceIP verifies that the GNBConnectedPayload
+// captures the remote IP so the dashboard can show "Connection from 1.2.3.4".
+func TestNGSetup_EventsContainSourceIP(t *testing.T) {
+	port, rec, cancel := startMinimalAMF(t, defaultSupportList())
+	defer cancel()
+
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	req := &ngap.NGSetupRequest{
+		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: plmn, GNBID: 0x001, GNBIDBits: 22},
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, 0x00, 0x01},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{
+				{PLMN: plmn, SNSSAI: []ngap.SNSSAI{{SST: 1}}},
+			},
+		}},
+	}
+	_, _ = sendNGSetup(t, port, req)
+	time.Sleep(40 * time.Millisecond)
+
+	ev, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.GNBConnectedPayload)
+		return is && p.SourceIP != ""
+	})
+	require.True(t, ok, "expected GNBConnectedPayload with SourceIP")
+	payload := ev.Payload.(events.GNBConnectedPayload)
+	assert.Contains(t, payload.SourceIP, "127.0.0.1", "SourceIP should be the loopback address")
+	assert.NotEmpty(t, payload.GNBAssocID, "GNBAssocID must be set")
+	_ = hex.EncodeToString(nil) // ensure hex imported
+}
+
+// TestNGSetup_PLMNDecoding_RealGNBBytes verifies that NG Setup decoding
+// uses pkg/ident (the A1 canonical codec), not an ad-hoc nibble extraction.
+// We directly inject raw gNB PLMN bytes into an NGSetupRequest and assert
+// the emitted event carries the correctly decoded MCC/MNC.
+func TestNGSetup_PLMNDecoding_RealGNBBytes(t *testing.T) {
+	port, rec, cancel := startMinimalAMF(t, []ngap.PLMNSupportItem{
+		{PLMN: ngap.PLMN(ident.EncodePLMN("262", "01")), SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
+	})
+	defer cancel()
+
+	// Deutsche Telekom raw bytes: byte0=0x62, byte1=0xF2, byte2=0x10
+	dtPLMN := ngap.PLMN{0x62, 0xF2, 0x10}
+	req := &ngap.NGSetupRequest{
+		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: dtPLMN, GNBID: 0x001, GNBIDBits: 22},
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, 0x00, 0x01},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{
+				{PLMN: dtPLMN, SNSSAI: []ngap.SNSSAI{{SST: 1}}},
+			},
+		}},
+	}
+	resp, err := sendNGSetup(t, port, req)
+	require.NoError(t, err)
+	pdu, _ := ngap.DecodePDU(resp)
+	assert.Equal(t, ngap.PDUSuccessfulOutcome, pdu.Type,
+		"DT gNB should be accepted when AMF is configured for 262/01")
+
+	time.Sleep(40 * time.Millisecond)
+	ev, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.NGSetupReceivedPayload)
+		return is && p.GNBMCC == "262" && p.GNBMNC == "01"
+	})
+	require.True(t, ok, "NGSetupReceivedPayload must carry decoded MCC=262, MNC=01 (not raw hex); events: %v", rec.all())
+	assert.Equal(t, "262", ev.Payload.(events.NGSetupReceivedPayload).GNBMCC)
+	assert.Equal(t, "01", ev.Payload.(events.NGSetupReceivedPayload).GNBMNC)
 }
