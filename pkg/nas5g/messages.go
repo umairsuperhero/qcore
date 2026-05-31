@@ -601,6 +601,13 @@ func EncodeRegistrationComplete() []byte {
 	return EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeRegistrationComplete})
 }
 
+// EncodeRegistrationReject encodes a plain (unprotected) Registration Reject
+// NAS PDU. TS 24.501 §8.2.4: mandatory IE is the 5GMM cause (1 byte).
+func EncodeRegistrationReject(cause Cause5GMM) []byte {
+	hdr := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeRegistrationReject})
+	return append(hdr, uint8(cause))
+}
+
 // --- Top-level Decode ------------------------------------------------------
 
 // Message is a discriminated union of all decoded 5G NAS messages.

@@ -101,6 +101,18 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	authCtx, confirmURL, err := s.ausfCli.CreateUEAuth(ctx, ausfReq)
 	if err != nil {
 		s.log.WithError(err).WithField("supi", supiOrSuci).Error("amf: AUSF auth failed")
+		s.emitter.Emit(events.Event{
+			JourneyID: ue.JourneyID,
+			NF:        "amf",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "nas5g",
+			Message:   "Registration Reject: AUSF auth failed — likely unprovisioned subscriber",
+		})
+		// Send a NAS Registration Reject so the UE/simulator learns the outcome
+		// rather than timing out waiting for an Authentication Request.
+		reject := nas5g.EncodeRegistrationReject(nas5g.Cause5GMM5GSServicesNotAllowed)
+		_ = ue.gNB.sendDownlinkNAS(ue, reject)
 		return err
 	}
 
