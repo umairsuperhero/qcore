@@ -12,6 +12,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.3 | 2026-05-30 | **Track A complete (A1–A4).** PLMN codec (D-1), real SUCI + Registration Reject (D-3), NRF lifecycle + discovery (D-2), N11 AMF→SMF + 5GSM UL NAS Transport (D-4). All PRs merged to main. All 24 packages green. |
 | v1.2 | 2026-05-30 | **A1 landed.** `pkg/ident` canonical PLMN codec; `ngap.PLMNFromMCCMNC` and `subscriber.ParsePLMN` now both delegate to it. 7 golden test vectors (not just round-trips). All 24 packages green. D-1 closed. |
 | v1.1 | 2026-05-29 | **Correction.** v1.0 claimed the 5G user plane / Phase C AI / 5G E2E test were "shipped and verified." They were uncommitted and had never compiled (~20 build errors + 2 real logic bugs). All fixed; full suite now green. Four interop gaps identified and turned into long-term decisions (D-1…D-4) + an Interop-Hardening track (I1–I4). |
 | v1.0 | 2026-05-28 | Initial post-Phase-C audit. Overstated completion — superseded by v1.1. |

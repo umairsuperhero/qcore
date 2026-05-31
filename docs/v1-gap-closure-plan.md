@@ -279,10 +279,10 @@ B2 is the long pole and is independent of Track A).
 
 | Task | Charter ref | Effort | Status |
 |------|-------------|--------|--------|
-| A1 PLMN codec | D-1, §4 correctness | S | ✅ PR #15 — merged to main |
-| A2 SUCI | D-3, §7 | S–M | ☐ |
-| A3 NRF discovery | D-2, §9 observability | M | ☐ |
-| A4 N11 AMF→SMF | D-4, §7 | M–L | ☐ |
+| A1 PLMN codec | D-1, §4 correctness | S | ✅ PR #15 — merged |
+| A2 SUCI | D-3, §7 | S–M | ✅ PR #16 — merged |
+| A3 NRF discovery | D-2, §9 observability | M | ✅ PR #17 — merged |
+| A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
 | B1 catalog depth | §9.1, §4 | M | ☐ |
 | B2 embedded SLM | §9.3, D5, OpenQ1 | L | ☐ |
 | C1 5G telemetry (T7) | §8 Pillar 4 | M | ☐ |
