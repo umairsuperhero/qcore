@@ -72,6 +72,34 @@ func NewServer(cfg ServerConfig, log logger.Logger, mux http.Handler) *Server {
 			AccessLog(log),
 		},
 	}
+
+	// Build the underlying *http.Server here, synchronously, so the pointer
+	// is fully published before Serve() (in one goroutine) and Shutdown()
+	// (typically in another) ever race to touch it. Constructing it lazily
+	// inside Serve() created a data race: Serve writes s.server while a
+	// concurrent Shutdown reads it.
+	handler := ChainMiddleware(s.mux, s.Middlewares...)
+	addr := net.JoinHostPort(cfg.BindAddress, fmt.Sprintf("%d", cfg.Port))
+
+	if cfg.TLSCert == "" || cfg.TLSKey == "" {
+		s.server = &http.Server{
+			Addr:         addr,
+			Handler:      h2c.NewHandler(handler, &http2.Server{}),
+			ReadTimeout:  cfg.ReadTimeout,
+			WriteTimeout: cfg.WriteTimeout,
+		}
+	} else {
+		s.server = &http.Server{
+			Addr:         addr,
+			Handler:      handler,
+			ReadTimeout:  cfg.ReadTimeout,
+			WriteTimeout: cfg.WriteTimeout,
+			TLSConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				NextProtos: []string{"h2"}, // no h1 fallback
+			},
+		}
+	}
 	return s
 }
 
@@ -80,32 +108,12 @@ func NewServer(cfg ServerConfig, log logger.Logger, mux http.Handler) *Server {
 // upgrades. In TLS mode it listens h2 over TLS only (we intentionally do not
 // fall back to HTTP/1.1 to keep the wire behaviour 5G-spec-pure).
 func (s *Server) Serve() error {
-	handler := ChainMiddleware(s.mux, s.Middlewares...)
-	addr := net.JoinHostPort(s.cfg.BindAddress, fmt.Sprintf("%d", s.cfg.Port))
-
 	if s.cfg.TLSCert == "" || s.cfg.TLSKey == "" {
-		s.log.Warnf("SBI starting in H2C (plaintext HTTP/2) mode on %s — dev only, do not expose to untrusted networks", addr)
-		h2s := &http2.Server{}
-		s.server = &http.Server{
-			Addr:         addr,
-			Handler:      h2c.NewHandler(handler, h2s),
-			ReadTimeout:  s.cfg.ReadTimeout,
-			WriteTimeout: s.cfg.WriteTimeout,
-		}
+		s.log.Warnf("SBI starting in H2C (plaintext HTTP/2) mode on %s — dev only, do not expose to untrusted networks", s.server.Addr)
 		return s.server.ListenAndServe()
 	}
 
-	s.log.Infof("SBI starting with TLS on %s (H2)", addr)
-	s.server = &http.Server{
-		Addr:         addr,
-		Handler:      handler,
-		ReadTimeout:  s.cfg.ReadTimeout,
-		WriteTimeout: s.cfg.WriteTimeout,
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			NextProtos: []string{"h2"}, // no h1 fallback
-		},
-	}
+	s.log.Infof("SBI starting with TLS on %s (H2)", s.server.Addr)
 	return s.server.ListenAndServeTLS(s.cfg.TLSCert, s.cfg.TLSKey)
 }
 
