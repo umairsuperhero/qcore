@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/qcore-project/qcore/pkg/diag"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/sbi"
 )
 
@@ -81,6 +83,21 @@ func (s *Service) postSMContexts(w http.ResponseWriter, r *http.Request) {
 	ueIP, err := s.ipam.Allocate()
 	if err != nil {
 		s.log.WithError(err).Error("smf: failed to allocate UE IP")
+		s.emitter.Emit(events.Event{
+			NF:       "smf",
+			Category: events.ErrorEvent,
+			Severity: events.SeverityError,
+			Protocol: "sbi",
+			Message:  "PDU session rejected: IP pool exhausted",
+			Payload: events.PDUSessionResultPayload{
+				SUPI:         req.Supi,
+				PDUSessionID: uint8(req.PduSessionID),
+				DNN:          req.Dnn,
+				Success:      false,
+				Cause:        diag.CauseIPPoolExhausted,
+				Detail:       err.Error(),
+			},
+		})
 		sbi.WriteProblem(w, sbi.InternalError("IP pool exhausted"))
 		return
 	}

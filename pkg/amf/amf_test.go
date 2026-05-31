@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
+	"github.com/qcore-project/qcore/pkg/diag"
 	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/logger"
@@ -773,4 +774,283 @@ func TestNGSetup_PLMNDecoding_RealGNBBytes(t *testing.T) {
 	require.True(t, ok, "NGSetupReceivedPayload must carry decoded MCC=262, MNC=01 (not raw hex); events: %v", rec.all())
 	assert.Equal(t, "262", ev.Payload.(events.NGSetupReceivedPayload).GNBMCC)
 	assert.Equal(t, "01", ev.Payload.(events.NGSetupReceivedPayload).GNBMNC)
+}
+
+// ─── Registration failure integration tests ────────────────────────────────
+//
+// Each test drives a mock gNB+UE through a specific failure path and asserts:
+//   1. The AMF emits a RegistrationFailurePayload with the correct cause tag.
+//   2. DiagnoseRegistration produces a non-OK result with the expected cause.
+//   3. The AMF sends a NAS Registration Reject to the UE.
+
+// startFullAMF starts an AMF wired to a real (in-process) AUSF+UDM with the
+// given provisioned subscriber. Returns the AMF port, a recording emitter, and
+// a cancel func. AUSF URL is embedded in the AMF service.
+func startFullAMF(t *testing.T, sub *subscriber.Subscriber) (port int, rec *recordingEmitter, cancel func()) {
+	t.Helper()
+	ausfURL := startAUSFandUDM(t, sub)
+	log := logger.New("error", "text")
+	port = pickPort(t)
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	cfg := Config{
+		NGAPAddr: "127.0.0.1:" + strconv.Itoa(port),
+		NGAPMode: sctp.ModeTCP,
+		AMFName:  "QCore-AMF-test",
+		GUAMI:    ngap.GUAMI{PLMN: plmn, AMFRegionID: 1, AMFSetID: 1, AMFPointer: 0},
+		PLMNSupportList: []ngap.PLMNSupportItem{
+			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
+		},
+		ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org",
+	}
+	svc := NewService(cfg, ausf.NewClient(ausfURL, "AMF", false), log)
+	rec = &recordingEmitter{}
+	svc.SetEmitter(rec)
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	go func() { _ = svc.Serve(ctx) }()
+	time.Sleep(80 * time.Millisecond)
+	return port, rec, ctxCancel
+}
+
+// connectGNB dials the AMF, performs NGSetup, and returns the mock gNB.
+func connectGNB(t *testing.T, port int) *mockGNB {
+	t.Helper()
+	conn, err := sctp.Dial(sctp.ModeTCP, "127.0.0.1:"+strconv.Itoa(port))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	gNB := &mockGNB{conn: conn}
+	gNB.ngSetup(t)
+	return gNB
+}
+
+// sendRegistrationRequest sends a Registration Request from the mock gNB for
+// the given SUCI bytes and returns the ranID used.
+func sendRegistrationRequest(t *testing.T, gNB *mockGNB, suciBytes []byte) uint64 {
+	t.Helper()
+	const ranID = uint64(0x1001)
+	regReq := nas5g.EncodeRegistrationRequest(&nas5g.RegistrationRequest{
+		RegistrationType:     nas5g.RegistrationTypeInitialRegistration,
+		NASKeySetID:          7,
+		MobileIdentity:       suciBytes,
+		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00},
+	})
+	gNB.sendInitialUE(t, ranID, regReq)
+	return ranID
+}
+
+// makeSUCI builds a null-scheme SUCI for the given IMSI with PLMN 001/01.
+func makeSUCI(imsi string) []byte {
+	plmn := [3]byte(ngap.PLMNFromMCCMNC("001", "01"))
+	// MNC=01 is 2-digit, so MSIN = IMSI[5:]
+	msin := imsi[5:]
+	msinBCD := make([]byte, (len(msin)+1)/2)
+	for i, ch := range msin {
+		d := uint8(ch - '0')
+		if i%2 == 0 {
+			msinBCD[i/2] = d
+		} else {
+			msinBCD[i/2] |= d << 4
+		}
+	}
+	return nas5g.EncodeSUCI(nas5g.SUCI{
+		PLMN:             plmn,
+		RoutingIndicator: [2]byte{0xFF, 0xFF},
+		ProtectionScheme: 0x00,
+		HomeNetworkPKID:  0x00,
+		MSIN:             msinBCD,
+	})
+}
+
+// assertRegistrationReject waits for a DownlinkNASTransport and asserts it
+// carries a NAS Registration Reject (message type 0x44).
+func assertRegistrationReject(t *testing.T, gNB *mockGNB) {
+	t.Helper()
+	_, nasPDU := gNB.recvDownlinkNAS(t)
+	require.GreaterOrEqual(t, len(nasPDU), 3, "NAS PDU too short")
+	hdr, err := nas5g.DecodeHeader(nasPDU)
+	require.NoError(t, err)
+	assert.Equal(t, nas5g.MsgTypeRegistrationReject, hdr.MessageType,
+		"expected Registration Reject, got %s", hdr.MessageType)
+}
+
+// TestRegistration_UnknownSubscriber drives a UE with an IMSI not in the
+// subscriber store and asserts the correct cause + event + rejection.
+func TestRegistration_UnknownSubscriber(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in -short mode")
+	}
+	// Provision a DIFFERENT subscriber — the UE will use an unknown IMSI.
+	provisionedSub := &subscriber.Subscriber{
+		IMSI: "001010000000001",
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+	port, rec, cancel := startFullAMF(t, provisionedSub)
+	defer cancel()
+	gNB := connectGNB(t, port)
+
+	// UE uses an IMSI that is NOT provisioned.
+	unknownIMSI := "001019999999999"
+	suci := makeSUCI(unknownIMSI)
+	_ = sendRegistrationRequest(t, gNB, suci)
+
+	// AMF must send a Registration Reject.
+	assertRegistrationReject(t, gNB)
+	time.Sleep(40 * time.Millisecond)
+
+	// Assert the RegistrationFailurePayload event was emitted with the correct cause.
+	ev, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.RegistrationFailurePayload)
+		return is && p.Cause == diag.CauseUnknownSubscriber
+	})
+	require.True(t, ok, "expected RegistrationFailurePayload with cause=%q; events: %v",
+		diag.CauseUnknownSubscriber, rec.all())
+
+	// Assert the diagnostic layer produces the right result.
+	result := diag.DiagnoseRegistration(rec.all())
+	assert.False(t, result.OK)
+	assert.Equal(t, diag.CauseUnknownSubscriber, result.Cause)
+	assert.NotEmpty(t, result.Explanation)
+	assert.NotEmpty(t, result.FixQCoreSide)
+	_ = ev
+}
+
+// TestRegistration_AuthMACFailure drives a UE that sends an Authentication
+// Failure with cause=MAC failure (simulating wrong Ki/OPc on network side).
+func TestRegistration_AuthMACFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in -short mode")
+	}
+	sub := &subscriber.Subscriber{
+		IMSI: "001010000000001",
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+	port, rec, cancel := startFullAMF(t, sub)
+	defer cancel()
+	gNB := connectGNB(t, port)
+
+	suci := makeSUCI(sub.IMSI)
+	ranID := sendRegistrationRequest(t, gNB, suci)
+
+	// Wait for Authentication Request from AMF.
+	amfID, _ := gNB.recvDownlinkNAS(t)
+
+	// UE sends Authentication Failure (MAC failure) instead of Authentication Response.
+	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure)
+	gNB.sendUplinkNAS(t, amfID, ranID, authFail)
+
+	// AMF must send a Registration Reject.
+	assertRegistrationReject(t, gNB)
+	time.Sleep(40 * time.Millisecond)
+
+	// Assert AuthenticationFailurePayload was emitted.
+	_, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.AuthenticationFailurePayload)
+		return is && p.CauseName == "mac_failure"
+	})
+	require.True(t, ok, "expected AuthenticationFailurePayload with mac_failure; events: %v", rec.all())
+
+	// Assert the diagnostic layer produces CauseAuthMACFailure.
+	result := diag.DiagnoseRegistration(rec.all())
+	assert.False(t, result.OK)
+	assert.Equal(t, diag.CauseAuthMACFailure, result.Cause)
+	assert.NotEmpty(t, result.FixUESide)
+	assert.NotEmpty(t, result.FixQCoreSide)
+}
+
+// TestRegistration_SUCIDecodeFailure drives a UE sending a SUCI with an
+// unsupported protection scheme (non-zero) and asserts the correct rejection.
+func TestRegistration_SUCIDecodeFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in -short mode")
+	}
+	sub := &subscriber.Subscriber{
+		IMSI: "001010000000001",
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+	port, rec, cancel := startFullAMF(t, sub)
+	defer cancel()
+	gNB := connectGNB(t, port)
+
+	// Build a SUCI with protection scheme = 1 (ECIES Profile A — not supported).
+	plmn := [3]byte(ngap.PLMNFromMCCMNC("001", "01"))
+	eciesSUCI := nas5g.EncodeSUCI(nas5g.SUCI{
+		PLMN:             plmn,
+		RoutingIndicator: [2]byte{0xFF, 0xFF},
+		ProtectionScheme: 0x01, // ECIES — NOT null scheme
+		HomeNetworkPKID:  0x00,
+		MSIN:             []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00},
+	})
+	_ = sendRegistrationRequest(t, gNB, eciesSUCI)
+
+	// AMF must send a Registration Reject immediately (before any AUSF call).
+	assertRegistrationReject(t, gNB)
+	time.Sleep(40 * time.Millisecond)
+
+	// Assert SUCIDecodeFailurePayload was emitted.
+	_, ok := rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.SUCIDecodeFailurePayload)
+		return is && p.Scheme == 1
+	})
+	require.True(t, ok, "expected SUCIDecodeFailurePayload with scheme=1; events: %v", rec.all())
+
+	// Assert the diagnostic result.
+	result := diag.DiagnoseRegistration(rec.all())
+	assert.False(t, result.OK)
+	assert.Equal(t, diag.CauseSUCIDecodeFailure, result.Cause)
+}
+
+// TestRegistration_DistinguishUnknownVsMAC ensures the two most easily confused
+// failures produce DIFFERENT events, DIFFERENT causes, and DIFFERENT fixes.
+func TestRegistration_DistinguishUnknownVsMAC(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test skipped in -short mode")
+	}
+	sub := &subscriber.Subscriber{
+		IMSI: "001010000000001",
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+
+	// --- Run 1: unknown subscriber ---
+	port1, rec1, cancel1 := startFullAMF(t, sub)
+	defer cancel1()
+	gNB1 := connectGNB(t, port1)
+	_ = sendRegistrationRequest(t, gNB1, makeSUCI("001019999999999"))
+	assertRegistrationReject(t, gNB1)
+	time.Sleep(40 * time.Millisecond)
+	resultUnknown := diag.DiagnoseRegistration(rec1.all())
+
+	// --- Run 2: MAC failure (known subscriber, UE rejects AUTN) ---
+	port2, rec2, cancel2 := startFullAMF(t, sub)
+	defer cancel2()
+	gNB2 := connectGNB(t, port2)
+	ranID2 := sendRegistrationRequest(t, gNB2, makeSUCI(sub.IMSI))
+	amfID2, _ := gNB2.recvDownlinkNAS(t) // get Auth Request
+	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure)
+	gNB2.sendUplinkNAS(t, amfID2, ranID2, authFail)
+	assertRegistrationReject(t, gNB2)
+	time.Sleep(40 * time.Millisecond)
+	resultMAC := diag.DiagnoseRegistration(rec2.all())
+
+	assert.NotEqual(t, resultUnknown.Cause, resultMAC.Cause,
+		"unknown subscriber and MAC failure MUST have different causes")
+	assert.NotEqual(t, resultUnknown.FixQCoreSide, resultMAC.FixQCoreSide,
+		"fixes must differ: one is provisioning, one is Ki/OPc correction")
+
+	assert.Equal(t, diag.CauseUnknownSubscriber, resultUnknown.Cause)
+	assert.Equal(t, diag.CauseAuthMACFailure, resultMAC.Cause)
+
+	// Verify the hex import is used (suppress unused import warning on older Go).
+	_ = hex.EncodeToString(nil)
+	_ = ident.EncodePLMN("001", "01")
 }

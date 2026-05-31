@@ -259,3 +259,47 @@ type NFDiscoveredPayload struct {
 	ResolvedURL   string `json:"resolved_url"`
 	Fallback      bool   `json:"fallback,omitempty"` // true when NRF was unreachable
 }
+
+// --- Registration + PDU session diagnostic payload types ---
+// These payloads feed the diag layer rules and the frontend live trace view.
+// Every registration failure MUST emit a RegistrationFailurePayload so the
+// diag layer can reason over the trace without inspecting raw error strings.
+
+// RegistrationFailurePayload is emitted whenever a 5G registration attempt
+// fails for any reason. Cause is a machine-readable tag; the diag layer maps
+// it to plain-language explanation + fix. This is the SINGLE failure event
+// the frontend traces against — do not emit generic error events for reg failures.
+type RegistrationFailurePayload struct {
+	SUPI  string `json:"supi,omitempty"`  // resolved SUPI if available, else empty
+	SUCI  string `json:"suci,omitempty"`  // raw SUCI string if SUPI not resolved
+	Cause string `json:"cause"`           // machine tag: see pkg/diag/registration.go for the full list
+	// Detail carries the raw error string for debugging; not shown to end users.
+	Detail string `json:"detail,omitempty"`
+}
+
+// AuthenticationFailurePayload is emitted when the UE sends an Authentication
+// Failure (MAC failure, SQN failure, etc.) — distinct from a network-side reject.
+type AuthenticationFailurePayload struct {
+	SUPI      string `json:"supi,omitempty"`
+	Cause5GMM uint8  `json:"cause_5gmm"` // TS 24.501 §9.11.3.2 cause value
+	CauseName string `json:"cause_name"` // e.g. "mac_failure", "sqn_failure"
+}
+
+// SUCIDecodeFailurePayload is emitted when the AMF cannot decode the UE's
+// mobile identity (malformed SUCI, unsupported protection scheme, etc.).
+type SUCIDecodeFailurePayload struct {
+	RawIdentity string `json:"raw_identity_hex"` // hex of the raw IE bytes
+	Reason      string `json:"reason"`           // e.g. "unsupported_protection_scheme"
+	Scheme      uint8  `json:"scheme,omitempty"` // protection scheme byte (0=null, 1+=ECIES)
+}
+
+// PDUSessionResultPayload is emitted when the SMF responds to a PDU session
+// creation request — whether success or failure.
+type PDUSessionResultPayload struct {
+	SUPI         string `json:"supi"`
+	PDUSessionID uint8  `json:"pdu_session_id"`
+	DNN          string `json:"dnn,omitempty"`
+	Success      bool   `json:"success"`
+	Cause        string `json:"cause,omitempty"` // machine tag on failure: "smf_reject", "ip_pool_exhausted", …
+	Detail       string `json:"detail,omitempty"`
+}
