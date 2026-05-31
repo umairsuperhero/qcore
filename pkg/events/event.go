@@ -150,12 +150,49 @@ type ModifyBearerPayload struct {
 
 // --- 5G SA payload types ---
 
+// --- NG Setup lifecycle payloads ---
+// Each payload corresponds to one step the hero screen (docs/ui-ux-design.md §2)
+// needs in order to show "Waiting → Connected / Failed" with cause and fix.
+
+// GNBConnectedPayload fires the moment a TCP/SCTP association is accepted —
+// before any NGAP is exchanged. Feeds the "Waiting for gNB…" → in-progress state.
+type GNBConnectedPayload struct {
+	GNBAssocID string `json:"gnb_assoc_id"` // stable ID for this connection
+	SourceIP   string `json:"source_ip"`    // remote IP:port
+}
+
+// NGSetupReceivedPayload fires after DecodeNGSetupRequest succeeds — the raw
+// fields the gNB advertised, decoded with the canonical ident codec.
+type NGSetupReceivedPayload struct {
+	GNBAssocID  string     `json:"gnb_assoc_id"`
+	GNBName     string     `json:"gnb_name,omitempty"`
+	GNBID       uint64     `json:"gnb_id"`
+	GNBMCC      string     `json:"gnb_mcc"` // decoded from GlobalRANNodeID PLMN
+	GNBMNC      string     `json:"gnb_mnc"`
+	OfferedTACs []string   `json:"offered_tacs"` // hex TAC strings
+	OfferedSNSSAIs []SNSSAIDesc `json:"offered_snssais"`
+}
+
+// SNSSAIDesc is a displayable slice identifier.
+type SNSSAIDesc struct {
+	SST uint8  `json:"sst"`
+	SD  string `json:"sd,omitempty"` // hex, omitted when absent
+}
+
 // NGSetupPayload carries gNB identification from NG Setup.
+// Kept for backward-compat with existing dashboard/collector consumers.
 type NGSetupPayload struct {
-	GNBName string `json:"gnb_name,omitempty"`
-	GNBID   uint64 `json:"gnb_id"`
-	PLMN    string `json:"plmn,omitempty"`
-	Success bool   `json:"success"`
+	GNBAssocID string `json:"gnb_assoc_id"`
+	GNBName    string `json:"gnb_name,omitempty"`
+	GNBID      uint64 `json:"gnb_id"`
+	PLMN       string `json:"plmn,omitempty"` // "MCC/MNC" human-readable
+	TAC        string `json:"tac,omitempty"`  // hex of first TAC
+	Success    bool   `json:"success"`
+	// On failure:
+	FailureCause    string `json:"failure_cause,omitempty"`    // e.g. "plmn_mismatch"
+	FailureExplain  string `json:"failure_explain,omitempty"`  // plain English
+	FixGNBSide      string `json:"fix_gnb_side,omitempty"`
+	FixQCoreSide    string `json:"fix_qcore_side,omitempty"`
 }
 
 // RegistrationRequestPayload carries NAS 5G Registration Request fields.

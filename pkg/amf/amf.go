@@ -67,6 +67,9 @@ type Service struct {
 	// nextAMFUENGAPID atomically assigns IDs to UE contexts.
 	nextID atomic.Uint64
 
+	// nextAssocID assigns short stable IDs to gNB connections for event correlation.
+	nextAssocID atomic.Uint64
+
 	mu  sync.RWMutex
 	ues map[uint64]*UEContext // keyed by AMF-UE-NGAP-ID
 }
@@ -125,10 +128,24 @@ func (s *Service) Serve(ctx context.Context) error {
 				continue
 			}
 		}
+		assocID := fmt.Sprintf("gnb-%d", s.nextAssocID.Add(1))
+		sourceIP := conn.RemoteAddr().String()
+		s.emitter.Emit(events.Event{
+			NF:       "amf",
+			Category: events.SignalingRx,
+			Severity: events.SeverityInfo,
+			Protocol: "ngap",
+			Message:  "gNB TCP/SCTP association accepted",
+			Payload: events.GNBConnectedPayload{
+				GNBAssocID: assocID,
+				SourceIP:   sourceIP,
+			},
+		})
 		sess := &gNBSession{
-			amf:  s,
-			conn: conn,
-			log:  s.log.WithField("gnb", conn.RemoteAddr()),
+			amf:        s,
+			conn:       conn,
+			gnbAssocID: assocID,
+			log:        s.log.WithField("gnb", sourceIP).WithField("assoc_id", assocID),
 		}
 		go sess.run(ctx)
 	}
