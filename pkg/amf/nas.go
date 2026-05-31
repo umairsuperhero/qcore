@@ -1,9 +1,12 @@
 package amf
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
@@ -62,6 +65,8 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 		return s.handleSecurityModeComplete(ctx, ue, msg.SecurityModeComplete)
 	case msg.Header.MessageType == nas5g.MsgTypeRegistrationComplete:
 		return s.handleRegistrationComplete(ctx, ue)
+	case msg.Header.MessageType == nas5g.MsgTypeULNASTransport:
+		return s.handleULNASTransport(ctx, ue, raw)
 	default:
 		s.log.WithField("type", msg.Header.MessageType).Warn("amf: unhandled NAS message")
 		return nil
@@ -314,6 +319,82 @@ func (s *Service) handleSecurityModeComplete(ctx context.Context, ue *UEContext,
 // handleRegistrationComplete — UE acknowledged Registration Accept.
 func (s *Service) handleRegistrationComplete(ctx context.Context, ue *UEContext) error {
 	s.log.WithField("supi", ue.SUPI).Info("amf: Registration Complete — UE fully registered")
+	return nil
+}
+
+// handleULNASTransport processes a UL NAS Transport carrying a PDU Session
+// Establishment Request. It decodes the N1 SM container and forwards it to the
+// SMF via Nsmf_PDUSession_CreateSMContext (TS 29.502 §5.2.2).
+func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw []byte) error {
+	const nasHdrLen = 3
+	if len(raw) <= nasHdrLen {
+		return fmt.Errorf("amf: UL NAS Transport too short")
+	}
+	ul, err := nas5g.DecodeULNASTransport(raw[nasHdrLen:])
+	if err != nil {
+		return fmt.Errorf("amf: decode UL NAS Transport: %w", err)
+	}
+
+	s.log.WithField("supi", ue.SUPI).
+		WithField("pdu_session_id", ul.PDUSessionID).
+		Info("amf: UL NAS Transport — forwarding PDU session to SMF")
+
+	smfURL := s.cfg.SMFURL
+	if smfURL == "" {
+		s.log.Warn("amf: no SMF URL configured, dropping PDU session request")
+		return nil
+	}
+
+	// Build Nsmf_PDUSession CreateSMContext request.
+	createReq := struct {
+		Supi         string `json:"supi"`
+		PduSessionID int    `json:"pduSessionId"`
+		Dnn          string `json:"dnn"`
+		ServingNfId  string `json:"servingNfId"`
+	}{
+		Supi:         ue.SUPI,
+		PduSessionID: int(ul.PDUSessionID),
+		Dnn:          "internet",
+		ServingNfId:  s.cfg.AMFInstanceID,
+	}
+
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "sbi",
+		Message:   "Forwarding PDU Session Establishment to SMF",
+		Payload: events.PDUSessionEstablishmentPayload{
+			SUPI:         ue.SUPI,
+			PDUSessionID: ul.PDUSessionID,
+		},
+	})
+
+	body, err := json.Marshal(createReq)
+	if err != nil {
+		return fmt.Errorf("amf: marshal SMF request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		smfURL+"/nsmf-pdusession/v1/sm-contexts",
+		bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("amf: create SMF request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		s.log.WithError(err).Error("amf: SMF PDU session creation failed")
+		return nil // non-fatal for registration; UE can retry
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusCreated {
+		s.log.WithField("supi", ue.SUPI).Info("amf: SMF created PDU session")
+	} else {
+		s.log.WithField("status", resp.StatusCode).Warn("amf: SMF returned non-201 for PDU session")
+	}
 	return nil
 }
 

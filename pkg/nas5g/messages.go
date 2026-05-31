@@ -668,3 +668,99 @@ func EncodeTAIList(plmn [3]byte, tacs [][3]byte) []byte {
 	}
 	return b
 }
+
+// ─── 5GSM (PDU session layer) ────────────────────────────────────────────────
+//
+// TS 24.501 §9.4 defines the 5G Session Management (5GSM) protocol header:
+//   Octet 1: Extended Protocol Discriminator (EPD) = 0x2E
+//   Octet 2: PDU Session ID
+//   Octet 3: Procedure Transaction Identity (PTI)
+//   Octet 4: Message Type
+
+// EncodePDUSessionEstablishmentRequest encodes a minimal 5GSM PDU Session
+// Establishment Request (TS 24.501 §8.3.1). Only the mandatory header is
+// encoded; optional IEs (PDU type, SSC mode, etc.) are omitted for this
+// minimal implementation.
+func EncodePDUSessionEstablishmentRequest(pduSessionID, pti uint8) []byte {
+	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentRequest)}
+}
+
+// EncodePDUSessionEstablishmentAccept encodes a minimal 5GSM PDU Session
+// Establishment Accept (TS 24.501 §8.3.2). Only the mandatory header is
+// encoded; the AMF would normally also include QoS, UE IP, etc.
+func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8) []byte {
+	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentAccept)}
+}
+
+// ULNASTransportPayload holds decoded fields from a UL NAS Transport message.
+type ULNASTransportPayload struct {
+	PDUSessionID     uint8
+	PayloadContainer []byte // 5GSM container (N1 SM info)
+}
+
+// EncodeULNASTransport encodes an unprotected 5GMM UL NAS Transport message
+// (TS 24.501 §8.2.17) carrying an N1 SM (5GSM) container.
+//
+// Mandatory IEs encoded: payload container type (N1 SM, 0x01), payload
+// container (the 5GSM bytes), PDU session ID.
+func EncodeULNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
+	b := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeULNASTransport})
+
+	// Payload container type (1 byte): upper nibble = N1 SM (0x1), lower = spare
+	b = append(b, 0x11)
+
+	// Payload container length (2 bytes big-endian) + container
+	clen := len(n1SmContainer)
+	b = append(b, uint8(clen>>8), uint8(clen))
+	b = append(b, n1SmContainer...)
+
+	// Optional IE: PDU Session ID (IEI = 0x12, length = 1, value = pduSessionID)
+	b = append(b, 0x12, 0x01, pduSessionID)
+	return b
+}
+
+// DecodeULNASTransport decodes the payload of a UL NAS Transport message
+// (after the 3-byte NAS header). Returns the N1 SM container and the PDU
+// session ID IEI value if present.
+func DecodeULNASTransport(body []byte) (*ULNASTransportPayload, error) {
+	if len(body) < 4 {
+		return nil, fmt.Errorf("nas5g: UL NAS Transport body too short: %d", len(body))
+	}
+	// Payload container type (1 byte, upper nibble)
+	containerType := (body[0] >> 4) & 0x0F
+	if containerType != 0x01 { // 0x01 = N1 SM info
+		return nil, fmt.Errorf("nas5g: unexpected payload container type 0x%02X", containerType)
+	}
+	// Payload container length (2 bytes big-endian)
+	clen := int(body[1])<<8 | int(body[2])
+	if len(body) < 3+clen {
+		return nil, fmt.Errorf("nas5g: UL NAS Transport truncated: need %d body bytes, have %d", 3+clen, len(body))
+	}
+	payload := &ULNASTransportPayload{
+		PayloadContainer: body[3 : 3+clen],
+	}
+	// Scan optional TLV IEs after the container.
+	pos := 3 + clen
+	for pos < len(body) {
+		iei := body[pos]
+		pos++
+		switch iei {
+		case 0x12: // PDU Session ID
+			if pos >= len(body) {
+				break
+			}
+			ieLen := int(body[pos])
+			pos++
+			if ieLen >= 1 && pos < len(body) {
+				payload.PDUSessionID = body[pos]
+			}
+			pos += ieLen
+		default:
+			// Unknown IE — try to skip (1-byte length follows for most IEs)
+			if pos < len(body) {
+				pos += int(body[pos]) + 1
+			}
+		}
+	}
+	return payload, nil
+}

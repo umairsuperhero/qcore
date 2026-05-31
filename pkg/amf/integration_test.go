@@ -1,13 +1,10 @@
 package amf_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -254,6 +251,7 @@ func TestEndToEnd5GFlow(t *testing.T) {
 			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
 		},
 		ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org",
+		SMFURL:             smfURL, // AMF drives PDU session to SMF directly (A4)
 	}
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := amf.NewService(amfCfg, ausfCli, log)
@@ -341,30 +339,26 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	t.Log("✓ UE Registered")
 
 	// ========================================================================
-	// 3. PDU SESSION ESTABLISHMENT
+	// 3. PDU SESSION ESTABLISHMENT — real AMF→SMF flow (A4)
 	// ========================================================================
-	// Since AMF doesn't forward PDU sessions to SMF yet (T3 note: "on a Create SM Context from AMF..."),
-	// and modifying the AMF to act as an SBI client to SMF is out of scope for a quick E2E, 
-	// we will directly call the SMF's REST endpoint to simulate the AMF's behavior.
-	// This proves SMF <-> UPF (PFCP) works, and the UPF GTP-U tunnel gets set up.
-	
-	reqData := smf.SMContextCreateData{
-		Supi:         "imsi-001010000000001",
-		PduSessionID: 1,
-		Dnn:          "internet",
-	}
-	reqBody, _ := json.Marshal(reqData)
-	
-	// Create SM Context
-	resp, err := http.Post(smfURL+"/nsmf-pdusession/v1/sm-contexts", "application/json", bytes.NewReader(reqBody))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
-	
-	var smResp smf.SMContextCreatedData
-	err = json.NewDecoder(resp.Body).Decode(&smResp)
-	require.NoError(t, err)
-	
-	t.Log("✓ PDU Session Established (SMF -> UPF)")
+	// The UE sends Registration Complete, then sends a UL NAS Transport carrying
+	// a PDU Session Establishment Request. The AMF decodes it and calls the SMF
+	// via Nsmf_PDUSession CreateSMContext. No direct SMF REST call from the test.
+	const (
+		pduSessionID = uint8(1)
+		pti          = uint8(0x01)
+	)
+	pduEstabReq := nas5g.EncodePDUSessionEstablishmentRequest(pduSessionID, pti)
+	ulNASTransport := nas5g.EncodeULNASTransport(pduSessionID, pduEstabReq)
+	gNB.sendUplinkNAS(t, amfID, ranID, ulNASTransport)
+
+	// Give the AMF time to forward to the SMF (async SBI call).
+	time.Sleep(300 * time.Millisecond)
+
+	// Verify the SMF allocated a session: the UPF SessionStore will have a TEID.
+	// (The AMF does not yet return a DL NAS response for PDU sessions in this phase;
+	// the verification is the PFCP session + GTP-U plane below.)
+	t.Log("✓ PDU Session Establishment sent via UE → AMF → SMF (no direct SMF REST call)")
 	
 	// ========================================================================
 	// 4. DATA PLANE (GTP-U) VERIFICATION
