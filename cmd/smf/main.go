@@ -11,8 +11,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
+	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
 	"github.com/qcore-project/qcore/pkg/smf"
 )
 
@@ -87,9 +89,22 @@ func run() error {
 		}
 	}()
 
-	// NOTE: NRF registration/discovery wiring does not yet exist in pkg/sbi
-	// (no NF currently self-registers — see cmd/amf). When that lands, the SMF
-	// should register here using sbi.nrfUrl and instanceID.
+	// NRF: self-register (non-fatal if NRF is down).
+	nrfURL := viper.GetString("sbi.nrfUrl")
+	nrfCli := nrfclient.NewHTTPClient(nrfURL, "SMF", false)
+	smfProfile := &nrfclient.NFProfile{
+		NFInstanceID: instanceID,
+		NFType:       nrfclient.NFTypeSMF,
+		NFStatus:     nrfclient.StatusRegistered,
+		Services: []nrfclient.NFService{{
+			ServiceName: "nsmf-pdusession",
+			Versions:    []string{"v1"},
+			Scheme:      "http",
+			IPAddr:      viper.GetString("sbi.bindAddress"),
+			Port:        viper.GetInt("sbi.port"),
+		}},
+	}
+	go nrfclient.NewLifecycleManager(nrfCli, smfProfile, nrfURL, &events.NoopEmitter{}, log).Start(ctx)
 
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)

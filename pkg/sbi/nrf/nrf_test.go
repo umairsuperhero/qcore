@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+
+	"github.com/qcore-project/qcore/pkg/events"
+	"github.com/qcore-project/qcore/pkg/logger"
 )
 
 func sampleProfile(id string, nfType NFType, services ...string) *NFProfile {
@@ -110,6 +114,96 @@ func TestInMemory_RegisterValidation(t *testing.T) {
 	}
 	if err := m.Register(ctx, &NFProfile{NFInstanceID: "x"}); err == nil {
 		t.Error("expected error on missing nf type")
+	}
+}
+
+// TestLifecycleManager_RegistersAndDeregisters verifies that Start registers
+// the NF with the InMemory NRF and that cancelling the ctx triggers
+// deregistration, satisfying the A3 acceptance criterion.
+func TestLifecycleManager_RegistersAndDeregisters(t *testing.T) {
+	m := NewInMemory()
+	log := logger.New("error", "text")
+	profile := sampleProfile("amf-1", NFTypeAMF)
+	profile.HeartbeatTimer = 500 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	lcm := NewLifecycleManager(m, profile, "http://nrf:8083", &events.NoopEmitter{}, log)
+	done := make(chan struct{})
+	go func() {
+		lcm.Start(ctx)
+		close(done)
+	}()
+
+	// Give Start time to register.
+	time.Sleep(80 * time.Millisecond)
+
+	amfs, err := m.Discover(context.Background(), DiscoveryQuery{TargetNFType: NFTypeAMF, RequesterType: NFTypeSMF})
+	if err != nil || len(amfs) != 1 {
+		t.Fatalf("expected AMF registered; got len=%d err=%v", len(amfs), err)
+	}
+
+	// Cancel → deregister.
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("LifecycleManager.Start did not return after ctx cancel")
+	}
+
+	amfs, _ = m.Discover(context.Background(), DiscoveryQuery{TargetNFType: NFTypeAMF, RequesterType: NFTypeSMF})
+	if len(amfs) != 0 {
+		t.Errorf("expected AMF deregistered after ctx cancel; got %+v", amfs)
+	}
+}
+
+// TestDiscoverFirst_NRFHit verifies the happy path: NRF returns a profile and
+// DiscoverFirst returns its URL.
+func TestDiscoverFirst_NRFHit(t *testing.T) {
+	m := NewInMemory()
+	p := sampleProfile("ausf-1", NFTypeAUSF, "nausf-auth")
+	p.Services[0].IPAddr = "127.0.0.1"
+	p.Services[0].Port = 8006
+	_ = m.Register(context.Background(), p)
+
+	log := logger.New("error", "text")
+	url, err := DiscoverFirst(context.Background(), m,
+		DiscoveryQuery{TargetNFType: NFTypeAUSF, RequesterType: NFTypeAMF},
+		"http://fallback:9999", &events.NoopEmitter{}, log)
+	if err != nil {
+		t.Fatalf("DiscoverFirst: %v", err)
+	}
+	if url != "http://127.0.0.1:8006" {
+		t.Errorf("expected NRF-resolved URL, got %q", url)
+	}
+}
+
+// TestDiscoverFirst_FallsBackOnMiss verifies that when the NRF has no match,
+// DiscoverFirst returns the static fallback URL (not an error).
+func TestDiscoverFirst_FallsBackOnMiss(t *testing.T) {
+	m := NewInMemory() // empty registry
+	log := logger.New("error", "text")
+	url, err := DiscoverFirst(context.Background(), m,
+		DiscoveryQuery{TargetNFType: NFTypeAUSF, RequesterType: NFTypeAMF},
+		"http://static-ausf:8006", &events.NoopEmitter{}, log)
+	if err != nil {
+		t.Fatalf("expected fallback, got error: %v", err)
+	}
+	if url != "http://static-ausf:8006" {
+		t.Errorf("expected static fallback URL, got %q", url)
+	}
+}
+
+// TestDiscoverFirst_ErrorOnEmptyFallback verifies that when the NRF misses
+// and no static fallback is configured, DiscoverFirst returns an error.
+func TestDiscoverFirst_ErrorOnEmptyFallback(t *testing.T) {
+	m := NewInMemory()
+	log := logger.New("error", "text")
+	_, err := DiscoverFirst(context.Background(), m,
+		DiscoveryQuery{TargetNFType: NFTypeAUSF, RequesterType: NFTypeAMF},
+		"", &events.NoopEmitter{}, log)
+	if err == nil {
+		t.Fatal("expected error when NRF misses and fallback is empty")
 	}
 }
 

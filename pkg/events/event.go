@@ -204,3 +204,21 @@ type PFCPSessionEstablishmentPayload struct {
 	FSEID   uint64 `json:"fseid"`
 	UPFTEID uint32 `json:"upf_teid,omitempty"`
 }
+
+// --- NRF lifecycle payload types ---
+
+// NFRegisteredPayload records an NF successfully registering with the NRF.
+type NFRegisteredPayload struct {
+	NFType       string `json:"nf_type"`
+	NFInstanceID string `json:"nf_instance_id"`
+	NRFURL       string `json:"nrf_url"`
+}
+
+// NFDiscoveredPayload records an NF discovering a peer via the NRF.
+type NFDiscoveredPayload struct {
+	RequesterType string `json:"requester_type"`
+	TargetType    string `json:"target_type"`
+	ServiceName   string `json:"service_name,omitempty"`
+	ResolvedURL   string `json:"resolved_url"`
+	Fallback      bool   `json:"fallback,omitempty"` // true when NRF was unreachable
+}

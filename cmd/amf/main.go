@@ -13,8 +13,10 @@ import (
 	"github.com/qcore-project/qcore/pkg/amf"
 	"github.com/qcore-project/qcore/pkg/ausf"
 	"github.com/qcore-project/qcore/pkg/config"
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/ngap"
+	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
 	"github.com/qcore-project/qcore/pkg/sctp"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 	"github.com/spf13/cobra"
@@ -99,11 +101,31 @@ func runServer() error {
 		AMFInstanceID:      cfg.AMF.AMFInstanceID,
 	}
 
-	ausfCli := ausf.NewClient(cfg.AMF.AUSFURL, "AMF", false)
-	amfSvc := amf.NewService(amfCfg, ausfCli, log)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// NRF: register the AMF and discover the AUSF URL.
+	// Falls back to cfg.AMF.AUSFURL if the NRF is unreachable.
+	nrfCli := nrfclient.NewHTTPClient(cfg.AMF.NRFURL, "AMF", false)
+	noopEmitter := &events.NoopEmitter{}
+	amfProfile := &nrfclient.NFProfile{
+		NFInstanceID: cfg.AMF.AMFInstanceID,
+		NFType:       nrfclient.NFTypeAMF,
+		NFStatus:     nrfclient.StatusRegistered,
+		PLMN:         cfg.AMF.PLMN,
+	}
+	lcm := nrfclient.NewLifecycleManager(nrfCli, amfProfile, cfg.AMF.NRFURL, noopEmitter, log)
+	go lcm.Start(ctx)
+
+	ausfURL, err := nrfclient.DiscoverFirst(ctx, nrfCli,
+		nrfclient.DiscoveryQuery{TargetNFType: nrfclient.NFTypeAUSF, RequesterType: nrfclient.NFTypeAMF},
+		cfg.AMF.AUSFURL, noopEmitter, log)
+	if err != nil {
+		return fmt.Errorf("cannot resolve AUSF: %w", err)
+	}
+
+	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
+	amfSvc := amf.NewService(amfCfg, ausfCli, log)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
