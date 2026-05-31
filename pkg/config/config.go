@@ -70,6 +70,7 @@ type AMFConfig struct {
 	ServingNetworkName string `mapstructure:"serving_network_name"` // "5G:mnc<MNC>.mcc<MCC>.3gppnetwork.org"
 	NRFURL             string `mapstructure:"nrf_url"`
 	AUSFURL            string `mapstructure:"ausf_url"`
+	SMFURL             string `mapstructure:"smf_url"`
 	AMFInstanceID      string `mapstructure:"amf_instance_id"` // UUID for NRF registration
 	AMFRegionID        uint8  `mapstructure:"amf_region_id"`
 	AMFSetID           uint16 `mapstructure:"amf_set_id"`
@@ -237,6 +238,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("amf.serving_network_name", "5G:mnc001.mcc001.3gppnetwork.org")
 	v.SetDefault("amf.nrf_url", "http://localhost:8083")
 	v.SetDefault("amf.ausf_url", "http://localhost:8086")
+	v.SetDefault("amf.smf_url", "http://localhost:8002")
 	v.SetDefault("amf.amf_instance_id", "00000000-0000-0000-0000-000000000001")
 	v.SetDefault("amf.amf_region_id", 1)
 	v.SetDefault("amf.amf_set_id", 1)

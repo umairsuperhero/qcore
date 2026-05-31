@@ -104,8 +104,8 @@ func runServer() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// NRF: register the AMF and discover the AUSF URL.
-	// Falls back to cfg.AMF.AUSFURL if the NRF is unreachable.
+	// NRF: register the AMF and discover peer URLs.
+	// Falls back to static config if the NRF is unreachable.
 	nrfCli := nrfclient.NewHTTPClient(cfg.AMF.NRFURL, "AMF", false)
 	noopEmitter := &events.NoopEmitter{}
 	amfProfile := &nrfclient.NFProfile{
@@ -123,6 +123,12 @@ func runServer() error {
 	if err != nil {
 		return fmt.Errorf("cannot resolve AUSF: %w", err)
 	}
+
+	smfURL, _ := nrfclient.DiscoverFirst(ctx, nrfCli,
+		nrfclient.DiscoveryQuery{TargetNFType: nrfclient.NFTypeSMF, RequesterType: nrfclient.NFTypeAMF},
+		cfg.AMF.SMFURL, noopEmitter, log)
+
+	amfCfg.SMFURL = smfURL
 
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := amf.NewService(amfCfg, ausfCli, log)

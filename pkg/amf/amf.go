@@ -50,6 +50,11 @@ type Config struct {
 
 	// AMFInstanceID is the UUID used for NRF registration
 	AMFInstanceID string
+
+	// SMFURL is the base URL of the SMF (e.g. "http://smf:8002"). The AMF
+	// calls Nsmf_PDUSession on this URL when a UE requests a PDU session.
+	// Discovered via NRF when available; falls back to this static value.
+	SMFURL string
 }
 
 // Service is the AMF. Call Serve() to block and accept gNB connections.

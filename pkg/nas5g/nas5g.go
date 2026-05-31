@@ -60,6 +60,12 @@ const (
 	MsgTypeNotificationResponse         MessageType = 0x66
 	MsgTypeULNASTransport               MessageType = 0x67
 	MsgTypeDLNASTransport               MessageType = 0x68
+
+	// 5GSM (session management) message types — TS 24.501 Table 9.7.4-1.
+	// These are carried inside UL/DL NAS Transport containers.
+	MsgTypePDUSessionEstablishmentRequest  MessageType = 0xC1
+	MsgTypePDUSessionEstablishmentAccept   MessageType = 0xC2
+	MsgTypePDUSessionEstablishmentReject   MessageType = 0xC3
 )
 
 func (m MessageType) String() string {
