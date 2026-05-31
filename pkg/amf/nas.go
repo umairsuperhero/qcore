@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/qcore-project/qcore/pkg/ausf"
+	"github.com/qcore-project/qcore/pkg/diag"
 	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/nas5g"
@@ -61,6 +62,8 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 		return s.handleRegistrationRequest(ctx, ue, msg.RegistrationRequest)
 	case msg.AuthenticationResponse != nil:
 		return s.handleAuthenticationResponse(ctx, ue, msg.AuthenticationResponse)
+	case msg.AuthenticationFailure != nil:
+		return s.handleAuthenticationFailure(ctx, ue, msg.AuthenticationFailure)
 	case msg.SecurityModeComplete != nil:
 		return s.handleSecurityModeComplete(ctx, ue, msg.SecurityModeComplete)
 	case msg.Header.MessageType == nas5g.MsgTypeRegistrationComplete:
@@ -78,6 +81,47 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, req *nas5g.RegistrationRequest) error {
 	ue.SUCI = req.MobileIdentity
 	ue.UESecCaps = req.UESecurityCapability
+
+	// Detect and reject non-null-scheme SUCI (unsupported protection scheme).
+	// The byte layout is: [identity-type(1)] [PLMN(3)] [RI(2)] [scheme(1)] [PKID(1)] [MSIN...]
+	// A zero protection scheme byte means null-scheme.
+	if len(req.MobileIdentity) >= 7 && (req.MobileIdentity[0]&0x07) == 0x01 {
+		scheme := req.MobileIdentity[6] & 0x0F
+		if scheme != 0x00 {
+			rawHex := hex.EncodeToString(req.MobileIdentity)
+			s.log.WithField("scheme", scheme).Warn("amf: unsupported SUCI protection scheme")
+			s.emitter.Emit(events.Event{
+				JourneyID: ue.JourneyID,
+				NF:        "amf",
+				Category:  events.ErrorEvent,
+				Severity:  events.SeverityError,
+				Protocol:  "nas5g",
+				Message:   "Registration Reject: unsupported SUCI protection scheme",
+				Payload: events.SUCIDecodeFailurePayload{
+					RawIdentity: rawHex,
+					Reason:      "unsupported_protection_scheme",
+					Scheme:      scheme,
+				},
+			})
+			// Also emit RegistrationFailurePayload so diag layer can match on it.
+			s.emitter.Emit(events.Event{
+				JourneyID: ue.JourneyID,
+				NF:        "amf",
+				Category:  events.ErrorEvent,
+				Severity:  events.SeverityError,
+				Protocol:  "nas5g",
+				Message:   "Registration failed",
+				Payload: events.RegistrationFailurePayload{
+					SUCI:   rawHex,
+					Cause:  diag.CauseSUCIDecodeFailure,
+					Detail: fmt.Sprintf("protection scheme %d not supported", scheme),
+				},
+			})
+			reject := nas5g.EncodeRegistrationReject(nas5g.Cause5GMM5GSServicesNotAllowed)
+			_ = ue.gNB.sendDownlinkNAS(ue, reject)
+			return nil
+		}
+	}
 
 	// Build a SUPI or SUCI string for AUSF.
 	// For null-scheme SUCI (protection scheme=0), the SUPI is recoverable as "imsi-<MSIN>".
@@ -105,6 +149,13 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	ctx = events.WithJourneyID(ctx, ue.JourneyID)
 	authCtx, confirmURL, err := s.ausfCli.CreateUEAuth(ctx, ausfReq)
 	if err != nil {
+		// Distinguish "subscriber not found" from other AUSF errors.
+		// UDM returns 404 → AUSF returns 404 → SBI client wraps as "404 Not Found"
+		errText := strings.ToLower(err.Error())
+		cause := diag.CauseUnknownSubscriber
+		if !strings.Contains(errText, "404") && !strings.Contains(errText, "not found") {
+			cause = "ausf_error"
+		}
 		s.log.WithError(err).WithField("supi", supiOrSuci).Error("amf: AUSF auth failed")
 		s.emitter.Emit(events.Event{
 			JourneyID: ue.JourneyID,
@@ -112,7 +163,12 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 			Category:  events.ErrorEvent,
 			Severity:  events.SeverityError,
 			Protocol:  "nas5g",
-			Message:   "Registration Reject: AUSF auth failed — likely unprovisioned subscriber",
+			Message:   "Registration Reject: AUSF auth failed",
+			Payload: events.RegistrationFailurePayload{
+				SUCI:   supiOrSuci,
+				Cause:  cause,
+				Detail: err.Error(),
+			},
 		})
 		// Send a NAS Registration Reject so the UE/simulator learns the outcome
 		// rather than timing out waiting for an Authentication Request.
@@ -159,6 +215,63 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	})
 	ue.State = StateAuthPending
 	return ue.gNB.sendDownlinkNAS(ue, authReq)
+}
+
+// handleAuthenticationFailure handles an Authentication Failure message from
+// the UE — sent when the UE's Milenage check of the network's AUTN fails.
+// The two common causes are MAC failure (wrong Ki/OPc on network side) and
+// SQN failure (sequence number out of sync).
+func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext, fail *nas5g.AuthenticationFailure) error {
+	causeName := "unknown"
+	cause5GMM := fail.Cause
+	switch cause5GMM {
+	case nas5g.Cause5GMMMACFailure:
+		causeName = "mac_failure"
+	case nas5g.Cause5GMMSynchFailure:
+		causeName = "sqn_failure"
+	}
+
+	s.log.WithField("supi", ue.SUPI).
+		WithField("cause", causeName).
+		Warn("amf: Authentication Failure from UE")
+
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.ErrorEvent,
+		Severity:  events.SeverityError,
+		Protocol:  "nas5g",
+		Message:   fmt.Sprintf("Authentication Failure from UE: %s", causeName),
+		Payload: events.AuthenticationFailurePayload{
+			SUPI:      ue.SUPI,
+			Cause5GMM: uint8(cause5GMM),
+			CauseName: causeName,
+		},
+	})
+
+	// Map to a RegistrationFailurePayload so DiagnoseRegistration can match.
+	diagCause := diag.CauseAuthMACFailure
+	if causeName == "sqn_failure" {
+		diagCause = diag.CauseAuthSQNFailure
+	}
+	s.emitter.Emit(events.Event{
+		JourneyID: ue.JourneyID,
+		NF:        "amf",
+		Category:  events.ErrorEvent,
+		Severity:  events.SeverityError,
+		Protocol:  "nas5g",
+		Message:   "Registration failed",
+		Payload: events.RegistrationFailurePayload{
+			SUPI:  ue.SUPI,
+			Cause: diagCause,
+		},
+	})
+
+	// Send Registration Reject.
+	reject := nas5g.EncodeRegistrationReject(nas5g.Cause5GMM5GSServicesNotAllowed)
+	_ = ue.gNB.sendDownlinkNAS(ue, reject)
+	ue.State = StateIdle
+	return nil
 }
 
 // handleAuthenticationResponse receives RES* from UE and confirms with AUSF.
@@ -392,8 +505,46 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 
 	if resp.StatusCode == http.StatusCreated {
 		s.log.WithField("supi", ue.SUPI).Info("amf: SMF created PDU session")
+		s.emitter.Emit(events.Event{
+			JourneyID: ue.JourneyID,
+			NF:        "amf",
+			Category:  events.SignalingRx,
+			Severity:  events.SeverityInfo,
+			Protocol:  "sbi",
+			Message:   "PDU Session created successfully",
+			Payload: events.PDUSessionResultPayload{
+				SUPI:         ue.SUPI,
+				PDUSessionID: ul.PDUSessionID,
+				DNN:          "internet",
+				Success:      true,
+			},
+		})
 	} else {
+		// Classify the SMF failure cause for the diagnostic layer.
+		smfCause := diag.CauseSMFReject
+		detail := fmt.Sprintf("SMF returned HTTP %d", resp.StatusCode)
+		if resp.StatusCode == http.StatusUnprocessableEntity || resp.StatusCode == http.StatusInternalServerError {
+			// 422 / 500 from SMF often means IP pool exhausted or internal error;
+			// a more specific cause would require parsing the ProblemDetails body.
+			// Keep it as smf_reject for now — the diag fix text covers both cases.
+		}
 		s.log.WithField("status", resp.StatusCode).Warn("amf: SMF returned non-201 for PDU session")
+		s.emitter.Emit(events.Event{
+			JourneyID: ue.JourneyID,
+			NF:        "amf",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "sbi",
+			Message:   "PDU Session creation failed",
+			Payload: events.PDUSessionResultPayload{
+				SUPI:         ue.SUPI,
+				PDUSessionID: ul.PDUSessionID,
+				DNN:          "internet",
+				Success:      false,
+				Cause:        smfCause,
+				Detail:       detail,
+			},
+		})
 	}
 	return nil
 }

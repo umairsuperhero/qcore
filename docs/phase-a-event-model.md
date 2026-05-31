@@ -107,3 +107,133 @@ story, the substrate is real and Phase B can begin.
    interface.
 3. **Instrument** the 4G NFs (HSS, MME, SPGW).
 4. **Verify** against the exit criterion.
+
+---
+
+## 5G Registration + PDU Session event schema
+
+> **Frontend contract.** Every field below is part of the stable API the
+> dashboard Live Trace view consumes. Do not rename or remove fields without a
+> corresponding dashboard change. Add fields freely; removing them is a breaking
+> change.
+
+All events share the outer `Event` envelope (see `pkg/events/event.go`):
+
+```jsonc
+{
+  "id": "evt-<uuid>",          // unique event ID
+  "journey_id": "j-<uuid>",   // correlates all events for one UE attempt
+  "timestamp": "RFC3339",
+  "nf": "amf",                 // emitting network function
+  "category": "signaling_rx | signaling_tx | state_transition | error",
+  "severity": "info | warn | error",
+  "protocol": "ngap | nas5g | sbi",
+  "message": "Human-readable summary",
+  "payload": { ... }           // type-specific; see below
+}
+```
+
+### Registration lifecycle — ordered event sequence
+
+A successful 5G registration produces these events in order, all sharing the
+same `journey_id`:
+
+| # | `category` | `protocol` | `message` | `payload` type |
+|---|---|---|---|---|
+| 1 | `signaling_rx` | `ngap` | `"Registration Request received"` | `RegistrationRequestPayload` |
+| 2 | `signaling_tx` | `nas5g` | `"Authentication Request sent"` | `AuthRequestPayload5G` |
+| 3 | `signaling_rx` | `nas5g` | `"Authentication Response received"` | `AuthResponsePayload` |
+| 4 | `signaling_tx` | `nas5g` | `"Security Mode Command sent"` | `SecurityModeCommandPayload5G` |
+| 5 | `state_transition` | `nas5g` | `"5GMM-REGISTERED"` | `RegistrationAcceptPayload` |
+
+A successful PDU session appends:
+
+| # | `category` | `protocol` | `message` | `payload` type |
+|---|---|---|---|---|
+| 6 | `signaling_tx` | `sbi` | `"Forwarding PDU Session Establishment to SMF"` | `PDUSessionEstablishmentPayload` |
+| 7 | `signaling_rx` | `sbi` | `"PDU Session created successfully"` | `PDUSessionResultPayload` |
+
+### Failure events
+
+**Every registration failure** emits one of the following payloads. The
+`RegistrationFailurePayload` is the primary anchor for `pkg/diag` — the
+diagnostic layer matches on `.cause`. Do not emit a generic error event
+for registration failures; always set `.cause` from the constants in
+`pkg/diag/registration.go`.
+
+#### `RegistrationFailurePayload`
+
+```jsonc
+{
+  "supi": "imsi-001010000000001",  // resolved SUPI if available
+  "suci": "imsi-001010000000001",  // raw SUCI string if SUPI not resolved
+  "cause": "<cause-tag>",          // see Cause tags below
+  "detail": "raw error for debug" // not shown in UI
+}
+```
+
+**Cause tags** (source of truth: `pkg/diag/registration.go`):
+
+| tag | When | Fix direction |
+|-----|------|---------------|
+| `unknown_subscriber` | UDM returned 404 — IMSI not in database | Provision subscriber in QCore |
+| `auth_mac_failure` | UE sent Authentication Failure (MAC failure, 0x14) | Check Ki/OPc on SIM and in QCore |
+| `auth_sqn_failure` | UE sent Authentication Failure (SQN failure, 0x15) | Reset SQN counter in QCore |
+| `slice_not_subscribed` | Requested S-NSSAI not in subscription | Update subscription or request SST=1 |
+| `slice_not_supported` | Requested S-NSSAI not in AMF config | Update PLMNSupportList in AMF config |
+| `dnn_not_configured` | DNN not recognised by SMF | Use default DNN "internet" |
+| `smf_reject` | SMF returned HTTP error for PDU session | Check SMF+UPF logs |
+| `ip_pool_exhausted` | SMF IPAM has no free addresses | Expand IP pool CIDR |
+| `suci_decode_failure` | Malformed SUCI or unsupported protection scheme | Use null-scheme SUCI (scheme 0) |
+
+#### `AuthenticationFailurePayload`
+
+Emitted when the UE sends a NAS Authentication Failure (not the same as the
+network rejecting the UE). The diagnostic layer also matches on this.
+
+```jsonc
+{
+  "supi": "imsi-...",
+  "cause_5gmm": 20,              // 0x14=MAC failure, 0x15=SQN failure
+  "cause_name": "mac_failure"   // "mac_failure" | "sqn_failure"
+}
+```
+
+#### `SUCIDecodeFailurePayload`
+
+Emitted when the AMF cannot decode the mobile identity.
+
+```jsonc
+{
+  "raw_identity_hex": "01f110...",
+  "reason": "unsupported_protection_scheme",
+  "scheme": 1                   // protection scheme byte (0=null, 1+=ECIES)
+}
+```
+
+#### `PDUSessionResultPayload`
+
+Emitted by AMF (on SMF response) and by SMF (on IPAM failure).
+
+```jsonc
+{
+  "supi": "imsi-...",
+  "pdu_session_id": 1,
+  "dnn": "internet",
+  "success": false,
+  "cause": "smf_reject",         // populated on failure; empty on success
+  "detail": "SMF returned HTTP 500"
+}
+```
+
+### Correlation
+
+Every event for a single UE registration attempt shares the same `journey_id`.
+The journey ID is minted in `pkg/amf` at `InitialUEMessage` arrival and
+propagated via:
+- Event field `journey_id` on every `Emit()` call
+- HTTP header `X-QCore-Journey-ID` on all inter-NF SBI calls
+- `context.Context` via `events.WithJourneyID` / `events.JourneyIDFromContext`
+
+The Live Trace view queries `GET /api/journeys/{id}/events` to retrieve all
+events for a journey, ordered by timestamp.

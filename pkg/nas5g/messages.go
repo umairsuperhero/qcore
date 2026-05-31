@@ -611,6 +611,19 @@ func EncodeRegistrationReject(cause Cause5GMM) []byte {
 // --- Top-level Decode ------------------------------------------------------
 
 // Message is a discriminated union of all decoded 5G NAS messages.
+// AuthenticationFailure is sent by the UE when the network's authentication
+// challenge fails the UE's own checks (e.g. MAC failure = wrong Ki/OPc on
+// the network side, or SQN out of range). TS 24.501 §8.2.12.
+type AuthenticationFailure struct {
+	Cause Cause5GMM // mandatory: 0x14 = MAC failure, 0x15 = SQN failure
+}
+
+// EncodeAuthenticationFailure encodes a NAS Authentication Failure PDU.
+func EncodeAuthenticationFailure(cause Cause5GMM) []byte {
+	hdr := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeAuthenticationFailure})
+	return append(hdr, uint8(cause))
+}
+
 type Message struct {
 	Header Header
 
@@ -618,6 +631,7 @@ type Message struct {
 	RegistrationAccept     *RegistrationAccept
 	AuthenticationRequest  *AuthenticationRequest
 	AuthenticationResponse *AuthenticationResponse
+	AuthenticationFailure  *AuthenticationFailure
 	SecurityModeCommand    *SecurityModeCommand
 	SecurityModeComplete   *SecurityModeComplete
 }
@@ -642,12 +656,21 @@ func Decode(data []byte) (*Message, error) {
 		msg.AuthenticationRequest, err = DecodeAuthenticationRequest(body)
 	case MsgTypeAuthenticationResponse:
 		msg.AuthenticationResponse, err = DecodeAuthenticationResponse(body)
+	case MsgTypeAuthenticationFailure:
+		af := &AuthenticationFailure{}
+		if len(body) >= 1 {
+			af.Cause = Cause5GMM(body[0])
+		}
+		msg.AuthenticationFailure = af
 	case MsgTypeSecurityModeCommand:
 		msg.SecurityModeCommand, err = DecodeSecurityModeCommand(body)
 	case MsgTypeSecurityModeComplete:
 		msg.SecurityModeComplete, err = DecodeSecurityModeComplete(body)
 	case MsgTypeRegistrationComplete:
 		// no body
+	case MsgTypeULNASTransport, MsgTypeDLNASTransport,
+		MsgTypeRegistrationReject, MsgTypeAuthenticationReject:
+		// handled by the AMF dispatcher before calling Decode; silently accepted here.
 	default:
 		return nil, fmt.Errorf("nas5g: unsupported message type %s", hdr.MessageType)
 	}
