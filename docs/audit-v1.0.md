@@ -62,7 +62,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | Area | Status | Evidence |
 |------|--------|----------|
 | 4G EPC (HSS/MME/SPGW) | ✅ Shipped | `pkg/mme` E2E attach + user-plane tests pass |
-| Phase A event model | ✅ Shipped (4G) · ⚠️ partial (5G) | 4G NFs fully instrumented; 5G NFs partially (T7 incomplete) |
+| Phase A event model | ✅ Shipped (4G + 5G) | 4G NFs fully instrumented; 5G NFs instrumented via C1/T7 — one correlated trace per registration (`TestC1_RegistrationEventTrace`) |
 | Phase B golden path / dashboard / simulator | ✅ Shipped | builds; frontend type-checks; simulator tests pass |
 | 5G SA control plane | ✅ Works in E2E test | `pkg/amf` integration test green over native SCTP |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
@@ -133,20 +133,21 @@ that can't actually carry a PDU session through the real control flow isn't cred
 This closes the loop with D-2 (discovery) and D-3 (a fully registered UE then opens a
 session).
 
-## 5. Interop-Hardening track (I1–I4) — sequencing
+## 5. Interop-Hardening track (I1–I4) — ✅ complete
 
-Do these **before** claiming T10 (UERANSIM compat) or marking the 5G SA track "shipped."
-Ordered smallest-blast-radius / highest-wedge-value first:
+These were required **before** claiming T10 (UERANSIM compat) or marking the 5G SA track
+"shipped." All four are now done (Track A, merged to main):
 
-| Step | Decision | Effort | Unblocks |
-|------|----------|--------|----------|
-| I1 | D-1 PLMN codec consolidation + golden vectors | Small | Honest real-gNB interop; T10 |
-| I2 | D-3 SUCI null-scheme + wire simulator IMSI | Medium | Real registration; working error scenarios |
-| I3 | D-2 NRF register/discover + Phase-A events | Medium | Backbone for I4; discovery observability |
-| I4 | D-4 N11 AMF→SMF, real E2E (drop the shortcut) | Medium | True UP end-to-end |
+| Step | Decision | Effort | State |
+|------|----------|--------|-------|
+| I1 | D-1 PLMN codec consolidation + golden vectors | Small | ✅ Done |
+| I2 | D-3 SUCI null-scheme + wire simulator IMSI | Medium | ✅ Done |
+| I3 | D-2 NRF register/discover + Phase-A events | Medium | ✅ Done |
+| I4 | D-4 N11 AMF→SMF, real E2E (drop the shortcut) | Medium | ✅ Done |
 
-After I1–I4: complete T7 (5G event instrumentation) so Phase C reasons over real 5G
-traces, then T8/T9 (5G simulator UX, dashboard 5G mode), then T10 (UERANSIM in a sidecar).
+T7 (5G event instrumentation, C1) is also complete, so Phase C can reason over real 5G
+traces. **Remaining to v1:** T8/T9 (5G simulator UX, dashboard 5G mode), then T10
+(UERANSIM in a sidecar — the real-RAN gate), plus B2 (offline SLM) on the AI path.
 
 ## 6. Deferred (unchanged from charter §11)
 

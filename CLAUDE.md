@@ -16,24 +16,34 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-05-29)
-Phase A (event model), Phase B (dashboard, simulator, one-command launch), and Phase C
-(Diagnostic AI) are **shipped**. The 4G EPC is complete and end-to-end verified. The 5G
-SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
+## Current baseline (2026-06-01)
+Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
+diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
+The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
 end-to-end test (Registration → PDU session → GTP-U tunnel) over **native SCTP** on
 Linux. As of this date **every package compiles, `go vet` is clean, and `go test ./...`
-passes** (verified in `golang:1.23` — there is no Go toolchain on the host).
+passes** (verified in `golang:1.23` — there is no Go toolchain on the host; CI is green
+on `main`, including under `-race`).
 
-**Before the 5G SA track can be called "shipped" or claim real-RAN/UERANSIM
-compatibility, the Interop-Hardening track (I1–I4) must land** — four long-term
-decisions recorded in `docs/audit-v1.0.md` §4:
-  - **D-1** one standards-correct PLMN/identifier codec (two private encoders disagree today);
-  - **D-2** real NRF register/discover (NFs are statically wired today);
-  - **D-3** real SUCI in NAS + simulator (placeholder today; one error scenario is a no-op);
-  - **D-4** N11 AMF→SMF (the E2E test fakes the AMF's SMF call today).
+**Track A — Interop Hardening (D-1…D-4 / I1–I4) is COMPLETE** (merged to main): one
+standards-correct PLMN codec (`pkg/ident`), real null-scheme SUCI + genuine
+unprovisioned-IMSI reject, NRF register/discover with static fallback, and N11 AMF→SMF
+(the E2E test no longer fakes the SMF call). **B1 (diagnostic catalog depth)** — 13 typed
+rules across ≥9 cause categories, 4G+5G — and **C1 (T7) 5G Phase-A telemetry** —
+AUSF/UDM/SMF/UPF emit journey-correlated events, one correlated trace per 5G
+registration, verified by `TestC1_RegistrationEventTrace` (PR #25) — are also complete.
+The dashboard experience layer (gNB-connection hero screen / Gate 1, and the animated
+live signaling-trace view) has shipped.
 
-Then T7 (5G event instrumentation) → T8/T9 (5G simulator + dashboard) → T10 (UERANSIM).
-Phase D (Workflow adoption) follows. See `docs/audit-v1.0.md` for the living audit;
+**The remaining critical-path streams are independent — run in parallel:**
+  - **C2 (T8) → C3 (T9) → T10:** 5G simulator UX (error injection on the real-SUCI 5G
+    sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view), then
+    **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline.
+  - **B2 — embedded offline SLM:** ship a local model so the AI explains failures with
+    no cloud and no key (charter §9.3 / D5). The long pole of the AI moat; independent.
+
+**Until T10 lands, the 5G SA track is NOT "shipped"** and may not claim real-RAN/UERANSIM
+compatibility. See `docs/audit-v1.0.md` for the living audit;
 **re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
 **The executable v1 gap-closure plan is `docs/v1-gap-closure-plan.md`** — tracks A

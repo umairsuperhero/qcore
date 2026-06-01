@@ -23,9 +23,10 @@ including `-race`). What is **not** done is the charter's v1 bar: a credible
 **5G-SA-leading** product (D11) that interoperates with real RAN, and an **AI that is
 load-bearing and works offline** (§9.3/D5).
 
-**The two remaining critical-path items are independent — run in parallel:**
-**C1 (5G telemetry, T7) → T8/T9 → T10 (UERANSIM)** for the 5G headline, and **B2
-(offline embedded SLM)** for the AI moat. Start C1 and B2 on day one.
+**C1 (5G telemetry, T7) is also complete (PR #25).** The remaining critical-path items are
+independent — run in parallel: **C2 (5G simulator UX) → C3 (dashboard 5G mode) → T10
+(UERANSIM)** for the 5G headline, and **B2 (offline embedded SLM)** for the AI moat. Start
+C2 and B2 next.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
