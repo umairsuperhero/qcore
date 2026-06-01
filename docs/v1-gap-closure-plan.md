@@ -207,6 +207,27 @@ free-floats (§9.4): its prompt is the catalog result + the ground-truth trace.
 grounded diagnosis renders. Unit test the provider routing with a mock SLM endpoint.
 **Depends on.** B1 (catalog is the grounding); independent of Track A.
 
+**Status — engine + wiring landed (branch `plan/b2-embedded-slm`), model-serve validation pending.**
+What is done and **green under `-race`** (build + vet + `go test ./...` in `golang:1.23`):
+- `pkg/ai/engine.go` — `local` provider branch; shared `buildPrompt`/`parseModelResult`
+  for both backends (one grounded prompt, never free-floats, §9.4); offline path degrades
+  gracefully (names cause + `make up-ai` fix) when the sidecar is down, so the dashboard
+  never 500s on an absent model.
+- `pkg/config/config.go` — `AIConfig.LocalURL` + defaults; provider default flips to `local`.
+- `deployments/docker/Dockerfile.slm` — llama.cpp server with a baked **Qwen2.5-1.5B-Instruct
+  Q4_K_M GGUF (~1.0 GB, Apache-2.0)**, OpenAI-compatible API on :8088.
+- `docker-compose.yml` — `qcore-slm` service behind the **`ai` profile**; dashboard defaults
+  to `local` (env-overridable to `gemini`). `Makefile` — `make up-ai`; `down` tears down all profiles.
+- `config.example.yaml` — documents `local` vs `gemini` and `local_url`.
+- Tests: `pkg/ai/engine_test.go` — provider routing via a mock SLM, grounding assertion,
+  unformatted-output degradation, **catalog-wins-first**, and unreachable-sidecar graceful fallback.
+
+**Still gated (like T10 — needs a real environment, not the Go test sandbox):** an actual
+`make up-ai` build that pulls the GGUF and serves a real diagnosis end-to-end. The Go side
+is validated against a mock endpoint; the live model-serve + air-gapped failure-scenario
+render (the §9.3 acceptance) must be run on a host with Docker + network before B2 is
+marked ✅ "shipped." Trust rule: code + unit tests green ≠ validated against the real model.
+
 ---
 
 ## 3. Track C — 5G observability & UX (Golden Path §7 for 5G)

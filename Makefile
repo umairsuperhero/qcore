@@ -1,4 +1,4 @@
-.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up up-5g down web docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
+.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up up-5g up-ai down web docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -75,8 +75,20 @@ up-5g:
 	@echo "QCore 4G + 5G stack starting. Dashboard: http://localhost:3000"
 	@echo "Tear down everything with: make down"
 
+# Opt-in offline Diagnostic AI (charter §9.3). Brings up the qcore-slm sidecar
+# (a ~1 GB small instruct model served over an OpenAI-compatible API) so the AI
+# explains failures with no cloud account and no API key. The dashboard already
+# defaults to the local provider, so this just makes the model reachable. The
+# first build downloads the model weights (~1 GB), cached thereafter.
+up-ai:
+	COMPOSE_PROFILES=ai docker compose -f deployments/docker/docker-compose.yml up -d --build
+	@echo ""
+	@echo "QCore + offline Diagnostic AI starting. Dashboard: http://localhost:3000"
+	@echo "The SLM serves at http://localhost:8088/v1 (first start pulls ~1 GB)."
+	@echo "Tear down everything with: make down"
+
 down:
-	COMPOSE_PROFILES=5g docker compose -f deployments/docker/docker-compose.yml down
+	COMPOSE_PROFILES=5g,ai docker compose -f deployments/docker/docker-compose.yml down
 
 docker-build: docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard
 
