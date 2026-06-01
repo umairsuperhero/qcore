@@ -7,26 +7,32 @@ import (
 	"sync"
 	"time"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/pfcp"
 )
 
 // PFCPServer handles the N4 control plane interface with the SMF.
 type PFCPServer struct {
-	addr   string
-	conn   *net.UDPConn
-	log    logger.Logger
-	store  *SessionStore
+	addr    string
+	conn    *net.UDPConn
+	log     logger.Logger
+	store   *SessionStore
+	emitter events.Emitter
 
 	nodeID net.IP
 }
 
 // NewPFCPServer creates a new PFCP listener.
-func NewPFCPServer(addr string, store *SessionStore, log logger.Logger) *PFCPServer {
+func NewPFCPServer(addr string, store *SessionStore, emitter events.Emitter, log logger.Logger) *PFCPServer {
+	if emitter == nil {
+		emitter = &events.NoopEmitter{}
+	}
 	return &PFCPServer{
-		addr:   addr,
-		store:  store,
-		log:    log.WithField("component", "pfcp"),
+		addr:    addr,
+		store:   store,
+		emitter: emitter,
+		log:     log.WithField("component", "pfcp"),
 	}
 }
 
@@ -102,13 +108,24 @@ func (s *PFCPServer) handleMessage(msg *pfcp.Message, addr *net.UDPAddr) {
 
 func (s *PFCPServer) handleAssociationSetupRequest(req *pfcp.Message, addr *net.UDPAddr) {
 	s.log.WithField("remote", addr.String()).Info("Received Association Setup Request")
-	
+	s.emitter.Emit(events.Event{
+		NF:       "upf",
+		Category: events.SignalingRx,
+		Severity: events.SeverityInfo,
+		Protocol: "pfcp",
+		Message:  "N4 Association Setup Request received",
+		Payload: events.UPFPFCPAssocPayload{
+			RemoteAddr: addr.String(),
+			Success:    true,
+		},
+	})
+
 	ts := pfcp.NewRecoveryTimeStamp(time.Now())
 	nodeID := pfcp.NewNodeID(pfcp.NodeIDTypeIPv4, s.nodeID, "")
 	cause := pfcp.NewCause(pfcp.CauseRequestAccepted)
-	
+
 	resp := pfcp.NewAssociationSetupResponse(req.Header.SequenceNumber, nodeID, cause, ts)
-	
+
 	if _, err := s.conn.WriteToUDP(resp.Encode(), addr); err != nil {
 		s.log.WithError(err).Error("Failed to send Association Setup Response")
 	}
@@ -119,29 +136,42 @@ func (s *PFCPServer) handleSessionEstablishmentRequest(req *pfcp.Message, addr *
 		"remote": addr.String(),
 		"seid":   req.Header.SEID,
 	}).Info("Received Session Establishment Request")
-	
+
 	// Create a new session in our store
 	sess := &Session{}
-	
+
 	// In a real UPF, we would iterate through req.IEs to parse:
 	// - Create PDRs (Packet Detection Rules) to find UE IP and TEIDs
 	// - Create FARs (Forwarding Action Rules) to determine N3 vs N6 routing
 	// For this phase, we allocate a new local TEID that the SMF can give to the AMF/gNB.
-	
+
 	sess.LocalTEID = s.store.AllocateTEID()
-	
+
 	// We should generate a local SEID to return to the SMF
 	sess.SEID = uint64(sess.LocalTEID) // Simplified SEID generation
-	
+
 	s.store.AddSession(sess)
-	
+
+	s.emitter.Emit(events.Event{
+		NF:       "upf",
+		Category: events.SignalingRx,
+		Severity: events.SeverityInfo,
+		Protocol: "pfcp",
+		Message:  "N4 Session Establishment Request: TEID allocated",
+		Payload: events.UPFPFCPSessionPayload{
+			SEID:      sess.SEID,
+			LocalTEID: sess.LocalTEID,
+			Success:   true,
+		},
+	})
+
 	nodeID := pfcp.NewNodeID(pfcp.NodeIDTypeIPv4, s.nodeID, "")
 	cause := pfcp.NewCause(pfcp.CauseRequestAccepted)
 	// We need to return an F-SEID pointing to our local SEID so the SMF knows how to address us
 	fseid := pfcp.NewFSEID(sess.SEID, s.nodeID, nil)
 
 	resp := pfcp.NewSessionEstablishmentResponse(req.Header.SequenceNumber, sess.SEID, nodeID, cause, fseid)
-	
+
 	if _, err := s.conn.WriteToUDP(resp.Encode(), addr); err != nil {
 		s.log.WithError(err).Error("Failed to send Session Establishment Response")
 	}

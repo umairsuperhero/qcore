@@ -103,11 +103,25 @@ func (s *Service) postSMContexts(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	s.log.WithField("ip", ueIP.String()).Info("smf: allocated UE IP")
+	s.emitter.Emit(events.Event{
+		NF:       "smf",
+		Category: events.SignalingRx,
+		Severity: events.SeverityInfo,
+		Protocol: "sbi",
+		Message:  "PDU session created: IP allocated",
+		Payload: events.SMFSessionPayload{
+			SUPI:         req.Supi,
+			PDUSessionID: req.PduSessionID,
+			DNN:          req.Dnn,
+			UEIP:         ueIP.String(),
+			Success:      true,
+		},
+	})
 
 	// 2. Setup PFCP Session (Deferred to T4 implementation when UPF is real)
 	// In T3 we just implement the framework. We would call s.pfcpCli.SendRequest() here
 	// to send a PFCP Session Establishment Request to the UPF.
-	
+
 	// Create the created response
 	resp := SMContextCreatedData{
 		PduSessionID: req.PduSessionID,
