@@ -2,7 +2,7 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.4 — 2026-06-01
+**Current revision:** v1.5 — 2026-06-01
 **Auditor of record this revision:** build-time evaluation (full `go build` + `go vet`
 + `go test ./...` in a `golang:1.23` container; React `tsc --noEmit`).
 

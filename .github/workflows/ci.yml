@@ -98,14 +98,15 @@ jobs:
             -run 'TestTUNEgress_' \
             ./pkg/spgw/
 
-      # UERANSIM-driven smoke is intentionally not wired yet: the QCore MME
-      # currently uses a length-prefixed TCP fallback instead of native SCTP,
-      # so a real UERANSIM gNB cannot attach. Once pion/sctp is wired in,
-      # this step should: install UERANSIM, point it at qcore-mme bound on
-      # 127.0.0.1:36412/sctp, run a scripted attach, and assert the UE
-      # reaches REGISTERED in the /api/v1/ues endpoint. Tracking this as
-      # a TODO in docs/rfc/0001-5g-sba-pivot.md Phase 0.
-      - name: UERANSIM smoke (placeholder — blocked on native SCTP)
+      # UERANSIM-driven smoke is intentionally not wired yet. Native SCTP has
+      # landed (pkg/sctp/sctp_linux.go — raw Linux syscalls via golang.org/x/sys/unix,
+      # no CGO, no pion), so the transport is no longer the blocker. What remains
+      # is the interop wiring: bring up the `ueransim` compose service against the
+      # 5G stack with the AMF in SCTP mode (QCORE_AMF_SCTP_MODE=sctp, NGAP on 38412),
+      # run a scripted UE registration + PDU session, and assert the UE reaches
+      # REGISTERED. This is T10 in docs/v1-gap-closure-plan.md.
+      - name: UERANSIM smoke (placeholder — blocked on T10 interop wiring)
         run: |
-          echo "SKIPPED: UERANSIM smoke is blocked on native SCTP (pion/sctp)."
-          echo "See docs/rfc/0001-5g-sba-pivot.md Phase 0."
+          echo "SKIPPED: UERANSIM 5G smoke is not wired yet (T10)."
+          echo "Native SCTP has landed; the gap is interop wiring + a Linux runner."
+          echo "See docs/v1-gap-closure-plan.md (T10)."
