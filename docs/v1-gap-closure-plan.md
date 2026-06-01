@@ -12,12 +12,20 @@ long-term decisions D-1…D-4) · `CLAUDE.md` (build order + cadence).
 
 ## 0. Read-me-first for the executing agent
 
-**Where things stand (verified 2026-05-30).** 4G EPC is end-to-end real. The 5G SA
-control + user plane build and pass an *in-process* E2E test over native SCTP. The
-diagnostic AI (catalog + optional Gemini) is wired into the dashboard. Everything
-compiles, `go vet` is clean, `go test ./...` passes. What is **not** done is the
-charter's v1 bar: a credible **5G-SA-leading** product (D11) that interoperates with
-real RAN, and an **AI that is load-bearing and works offline** (§9.3/D5).
+**Where things stand (verified 2026-06-01).** 4G EPC is end-to-end real. The 5G SA
+control + user plane build and pass an *in-process* E2E test over native SCTP. **Track A
+(Interop Hardening, A1–A4 / D-1…D-4) is complete and merged** — standards-correct PLMN
+codec, real SUCI + genuine unprovisioned-IMSI reject, NRF register/discover, and N11
+AMF→SMF. **B1 (diagnostic catalog depth) is complete** (13 typed rules, 4G+5G). The
+dashboard experience layer (gNB hero screen / Gate 1, live signaling-trace) has shipped.
+Everything compiles, `go vet` is clean, `go test ./...` passes (CI green on `main`,
+including `-race`). What is **not** done is the charter's v1 bar: a credible
+**5G-SA-leading** product (D11) that interoperates with real RAN, and an **AI that is
+load-bearing and works offline** (§9.3/D5).
+
+**The two remaining critical-path items are independent — run in parallel:**
+**C1 (5G telemetry, T7) → T8/T9 → T10 (UERANSIM)** for the 5G headline, and **B2
+(offline embedded SLM)** for the AI moat. Start C1 and B2 on day one.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -309,9 +317,9 @@ B2 is the long pole and is independent of Track A).
 | A2 SUCI | D-3, §7 | S–M | ✅ PR #16 — merged |
 | A3 NRF discovery | D-2, §9 observability | M | ✅ PR #17 — merged |
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
-| B1 catalog depth | §9.1, §4 | M | ☐ |
+| B1 catalog depth | §9.1, §4 | M | ✅ PR #24 — merged (13 typed rules, 4G+5G, ≥9 §9.1 categories) |
 | B2 embedded SLM | §9.3, D5, OpenQ1 | L | ☐ |
-| C1 5G telemetry (T7) | §8 Pillar 4 | M | ◑ NG-Setup events + deterministic diagnostics landed (PR #20); registration/session events pending |
+| C1 5G telemetry (T7) | §8 Pillar 4 | M | ✅ PR #25 — AUSF/UDM/SMF/UPF emit journey-correlated events; one trace AMF→AUSF→UDM |
 | C2 5G simulator (T8) | D10, §7 | M | ☐ |
 | C3 dashboard 5G (T9) | §7, §8 | M | ◑ Gate-1 hero screen merged (PR #20); live signaling trace in review (PR #21); design contract in `docs/ui-ux-design.md` (PR #18) |
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ☐ |

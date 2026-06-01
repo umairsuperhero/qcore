@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/subscriber"
 )
@@ -163,8 +164,22 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	journeyID := events.JourneyIDFromContext(r.Context())
 	av, err := s.auth.GenerateAv(r.Context(), supi, req.ServingNetworkName)
 	if err != nil {
+		s.emitter.Emit(events.Event{
+			JourneyID: journeyID,
+			NF:        "udm",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "sbi",
+			Message:   "Authentication vector generation failed",
+			Payload: events.UDMAuthDataPayload{
+				SupiOrSuci: supi,
+				Success:    false,
+				Reason:     err.Error(),
+			},
+		})
 		switch {
 		case errors.Is(err, ErrBadSupi):
 			sbi.WriteProblem(w, &sbi.ProblemDetails{
@@ -186,6 +201,20 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	s.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		NF:        "udm",
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "sbi",
+		Message:   "Authentication vector generated",
+		Payload: events.UDMAuthDataPayload{
+			SupiOrSuci: supi,
+			SUPI:       supi,
+			Success:    true,
+		},
+	})
 
 	resp := AuthenticationInfoResult{
 		AuthType:             AuthType5GAka,

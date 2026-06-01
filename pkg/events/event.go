@@ -303,3 +303,44 @@ type PDUSessionResultPayload struct {
 	Cause        string `json:"cause,omitempty"` // machine tag on failure: "smf_reject", "ip_pool_exhausted", …
 	Detail       string `json:"detail,omitempty"`
 }
+
+// --- 5G NF instrumentation payload types (C1 / T7) ---
+
+type AUSFAuthRequestPayload struct {
+	SupiOrSuci         string `json:"supi_or_suci"`
+	ServingNetworkName string `json:"serving_network_name,omitempty"`
+}
+type AUSFAuthVectorPayload struct {
+	SUPI string `json:"supi"`
+}
+type AUSFAuthFailurePayload struct {
+	SupiOrSuci string `json:"supi_or_suci"`
+	Reason     string `json:"reason"`
+}
+type AUSFAuthResultPayload struct {
+	SUPI    string `json:"supi"`
+	Success bool   `json:"success"`
+}
+type UDMAuthDataPayload struct {
+	SupiOrSuci string `json:"supi_or_suci"`
+	SUPI       string `json:"supi,omitempty"`
+	Success    bool   `json:"success"`
+	Reason     string `json:"reason,omitempty"`
+}
+type SMFSessionPayload struct {
+	SUPI         string `json:"supi"`
+	PDUSessionID int    `json:"pdu_session_id"`
+	DNN          string `json:"dnn,omitempty"`
+	UEIP         string `json:"ue_ip,omitempty"`
+	Success      bool   `json:"success"`
+	Cause        string `json:"cause,omitempty"`
+}
+type UPFPFCPAssocPayload struct {
+	RemoteAddr string `json:"remote_addr"`
+	Success    bool   `json:"success"`
+}
+type UPFPFCPSessionPayload struct {
+	SEID      uint64 `json:"seid"`
+	LocalTEID uint32 `json:"local_teid"`
+	Success   bool   `json:"success"`
+}

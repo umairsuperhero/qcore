@@ -58,7 +58,7 @@ func NewService(cfg Config, log logger.Logger) (*Service, error) {
 	}
 	
 	// Initialize PFCP (N4) and GTP-U (N3)
-	s.pfcpSrv = NewPFCPServer(cfg.PFCPBindAddr, s.store, log)
+	s.pfcpSrv = NewPFCPServer(cfg.PFCPBindAddr, s.store, s.emitter, log)
 	s.gtpuSrv = NewGTPUServer(cfg.GTPUBindAddr, s.store, s.egress, log)
 	
 	return s, nil

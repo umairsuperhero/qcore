@@ -138,13 +138,18 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	journeyID := events.JourneyIDFromContext(r.Context())
 	s.emitter.Emit(events.Event{
-		JourneyID: events.JourneyIDFromContext(r.Context()),
+		JourneyID: journeyID,
 		NF:        "ausf",
 		Category:  events.SignalingRx,
 		Severity:  events.SeverityInfo,
 		Protocol:  "sbi",
-		Message:   "UEAuthentication Request",
+		Message:   "UE authentication request received",
+		Payload: events.AUSFAuthRequestPayload{
+			SupiOrSuci:         req.SupiOrSuci,
+			ServingNetworkName: req.ServingNetworkName,
+		},
 	})
 
 	if req.SupiOrSuci == "" {
@@ -170,6 +175,18 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 		ServingNetworkName: req.ServingNetworkName,
 	})
 	if err != nil {
+		s.emitter.Emit(events.Event{
+			JourneyID: journeyID,
+			NF:        "ausf",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "sbi",
+			Message:   "Authentication vector fetch failed",
+			Payload: events.AUSFAuthFailurePayload{
+				SupiOrSuci: req.SupiOrSuci,
+				Reason:     err.Error(),
+			},
+		})
 		switch {
 		case errors.Is(err, udm.ErrNotFound):
 			sbi.WriteProblem(w, &sbi.ProblemDetails{
@@ -244,6 +261,18 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 		ServingNetworkName: req.ServingNetworkName,
 	}
 
+	s.emitter.Emit(events.Event{
+		JourneyID: journeyID,
+		NF:        "ausf",
+		Category:  events.SignalingTx,
+		Severity:  events.SeverityInfo,
+		Protocol:  "sbi",
+		Message:   "Authentication vector ready, challenge sent to AMF",
+		Payload: events.AUSFAuthVectorPayload{
+			SUPI: udmResp.Supi,
+		},
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Location", href)
 	w.WriteHeader(http.StatusCreated)
@@ -292,9 +321,22 @@ func (s *Service) putConfirm(w http.ResponseWriter, r *http.Request) {
 	// Constant-time compare. RES* == XRES* means the UE and home network
 	// agreed on the Milenage output — per TS 33.501 §6.1.3.2 this is the
 	// auth success condition.
+	confirmJourneyID := events.JourneyIDFromContext(r.Context())
 	s.store.del(ctxID)
 	w.Header().Set("Content-Type", "application/json")
 	if subtle.ConstantTimeCompare(resStar[:], ctx.xresStar[:]) != 1 {
+		s.emitter.Emit(events.Event{
+			JourneyID: confirmJourneyID,
+			NF:        "ausf",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "sbi",
+			Message:   "Authentication confirmation failed: RES* mismatch",
+			Payload: events.AUSFAuthResultPayload{
+				SUPI:    ctx.supi,
+				Success: false,
+			},
+		})
 		_ = json.NewEncoder(w).Encode(ConfirmationDataResponse{
 			AuthResult: AuthResultFailure,
 			Supi:       ctx.supi,
@@ -303,6 +345,18 @@ func (s *Service) putConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	kseaf := subscriber.DeriveKSEAF(ctx.kausf, ctx.snName)
+	s.emitter.Emit(events.Event{
+		JourneyID: confirmJourneyID,
+		NF:        "ausf",
+		Category:  events.StateTransition,
+		Severity:  events.SeverityInfo,
+		Protocol:  "sbi",
+		Message:   "Authentication confirmed: 5G-AKA success, KSEAF derived",
+		Payload: events.AUSFAuthResultPayload{
+			SUPI:    ctx.supi,
+			Success: true,
+		},
+	})
 	_ = json.NewEncoder(w).Encode(ConfirmationDataResponse{
 		AuthResult: AuthResultSuccess,
 		Supi:       ctx.supi,

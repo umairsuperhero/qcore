@@ -226,6 +226,28 @@ Emitted by AMF (on SMF response) and by SMF (on IPAM failure).
 }
 ```
 
+### Per-NF instrumentation (C1 / T7)
+
+So the Live Trace view can show one correlated journey spanning all 5G NFs, each
+NF emits structured events on its key steps. All carry the same `journey_id`,
+propagated via the `X-QCore-Journey-ID` SBI header (see *Correlation* below).
+
+| NF | `payload` type | When |
+|----|----------------|------|
+| AUSF | `AUSFAuthRequestPayload` | AMF requests an auth vector |
+| AUSF | `AUSFAuthVectorPayload` | auth vector ready, challenge sent to AMF |
+| AUSF | `AUSFAuthFailurePayload` | UDM lookup / vector derivation failed |
+| AUSF | `AUSFAuthResultPayload` | AMF confirmed RES* (success or RES* mismatch) |
+| UDM | `UDMAuthDataPayload` | generated (or failed to generate) auth data |
+| SMF | `SMFSessionPayload` | PDU session created (IP allocated) |
+| SMF | `PDUSessionResultPayload` | PDU session rejected (e.g. `ip_pool_exhausted`) |
+| UPF | `UPFPFCPAssocPayload` | N4 Association Setup received |
+| UPF | `UPFPFCPSessionPayload` | N4 Session Establishment (TEID allocated) |
+
+Field definitions live in `pkg/events/event.go` (search `5G NF instrumentation
+payload types`). Verified by `TestC1_RegistrationEventTrace` in `pkg/amf`, which
+asserts one journey trace spanning AMF → AUSF → UDM with a shared `journey_id`.
+
 ### Correlation
 
 Every event for a single UE registration attempt shares the same `journey_id`.

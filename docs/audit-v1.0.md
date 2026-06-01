@@ -2,7 +2,7 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.1 — 2026-05-29
+**Current revision:** v1.4 — 2026-06-01
 **Auditor of record this revision:** build-time evaluation (full `go build` + `go vet`
 + `go test ./...` in a `golang:1.23` container; React `tsc --noEmit`).
 
@@ -12,6 +12,8 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.5 | 2026-06-01 | **C1 5G telemetry landed (T7).** AUSF, UDM, SMF, UPF now emit journey-correlated Phase-A events at every key signaling step (auth request/vector/result, auth-data generation, PDU session, PFCP association/session). A 5G registration produces one correlated trace spanning AMF→AUSF→UDM with a shared `journey_id`, verified by `TestC1_RegistrationEventTrace`. Event schema documented in `docs/phase-a-event-model.md`. Full suite green. **Next: C2 (5G simulator UX) / B2 (offline SLM).** |
+| v1.4 | 2026-06-01 | **B1 catalog depth landed + dashboard experience layer.** Diagnostic catalog deepened to 13 typed rules spanning the ≥9 §9.1 cause categories, 4G + 5G (PR #24). Dashboard gNB-connection hero screen (Gate 1 "is your gNB connected?", dark-first, latch-flip animation) and live signaling-trace view shipped. SBI `Server.Serve`/`Shutdown` data race fixed (was failing `go test -race`). Full suite green under `-race`. **Next gates: C1 (5G telemetry) on the 5G-leading path; B2 (offline SLM) on the AI path.** |
 | v1.3 | 2026-05-30 | **Track A complete (A1–A4).** PLMN codec (D-1), real SUCI + Registration Reject (D-3), NRF lifecycle + discovery (D-2), N11 AMF→SMF + 5GSM UL NAS Transport (D-4). All PRs merged to main. All 24 packages green. |
 | v1.2 | 2026-05-30 | **A1 landed.** `pkg/ident` canonical PLMN codec; `ngap.PLMNFromMCCMNC` and `subscriber.ParsePLMN` now both delegate to it. 7 golden test vectors (not just round-trips). All 24 packages green. D-1 closed. |
 | v1.1 | 2026-05-29 | **Correction.** v1.0 claimed the 5G user plane / Phase C AI / 5G E2E test were "shipped and verified." They were uncommitted and had never compiled (~20 build errors + 2 real logic bugs). All fixed; full suite now green. Four interop gaps identified and turned into long-term decisions (D-1…D-4) + an Interop-Hardening track (I1–I4). |
@@ -65,7 +67,9 @@ All of the following were uncommitted when found and are now fixed and green:
 | 5G SA control plane | ✅ Works in E2E test | `pkg/amf` integration test green over native SCTP |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
-| Phase C Diagnostic AI | ✅ Wired | `pkg/ai` builds; dashboard diagnose endpoint present |
+| Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
+| Phase C Diagnostic AI — offline SLM (§9.3) | ☐ Not started | B2 open; today AI is catalog + optional cloud (Gemini) only — no local/offline model yet |
+| Dashboard experience layer (hero + live trace) | ✅ Shipped | gNB-connection hero screen (Gate 1) + animated live signaling-trace view; `pkg/dashboard/web` |
 
 ## 4. Open interop gaps → long-term decisions
 
