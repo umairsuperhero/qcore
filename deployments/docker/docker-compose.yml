@@ -123,6 +123,15 @@ services:
       QCORE_DASHBOARD_SPGW_URL: http://spgw:8082
       QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
       QCORE_LOGGING_FORMAT: json
+      # Diagnostic AI backend. Default is the offline SLM sidecar (no key); it
+      # only escalates to a model after the deterministic catalog misses, and if
+      # the sidecar isn't running it degrades to a graceful "run make up-ai"
+      # answer. Override QCORE_AI_PROVIDER=gemini + QCORE_AI_API_KEY=<key> for
+      # cloud escalation instead.
+      QCORE_AI_PROVIDER: ${QCORE_AI_PROVIDER:-local}
+      QCORE_AI_LOCAL_URL: ${QCORE_AI_LOCAL_URL:-http://qcore-slm:8088/v1}
+      QCORE_AI_MODEL: ${QCORE_AI_MODEL:-qwen2.5-1.5b-instruct}
+      QCORE_AI_API_KEY: ${QCORE_AI_API_KEY:-}
 
   # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order).
   # All 5G services are behind the "5g" Compose profile so the default
@@ -315,6 +324,25 @@ services:
       UPF_PFCPBINDADDR: 0.0.0.0:8805
       UPF_GTPUBINDADDR: 0.0.0.0:2152
       UPF_TUNDEVICENAME: "qcore-upf"
+
+  # Offline diagnostic SLM (charter §9.3 / gap-closure B2). Serves a small
+  # instruct model over an OpenAI-compatible API so the Diagnostic AI explains
+  # failures with no cloud account and no API key. Behind the "ai" profile so
+  # the default `make up` stays lean (~1 GB model image); bring it up with
+  # `make up-ai`, which also points the dashboard at it.
+  qcore-slm:
+    profiles: ["ai"]
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.slm
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
 
 
 volumes:

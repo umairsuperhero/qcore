@@ -1,0 +1,31 @@
+# QCore offline diagnostic SLM sidecar (charter §9.3 / gap-closure B2).
+#
+# Serves a small instruct model over an OpenAI-compatible /v1/chat/completions
+# API on port 8088, so QCore's Diagnostic AI can explain failures with NO cloud
+# account and NO API key. The QCore Go binaries stay pure (no CGO, no model) —
+# all model weight lives here, behind the "ai" Compose profile.
+#
+# Model: Qwen2.5-1.5B-Instruct, Q4_K_M GGUF (~1.0 GB, Apache-2.0). Small enough
+# to bake into the image and run CPU-only on a developer laptop; strong enough
+# to narrate a structured event trace into explanation/root-cause/fix JSON.
+#
+# Override the model at build time with --build-arg MODEL_URL=... / MODEL_ALIAS=...
+
+# ── Stage 1: fetch the GGUF weights ────────────────────────────────────────
+FROM curlimages/curl:8.11.1 AS model
+ARG MODEL_URL=https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+WORKDIR /models
+RUN curl -fL --retry 3 -o model.gguf "${MODEL_URL}" \
+    && test -s model.gguf
+
+# ── Stage 2: llama.cpp server runtime ──────────────────────────────────────
+FROM ghcr.io/ggml-org/llama.cpp:server
+ARG MODEL_ALIAS=qwen2.5-1.5b-instruct
+ENV MODEL_ALIAS=${MODEL_ALIAS}
+COPY --from=model /models/model.gguf /models/model.gguf
+EXPOSE 8088
+# --alias controls the model name reported by the OpenAI API; it must match
+# QCORE_AI_MODEL so the engine's request names a served model. -c is the
+# context window (room for a multi-NF trace + the JSON answer).
+ENTRYPOINT ["/llama-server"]
+CMD ["-m", "/models/model.gguf", "--host", "0.0.0.0", "--port", "8088", "-c", "4096", "--alias", "qwen2.5-1.5b-instruct"]

@@ -51,10 +51,17 @@ metrics:
 telemetry:
   collector_url: "http://localhost:9099"
 
+# Diagnostic AI. The structured catalog always runs first and answers known
+# symptoms with no model at all. `provider` only selects what happens when the
+# catalog misses:
+#   local  — offline embedded SLM (no cloud, no key). Talks to the qcore-slm
+#            sidecar; start it with `make up-ai`. This is the default.
+#   gemini — cloud escalation (bring-your-own-key); set api_key.
 ai:
-  provider: "gemini"                      # "gemini" or "local" (for rule-based only)
-  model: "gemini-2.5-flash"
-  api_key: ""                             # Required if provider=gemini
+  provider: "local"                       # "local" (offline SLM) or "gemini" (cloud)
+  model: "qwen2.5-1.5b-instruct"          # served model name (local) or cloud model id
+  api_key: ""                             # required only if provider=gemini
+  local_url: "http://localhost:8088/v1"   # offline SLM OpenAI-compatible endpoint
 
 # 5G SA NFs — only needed when running the 5G stack
 nrf:

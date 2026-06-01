@@ -85,10 +85,24 @@ type TelemetryConfig struct {
 	CollectorURL string `mapstructure:"collector_url"`
 }
 
+// AIConfig selects the diagnostic engine's escalation backend used when the
+// local structured catalog does not match a trace.
+//
+//	provider "gemini" — cloud escalation (bring-your-own-key); needs APIKey.
+//	provider "local"  — offline embedded SLM (charter §9.3): no key, no cloud.
+//	                    Talks to an OpenAI-compatible /chat/completions endpoint
+//	                    (llama.cpp server or ollama) at LocalURL. This is the
+//	                    differentiator: AI explanations with nothing to sign up for.
+//
+// In every mode the catalog runs first, so deterministic answers never depend
+// on a model being reachable.
 type AIConfig struct {
 	Provider string `mapstructure:"provider"`
 	Model    string `mapstructure:"model"`
 	APIKey   string `mapstructure:"api_key"`
+	// LocalURL is the base URL of the offline SLM's OpenAI-compatible API,
+	// e.g. "http://localhost:8088/v1". Used only when Provider == "local".
+	LocalURL string `mapstructure:"local_url"`
 }
 
 type HSSConfig struct {
@@ -210,6 +224,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.provider", "gemini")
 	v.SetDefault("ai.model", "gemini-2.5-flash")
 	v.SetDefault("ai.api_key", "")
+	// Offline SLM sidecar (charter §9.3). Default endpoint matches the
+	// qcore-slm container in deployments/docker/docker-compose.yml. Only used
+	// when ai.provider == "local". For local mode, ai.model is the served
+	// model name (e.g. "qwen2.5-1.5b-instruct").
+	v.SetDefault("ai.local_url", "http://localhost:8088/v1")
 
 	// 5G SA NFs
 	v.SetDefault("nrf.bind_address", "0.0.0.0")
