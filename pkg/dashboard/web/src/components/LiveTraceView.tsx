@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTraceStream } from "../api/traceStream";
+import { useConnectionStore } from "../stores/connectionStore";
 import JourneyTimeline from "./JourneyTimeline";
 import { getLearningContent } from "../data/learning";
 import type { QEvent } from "../api/types";
@@ -13,17 +13,15 @@ import {
 } from "lucide-react";
 
 export default function LiveTraceView() {
-  const { 
-    events, 
-    streaming, 
-    activeScenario, 
-    mode, 
-    diagnostic, 
-    isMock,
-    runScenario, 
-    clear, 
-    setMode 
-  } = useTraceStream();
+  const traceState = useConnectionStore((s) => s.traceState);
+  const isMockStream = useConnectionStore((s) => s.isMockStream);
+  const runScenario = useConnectionStore((s) => s.runScenario);
+  const clearTrace = useConnectionStore((s) => s.clearTrace);
+  const setMode = useConnectionStore((s) => s.setMode);
+
+  const { events, streaming, activeScenario, mode, diagnostic } = traceState;
+  const isMock = isMockStream;
+  const clear = clearTrace;
 
   const [learningMode, setLearningMode] = useState(false);
   const [activeView, setActiveView] = useState<"timeline" | "raw">("timeline");

@@ -3,7 +3,7 @@ import HealthView from "./components/HealthView";
 import SubscribersView from "./components/SubscribersView";
 import LiveTraceView from "./components/LiveTraceView";
 import GNBHeroScreen from "./components/GNBHeroScreen";
-import { useGNBConnection } from "./api/gnbConnection";
+import { useConnectionStore } from "./stores/connectionStore";
 import { HelpCircle, Terminal, Play, X, RefreshCw } from "lucide-react";
 import { api } from "./api/client";
 
@@ -17,10 +17,21 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function App() {
-  const { connection, triggerSimulation } = useGNBConnection();
+  const connection = useConnectionStore((s) => s.connection);
+  const triggerSimulation = useConnectionStore((s) => s.triggerSimulation);
+  const fetchConfig = useConnectionStore((s) => s.fetchConfig);
+  const initEventSource = useConnectionStore((s) => s.initEventSource);
+  const closeEventSource = useConnectionStore((s) => s.closeEventSource);
+
   const [tab, setTab] = useState<Tab>("ran");
   const [showUeransimModal, setShowUeransimModal] = useState(false);
   const [startingSim, setStartingSim] = useState(false);
+
+  useEffect(() => {
+    fetchConfig();
+    initEventSource();
+    return () => closeEventSource();
+  }, [fetchConfig, initEventSource, closeEventSource]);
 
   const isConnected = connection.state === "connected";
 
