@@ -2,6 +2,7 @@ package nas5g
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -160,6 +161,20 @@ func TestAuthenticationRequestRoundTrip(t *testing.T) {
 	assert.Equal(t, req.AUTN, got.AUTN)
 }
 
+func TestAuthenticationRequestUERANSIMGolden(t *testing.T) {
+	req := &AuthenticationRequest{
+		NASKeySetID: 0x01,
+		ABBA:        []byte{0x00, 0x00},
+		RAND:        [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		AUTN:        [16]byte{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+	}
+
+	assert.Equal(t,
+		"7e005610020000210102030405060708090a0b0c0d0e0f102010100f0e0d0c0b0a090807060504030201",
+		hex.EncodeToString(EncodeAuthenticationRequest(req)),
+	)
+}
+
 // --- Authentication Response ------------------------------------------------
 
 func TestAuthenticationResponseRoundTrip(t *testing.T) {
@@ -186,6 +201,7 @@ func TestSecurityModeCommandRoundTrip(t *testing.T) {
 	}
 	enc := EncodeSecurityModeCommand(cmd)
 	assert.Equal(t, uint8(0x5D), enc[2])
+	assert.Equal(t, []byte{0x7e, 0x00, 0x5d, 0x02, 0x10, 0x04, 0xe0, 0x00, 0xc0, 0x00, 0xe1}, enc)
 
 	msg, err := Decode(enc)
 	require.NoError(t, err)

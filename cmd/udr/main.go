@@ -111,6 +111,7 @@ func runServer() error {
 			ServiceName: "nudr-dr",
 			Versions:    []string{"v1"},
 			Scheme:      "http",
+			FQDN:        "udr",
 			IPAddr:      cfg.UDR.BindAddress,
 			Port:        cfg.UDR.Port,
 		}},
@@ -149,6 +150,22 @@ func seedDemoSubscriberIfEmpty(ctx context.Context, service *subscriber.Service,
 		return nil
 	}
 
+	demo := &subscriber.Subscriber{
+		IMSI:   "001010000000001",
+		Ki:     "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:    "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:    "8000",
+		SQN:    "000000000020",
+		APN:    "internet",
+		Status: 0, // active
+	}
+	if os.Getenv("QCORE_RESET_DEMO_SUBSCRIBER") == "true" {
+		if err := service.UpdateSubscriber(ctx, demo.IMSI, demo); err == nil {
+			log.Infof("Reset demo subscriber (IMSI=%s) in UDR.", demo.IMSI)
+			return nil
+		}
+	}
+
 	_, total, err := service.ListSubscribers(ctx, 1, 1, "")
 	if err != nil {
 		return fmt.Errorf("checking subscriber count: %w", err)
@@ -157,15 +174,6 @@ func seedDemoSubscriberIfEmpty(ctx context.Context, service *subscriber.Service,
 		return nil // don't touch existing data
 	}
 
-	demo := &subscriber.Subscriber{
-		IMSI:   "001010000000001",
-		Ki:     "465b5ce8b199b49faa5f0a2ee238a6bc",
-		OPc:    "cd63cb71954a9f4e48a5994e37a02baf",
-		AMF:    "8000",
-		SQN:    "000000000000",
-		APN:    "internet",
-		Status: 0, // active
-	}
 	if err := service.CreateSubscriber(ctx, demo); err != nil {
 		return err
 	}

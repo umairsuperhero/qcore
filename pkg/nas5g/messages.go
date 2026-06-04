@@ -140,8 +140,9 @@ func EncodeRegistrationRequest(req *RegistrationRequest) []byte {
 	ngKSIByte := (req.NASKeySetID & 0x07) << 4
 	body = append(body, ngKSIByte|regTypeByte)
 
-	// Mobile Identity (LV)
-	body = append(body, uint8(len(req.MobileIdentity)))
+	// Mobile Identity (LV-E)
+	l := len(req.MobileIdentity)
+	body = append(body, uint8(l>>8), uint8(l))
 	body = append(body, req.MobileIdentity...)
 
 	// Optional IEs (TLV)
@@ -174,12 +175,12 @@ func DecodeRegistrationRequest(data []byte) (*RegistrationRequest, error) {
 	req.FollowOnRequest = (b & FollowOnRequestBit) != 0
 	data = data[1:]
 
-	// Mobile Identity (LV)
-	if len(data) < 1 {
+	// Mobile Identity (LV-E)
+	if len(data) < 2 {
 		return nil, fmt.Errorf("nas5g: missing mobile identity length")
 	}
-	mobileIDLen := int(data[0])
-	data = data[1:]
+	mobileIDLen := int(binary.BigEndian.Uint16(data[:2]))
+	data = data[2:]
 	if len(data) < mobileIDLen {
 		return nil, fmt.Errorf("nas5g: mobile identity truncated")
 	}
@@ -254,11 +255,11 @@ func EncodeAuthenticationRequest(req *AuthenticationRequest) []byte {
 	body = append(body, uint8(len(abba)))
 	body = append(body, abba...)
 
-	// Authentication parameter RAND (T=0x21, LV=16 bytes)
-	body = append(body, 0x21, 0x10)
+	// Authentication parameter RAND (type 3): IEI + fixed 16-byte value.
+	body = append(body, 0x21)
 	body = append(body, req.RAND[:]...)
 
-	// Authentication parameter AUTN (T=0x20, LV=16 bytes)
+	// Authentication parameter AUTN (type 4): IEI + length + 16-byte value.
 	body = append(body, 0x20, 0x10)
 	body = append(body, req.AUTN[:]...)
 
@@ -287,27 +288,33 @@ func DecodeAuthenticationRequest(data []byte) (*AuthenticationRequest, error) {
 	copy(req.ABBA, data[:abbaLen])
 	data = data[abbaLen:]
 
-	// Optional TLV IEs: RAND (0x21) and AUTN (0x20)
-	for len(data) >= 2 {
+	// Optional IEs: RAND (type 3, fixed 16 bytes) and AUTN (type 4, LV).
+	for len(data) >= 1 {
 		iei := data[0]
-		l := int(data[1])
-		data = data[2:]
-		if len(data) < l {
-			return nil, fmt.Errorf("nas5g: IE 0x%02X truncated", iei)
-		}
-		v := data[:l]
-		data = data[l:]
+		data = data[1:]
 		switch iei {
 		case 0x21:
-			if l != 16 {
-				return nil, fmt.Errorf("nas5g: RAND length %d, want 16", l)
+			if len(data) < 16 {
+				return nil, fmt.Errorf("nas5g: RAND truncated")
 			}
-			copy(req.RAND[:], v)
+			copy(req.RAND[:], data[:16])
+			data = data[16:]
 		case 0x20:
+			if len(data) < 1 {
+				return nil, fmt.Errorf("nas5g: missing AUTN length")
+			}
+			l := int(data[0])
+			data = data[1:]
 			if l != 16 {
 				return nil, fmt.Errorf("nas5g: AUTN length %d, want 16", l)
 			}
-			copy(req.AUTN[:], v)
+			if len(data) < l {
+				return nil, fmt.Errorf("nas5g: AUTN truncated")
+			}
+			copy(req.AUTN[:], data[:l])
+			data = data[l:]
+		default:
+			return nil, fmt.Errorf("nas5g: unknown AuthRequest IE 0x%02X", iei)
 		}
 	}
 	return req, nil
@@ -378,7 +385,7 @@ func EncodeSecurityModeCommand(cmd *SecurityModeCommand) []byte {
 
 	// IMEISV request (optional, T=0x0E, TV: 1 byte value in low nibble)
 	if cmd.IMEISV_Requested {
-		body = append(body, 0x0E, 0x01) // request IMEISV
+		body = append(body, 0xE1) // IEI 0xE, value=request IMEISV
 	}
 
 	return body
@@ -412,13 +419,11 @@ func DecodeSecurityModeCommand(data []byte) (*SecurityModeCommand, error) {
 		iei := data[0]
 		data = data[1:]
 		switch iei {
-		case 0x0E:
-			if len(data) < 1 {
-				return nil, fmt.Errorf("nas5g: IMEISV request truncated")
-			}
-			cmd.IMEISV_Requested = (data[0] & 0x0F) == 0x01
-			data = data[1:]
 		default:
+			if iei>>4 == 0x0E {
+				cmd.IMEISV_Requested = (iei & 0x0F) == 0x01
+				continue
+			}
 			// skip unknown optional TV/TLV
 			if len(data) >= 1 {
 				data = data[1:] // skip value byte (TV format assumed for unknowns)

@@ -2,9 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.4 — 2026-06-01
+**Current revision:** v1.6 — 2026-06-04
 **Auditor of record this revision:** build-time evaluation (full `go build` + `go vet`
-+ `go test ./...` in a `golang:1.23` container; React `tsc --noEmit`).
++ `go test ./...` and `go test -race ./...` in a `golang:1.23` container; dashboard
+`npm run build` + `npx tsc --noEmit`).
 
 ---
 
@@ -12,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.6 | 2026-06-04 | **Grounded T10 audit/replay.** Reproduced UERANSIM over native SCTP from clean compose. The original APER `transfer-syntax-error` at `DownlinkNASTransport` is fixed by UE-NGAP-ID and NAS Authentication Request encoding corrections; UERANSIM now reaches Authentication Response and AUSF confirmation. T10 remains **blocked**, not shipped: current external blocker is UERANSIM rejecting the Security Mode Command with `Security Mode Command integrity check failed`. Full Go build/vet/test, race, and dashboard build/tsc are green. |
 | v1.5 | 2026-06-01 | **C1 5G telemetry landed (T7).** AUSF, UDM, SMF, UPF now emit journey-correlated Phase-A events at every key signaling step (auth request/vector/result, auth-data generation, PDU session, PFCP association/session). A 5G registration produces one correlated trace spanning AMF→AUSF→UDM with a shared `journey_id`, verified by `TestC1_RegistrationEventTrace`. Event schema documented in `docs/phase-a-event-model.md`. Full suite green. **Next: C2 (5G simulator UX) / B2 (offline SLM).** |
 | v1.4 | 2026-06-01 | **B1 catalog depth landed + dashboard experience layer.** Diagnostic catalog deepened to 13 typed rules spanning the ≥9 §9.1 cause categories, 4G + 5G (PR #24). Dashboard gNB-connection hero screen (Gate 1 "is your gNB connected?", dark-first, latch-flip animation) and live signaling-trace view shipped. SBI `Server.Serve`/`Shutdown` data race fixed (was failing `go test -race`). Full suite green under `-race`. **Next gates: C1 (5G telemetry) on the 5G-leading path; B2 (offline SLM) on the AI path.** |
 | v1.3 | 2026-05-30 | **Track A complete (A1–A4).** PLMN codec (D-1), real SUCI + Registration Reject (D-3), NRF lifecycle + discovery (D-2), N11 AMF→SMF + 5GSM UL NAS Transport (D-4). All PRs merged to main. All 24 packages green. |
@@ -64,7 +66,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | 4G EPC (HSS/MME/SPGW) | ✅ Shipped | `pkg/mme` E2E attach + user-plane tests pass |
 | Phase A event model | ✅ Shipped (4G + 5G) | 4G NFs fully instrumented; 5G NFs instrumented via C1/T7 — one correlated trace per registration (`TestC1_RegistrationEventTrace`) |
 | Phase B golden path / dashboard / simulator | ✅ Shipped | builds; frontend type-checks; simulator tests pass |
-| 5G SA control plane | ✅ Works in E2E test | `pkg/amf` integration test green over native SCTP |
+| 5G SA control plane | ✅ Works in in-process E2E; T10 blocked | `pkg/amf` integration test green; UERANSIM reaches Authentication Response, then rejects SMC integrity |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
@@ -146,8 +148,11 @@ These were required **before** claiming T10 (UERANSIM compat) or marking the 5G 
 | I4 | D-4 N11 AMF→SMF, real E2E (drop the shortcut) | Medium | ✅ Done |
 
 T7 (5G event instrumentation, C1) is also complete, so Phase C can reason over real 5G
-traces. **Remaining to v1:** T8/T9 (5G simulator UX, dashboard 5G mode), then T10
-(UERANSIM in a sidecar — the real-RAN gate), plus B2 (offline SLM) on the AI path.
+traces. **T10 is now partially reproduced but blocked at Security Mode Command
+integrity verification:** UERANSIM accepts NGSetup, InitialUEMessage, Authentication
+Request, Authentication Response, and AUSF confirmation, then sends Security Mode
+Reject because the SMC MAC does not verify. Remaining to v1: finish T10, T8/T9
+(5G simulator UX, dashboard 5G mode), plus B2 (offline SLM) on the AI path.
 
 ## 6. Deferred (unchanged from charter §11)
 

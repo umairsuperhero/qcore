@@ -360,7 +360,7 @@ func (s *Service) handleAuthenticationResponse(ctx context.Context, ue *UEContex
 	})
 
 	// Build and send Security Mode Command (integrity-protected with new context)
-	secAlgoByte := (ue.EncAlgID & 0x0F) | ((ue.IntAlgID & 0x0F) << 4)
+	secAlgoByte := ((ue.EncAlgID & 0x0F) << 4) | (ue.IntAlgID & 0x0F)
 	smcPlain := nas5g.EncodeSecurityModeCommand(&nas5g.SecurityModeCommand{
 		NASSecAlgos:       secAlgoByte,
 		NASKeySetID:       1,
@@ -636,4 +636,3 @@ func (s *Service) allowedNSSAI(ue *UEContext) []nas5g.NSSAIEntry {
 	// Default: SST=1 (eMBB) if no NSSAI was negotiated
 	return []nas5g.NSSAIEntry{{SST: 0x01}}
 }
-

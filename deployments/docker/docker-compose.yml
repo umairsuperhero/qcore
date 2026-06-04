@@ -176,6 +176,7 @@ services:
       QCORE_DATABASE_PASSWORD: qcore
       QCORE_DATABASE_NAME: qcore
       QCORE_DATABASE_SSL_MODE: disable
+      QCORE_RESET_DEMO_SUBSCRIBER: "true"
       QCORE_LOGGING_FORMAT: json
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8084/health"]
@@ -207,6 +208,7 @@ services:
       QCORE_DATABASE_PASSWORD: qcore
       QCORE_DATABASE_NAME: qcore
       QCORE_DATABASE_SSL_MODE: disable
+      QCORE_RESET_DEMO_SUBSCRIBER: "true"
       QCORE_LOGGING_FORMAT: json
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8085/health"]
@@ -256,7 +258,7 @@ services:
       QCORE_AMF_NGAP_PORT: "38412"
       QCORE_AMF_API_PORT: "8087"
       QCORE_AMF_PLMN: "00101"
-      QCORE_AMF_SCTP_MODE: tcp
+      QCORE_AMF_SCTP_MODE: sctp
       QCORE_AMF_SERVING_NETWORK_NAME: "5G:mnc001.mcc001.3gppnetwork.org"
       QCORE_AMF_NRF_URL: http://nrf:8083
       QCORE_AMF_AUSF_URL: http://ausf:8086
@@ -268,19 +270,33 @@ services:
       timeout: 3s
       retries: 10
 
-  ueransim:
+  ueransim-gnb:
     profiles: ["5g"]
     image: free5gc/ueransim:latest
     depends_on:
       amf:
         condition: service_healthy
-    environment:
-      - AMF_IP=amf
-    # UERANSIM requires NET_ADMIN for TUN interfaces and SCTP
     cap_add:
       - NET_ADMIN
     devices:
       - "/dev/net/tun:/dev/net/tun"
+    volumes:
+      - ./ueransim-config/gnb.yaml:/ueransim/config/gnb.yaml
+    command: /ueransim/nr-gnb -c /ueransim/config/gnb.yaml
+
+  ueransim-ue:
+    profiles: ["5g"]
+    image: free5gc/ueransim:latest
+    depends_on:
+      amf:
+        condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    volumes:
+      - ./ueransim-config/ue.yaml:/ueransim/config/ue.yaml
+    command: /bin/bash -c "sleep 5 && /ueransim/nr-ue -c /ueransim/config/ue.yaml"
 
   smf:
     profiles: ["5g"]

@@ -4,7 +4,7 @@
 
 **The open-source 4G/5G core network that's actually easy to use.**
 
-> Updated: 2026-06-01
+> Updated: 2026-06-04
 
 QCore is a development and test environment for cellular networks — **not** a 5G core competing on protocol features. Primary user: the RAN/device developer who needs a core to test against. QCore wins on experience: fast start, deep observability, and AI that explains failures.
 
@@ -19,7 +19,7 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | 4G EPC | HSS (subscriber management + Milenage), MME (S1AP/NAS attach, auth, security mode), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured event schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
-| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel) over **native SCTP** on Linux. Interop hardening (A1–A4: standards-correct PLMN codec, real SUCI, NRF discovery, N11 AMF→SMF) and 5G Phase-A telemetry (C1/T7: journey-correlated events across AMF/AUSF/UDM/SMF/UPF) complete. **Not yet validated against a real gNB/UERANSIM (T10)** — so not yet "shipped." Plan: `docs/v1-gap-closure-plan.md`. | 🔭 In progress |
+| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening and 5G Phase-A telemetry are complete. **T10/UERANSIM is partially reproduced, not shipped:** native SCTP, NGSetup, InitialUEMessage, Authentication Request, Authentication Response, and AUSF confirmation now work; current external blocker is UERANSIM rejecting QCore's Security Mode Command with `Security Mode Command integrity check failed`. Plan: `docs/v1-gap-closure-plan.md`; evidence: `docs/ueransim-compat.md`. | 🔭 In progress |
 | Phase C — Diagnostic AI | Symptom→cause catalog deepened to 13 typed rules across ≥9 cause categories (4G + 5G); AI Level 1 (explain) + Level 2 (root-cause + fix); optional cloud (Gemini) escalation. **Offline embedded SLM (B2) still pending** — today's AI needs the catalog and, for hard cases, a bring-your-own cloud key. | 🔭 In progress |
 | Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 In progress |

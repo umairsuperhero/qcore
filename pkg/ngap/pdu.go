@@ -1,7 +1,6 @@
 package ngap
 
 import (
-	"encoding/binary"
 	"fmt"
 )
 
@@ -9,8 +8,8 @@ import (
 func DecodePDU(data []byte) (*PDU, error) {
 	dec := NewPERDecoder(data)
 
-	// NGAP-PDU CHOICE (3 alternatives)
-	pduType, err := dec.GetChoiceIndex(3)
+	// NGAP-PDU CHOICE (3 alternatives, extensible)
+	pduType, err := dec.GetChoiceIndex(3, true)
 	if err != nil {
 		return nil, fmt.Errorf("ngap: decoding PDU type: %w", err)
 	}
@@ -51,8 +50,8 @@ func DecodePDU(data []byte) (*PDU, error) {
 func EncodePDU(pdu *PDU) ([]byte, error) {
 	enc := NewPEREncoder()
 
-	// NGAP-PDU CHOICE (3 alternatives)
-	if err := enc.PutChoiceIndex(int(pdu.Type), 3); err != nil {
+	// NGAP-PDU CHOICE (3 alternatives, extensible)
+	if err := enc.PutChoiceIndex(int(pdu.Type), 3, true); err != nil {
 		return nil, fmt.Errorf("ngap: encoding PDU type: %w", err)
 	}
 
@@ -76,24 +75,31 @@ func EncodePDU(pdu *PDU) ([]byte, error) {
 }
 
 // DecodeIEContainer decodes the ProtocolIE container from the PDU value field.
+// It also reads the message-level SEQUENCE header (ext bit) that wraps the container.
 func DecodeIEContainer(data []byte) ([]ProtocolIE, error) {
 	dec := NewPERDecoder(data)
 
-	// Count: 2 bytes big-endian
-	countBytes, err := dec.GetBytes(2)
+	// Every NGAP message is a SEQUENCE { protocolIEs ProtocolIE-Container, ... }
+	// so we must read the sequence header (extensible, 0 optional root fields).
+	if _, _, err := dec.GetSequenceHeader(true, 0); err != nil {
+		return nil, fmt.Errorf("ngap: decoding message sequence header: %w", err)
+	}
+
+	// Count: SEQUENCE SIZE(0..65535)
+	countInt, err := dec.GetConstrainedInt(0, 65535)
 	if err != nil {
 		return nil, fmt.Errorf("ngap: decoding IE count: %w", err)
 	}
-	count := int(binary.BigEndian.Uint16(countBytes))
+	count := int(countInt)
 
 	ies := make([]ProtocolIE, 0, count)
 	for i := 0; i < count; i++ {
 		// id: ProtocolIE-ID (2 bytes)
-		idBytes, err := dec.GetBytes(2)
+		idInt, err := dec.GetConstrainedInt(0, 65535)
 		if err != nil {
 			return nil, fmt.Errorf("ngap: decoding IE %d id: %w", i, err)
 		}
-		id := ProtocolIEID(binary.BigEndian.Uint16(idBytes))
+		id := ProtocolIEID(idInt)
 
 		// criticality: ENUMERATED (0..2)
 		crit, err := dec.GetConstrainedInt(0, 2)
@@ -109,7 +115,7 @@ func DecodeIEContainer(data []byte) ([]ProtocolIE, error) {
 		}
 		value, err := dec.GetBytes(valueLen)
 		if err != nil {
-			return nil, fmt.Errorf("ngap: decoding IE %d (id=%d) value: %w", i, id, err)
+			return nil, fmt.Errorf("ngap: decoding IE %d (id=%d) value (%d bytes): %w", i, id, valueLen, err)
 		}
 
 		ies = append(ies, ProtocolIE{
@@ -122,20 +128,24 @@ func DecodeIEContainer(data []byte) ([]ProtocolIE, error) {
 	return ies, nil
 }
 
-// EncodeIEContainer encodes a list of ProtocolIEs.
+// EncodeIEContainer encodes a list of ProtocolIEs into an IE container,
+// wrapped in the message-level SEQUENCE header.
 func EncodeIEContainer(ies []ProtocolIE) ([]byte, error) {
 	enc := NewPEREncoder()
 
-	// Count: 2 bytes big-endian
-	countBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(countBytes, uint16(len(ies)))
-	enc.PutBytes(countBytes)
+	// Message-level SEQUENCE header (extensible, 0 optional root fields)
+	enc.PutSequenceHeader(true, 0, 0)
+
+	// Count: SEQUENCE SIZE(0..65535)
+	if err := enc.PutConstrainedInt(int64(len(ies)), 0, 65535); err != nil {
+		return nil, fmt.Errorf("ngap: encoding IE count: %w", err)
+	}
 
 	for _, ie := range ies {
-		// id: 2 bytes
-		idBytes := make([]byte, 2)
-		binary.BigEndian.PutUint16(idBytes, uint16(ie.ID))
-		enc.PutBytes(idBytes)
+		// id: ProtocolIE-ID (2 bytes, 0..65535)
+		if err := enc.PutConstrainedInt(int64(ie.ID), 0, 65535); err != nil {
+			return nil, fmt.Errorf("ngap: encoding IE ID: %w", err)
+		}
 
 		// criticality: ENUMERATED
 		if err := enc.PutConstrainedInt(int64(ie.Criticality), 0, 2); err != nil {

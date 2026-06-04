@@ -98,7 +98,7 @@ const (
 	IEIDGlobalRANNodeID        ProtocolIEID = 27
 	IEIDGUAMI                  ProtocolIEID = 28
 	IEIDNASPDU                 ProtocolIEID = 38
-	IEIDRelativeAMFCapacity    ProtocolIEID = 74
+	IEIDRelativeAMFCapacity    ProtocolIEID = 86
 	IEIDPLMNSupportList        ProtocolIEID = 80
 	IEIDRANNodeName            ProtocolIEID = 82
 	IEIDRANUENGAPID            ProtocolIEID = 85

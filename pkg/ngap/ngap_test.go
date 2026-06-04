@@ -2,6 +2,7 @@ package ngap
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -328,6 +329,68 @@ func TestDownlinkNASTransportRoundTrip(t *testing.T) {
 	assert.Equal(t, msg.AMFUENGAPID, decoded.AMFUENGAPID)
 	assert.Equal(t, msg.RANUENGAPID, decoded.RANUENGAPID)
 	assert.True(t, bytes.Equal(nasPDU, decoded.NASPDU))
+}
+
+func TestAMFUENGAPIDAPERGolden(t *testing.T) {
+	tests := []struct {
+		name string
+		id   uint64
+		hex  string
+	}{
+		{name: "zero", id: 0, hex: "0000"},
+		{name: "one", id: 1, hex: "0001"},
+		{name: "max", id: 1099511627775, hex: "ffffffffff"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := EncodeAMFUENGAPID(tt.id)
+			require.NoError(t, err)
+			assert.Equal(t, tt.hex, hex.EncodeToString(encoded))
+
+			decoded, err := DecodeAMFUENGAPID(encoded)
+			require.NoError(t, err)
+			assert.Equal(t, tt.id, decoded)
+		})
+	}
+}
+
+func TestRANUENGAPIDAPERGolden(t *testing.T) {
+	tests := []struct {
+		name string
+		id   uint64
+		hex  string
+	}{
+		{name: "zero", id: 0, hex: "0000"},
+		{name: "forty-two", id: 42, hex: "002a"},
+		{name: "max", id: 4294967295, hex: "ffffffff"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := EncodeRANUENGAPID(tt.id)
+			require.NoError(t, err)
+			assert.Equal(t, tt.hex, hex.EncodeToString(encoded))
+
+			decoded, err := DecodeRANUENGAPID(encoded)
+			require.NoError(t, err)
+			assert.Equal(t, tt.id, decoded)
+		})
+	}
+}
+
+func TestDownlinkNASTransportAPERGolden(t *testing.T) {
+	rawPDU, err := EncodeDownlinkNASTransport(&DownlinkNASTransport{
+		AMFUENGAPID: 1,
+		RANUENGAPID: 42,
+		NASPDU:      []byte{0x7E, 0x00, 0x56, 0xAA, 0xBB},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		"00044019000003000a0002000100550002002a00260006057e0056aabb",
+		hex.EncodeToString(rawPDU),
+	)
 }
 
 func TestUplinkNASTransportRoundTrip(t *testing.T) {

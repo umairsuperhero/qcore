@@ -98,6 +98,7 @@ func runServer() error {
 			ServiceName: "nausf-auth",
 			Versions:    []string{"v1"},
 			Scheme:      "http",
+			FQDN:        "ausf",
 			IPAddr:      cfg.AUSF.BindAddress,
 			Port:        cfg.AUSF.Port,
 		}},
