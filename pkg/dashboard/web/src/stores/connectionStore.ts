@@ -186,7 +186,6 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
           
           const newEvents = [...state.traceState.events, ev].slice(-200);
           const activeJourney = ev.journey_id || state.traceState.journeyId;
-          const hasError = ev.severity === "error";
 
           return {
             traceState: {
