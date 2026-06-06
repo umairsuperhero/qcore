@@ -2,7 +2,7 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.7 — 2026-06-05
+**Current revision:** v1.8 — 2026-06-06
 **Auditor of record this revision:** build-time evaluation (full `go build` + `go vet`
 + `go test ./...` and `go test -race ./...` in a `golang:1.23` container; dashboard
 `npm run build` + `npx tsc --noEmit`).
@@ -13,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.8 | 2026-06-06 | **T10 SMC-integrity blocker resolved on PR #28, T10 still blocked.** The K_AMF derivation path now strips the SBI `imsi-` prefix and feeds bare IMSI digits into the TS 33.501 A.7 K_AMF KDF input. The GitHub Actions `ueransim-interop` job validated this against real UERANSIM on cloud Linux: UE reaches Security Mode Command, selects integrity[2]/ciphering[0], does not log `Security Mode Command integrity check failed`, and AMF receives Security Mode Complete. Full registration is still not complete; current external blocker is Registration Accept delivery after SMC Complete. The gNB log now confirms APER `transfer-syntax-error` on QCore's `InitialContextSetupRequest`; adding mandatory `UEAggregateMaximumBitRate` is standards-correct but not sufficient by itself. |
 | v1.7 | 2026-06-05 | **Post-antigravity integration sweep.** Audited the multi-agent (antigravity + codex) output and integrated it to main: Lane 1 (live dashboard un-mocked onto the real `/api/events/stream` SSE feed + real-engine diagnostics; esbuild→Vite; collapsed dual EventSource into one zustand store), Lane 2 (CI now builds all 13 binaries + `go vet`), Lane 4 (dark-theme consistency), and the T10 progress branch (honest UERANSIM replay docs + NGAP/NAS/SCTP fixes). Fixed a `tsc --noEmit` blocker on Lane 1 (dead `hasError`). Reconciled B2 status across README/wiki/CLAUDE — B2 code is merged + unit-tested green, live model-serve still pending (the docs previously under-claimed it as "planned"). Verified on the integrated tree: full `go build` / `go vet` / `go test -race ./...` green in `golang:1.23`; dashboard `tsc --noEmit` + `vite build` green. T10 remains blocked at Security Mode Command integrity (unchanged from v1.6). |
 | v1.6 | 2026-06-04 | **Grounded T10 audit/replay.** Reproduced UERANSIM over native SCTP from clean compose. The original APER `transfer-syntax-error` at `DownlinkNASTransport` is fixed by UE-NGAP-ID and NAS Authentication Request encoding corrections; UERANSIM now reaches Authentication Response and AUSF confirmation. T10 remains **blocked**, not shipped: current external blocker is UERANSIM rejecting the Security Mode Command with `Security Mode Command integrity check failed`. Full Go build/vet/test, race, and dashboard build/tsc are green. |
 | v1.5 | 2026-06-01 | **C1 5G telemetry landed (T7).** AUSF, UDM, SMF, UPF now emit journey-correlated Phase-A events at every key signaling step (auth request/vector/result, auth-data generation, PDU session, PFCP association/session). A 5G registration produces one correlated trace spanning AMF→AUSF→UDM with a shared `journey_id`, verified by `TestC1_RegistrationEventTrace`. Event schema documented in `docs/phase-a-event-model.md`. Full suite green. **Next: C2 (5G simulator UX) / B2 (offline SLM).** |
@@ -67,7 +68,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | 4G EPC (HSS/MME/SPGW) | ✅ Shipped | `pkg/mme` E2E attach + user-plane tests pass |
 | Phase A event model | ✅ Shipped (4G + 5G) | 4G NFs fully instrumented; 5G NFs instrumented via C1/T7 — one correlated trace per registration (`TestC1_RegistrationEventTrace`) |
 | Phase B golden path / dashboard / simulator | ✅ Shipped | builds; frontend type-checks; simulator tests pass |
-| 5G SA control plane | ✅ Works in in-process E2E; T10 blocked | `pkg/amf` integration test green; UERANSIM reaches Authentication Response, then rejects SMC integrity |
+| 5G SA control plane | ✅ Works in in-process E2E; T10 blocked | `pkg/amf` integration test green; UERANSIM reaches Security Mode Complete, then blocks before Registration Accept reaches the UE |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
@@ -149,10 +150,10 @@ These were required **before** claiming T10 (UERANSIM compat) or marking the 5G 
 | I4 | D-4 N11 AMF→SMF, real E2E (drop the shortcut) | Medium | ✅ Done |
 
 T7 (5G event instrumentation, C1) is also complete, so Phase C can reason over real 5G
-traces. **T10 is now partially reproduced but blocked at Security Mode Command
-integrity verification:** UERANSIM accepts NGSetup, InitialUEMessage, Authentication
-Request, Authentication Response, and AUSF confirmation, then sends Security Mode
-Reject because the SMC MAC does not verify. Remaining to v1: finish T10, T8/T9
+traces. **T10 is now partially reproduced but blocked at Registration Accept
+delivery:** UERANSIM accepts NGSetup, InitialUEMessage, Authentication Request,
+Authentication Response, AUSF confirmation, and Security Mode Control, then fails to
+complete registration after the AMF sends Registration Accept. Remaining to v1: finish T10, T8/T9
 (5G simulator UX, dashboard 5G mode), plus B2 (offline SLM) on the AI path.
 
 ## 6. Deferred (unchanged from charter §11)

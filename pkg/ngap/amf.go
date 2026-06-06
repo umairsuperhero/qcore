@@ -12,7 +12,7 @@ import "fmt"
 type NGSetupResponse struct {
 	AMFName          string
 	ServedGUAMIList  []ServedGUAMIItem
-	RelativeCapacity uint8           // 0..255
+	RelativeCapacity uint8 // 0..255
 	PLMNSupportList  []PLMNSupportItem
 }
 
@@ -152,13 +152,15 @@ func DecodeDownlinkNASTransport(ies []ProtocolIE) (*DownlinkNASTransport, error)
 // For basic registration (no PDU session), only the mandatory security IEs are needed.
 // TS 38.413 §9.2.2.1
 type InitialContextSetupRequest struct {
-	AMFUENGAPID          uint64
-	RANUENGAPID          uint64
-	GUAMI                GUAMI
-	AllowedNSSAI         []SNSSAI
-	UESecurityCapabilities struct {
-		NREncAlgs   [2]byte
-		NRIntAlgs   [2]byte
+	AMFUENGAPID                 uint64
+	RANUENGAPID                 uint64
+	UEAggregateMaximumBitRateDL uint64
+	UEAggregateMaximumBitRateUL uint64
+	GUAMI                       GUAMI
+	AllowedNSSAI                []SNSSAI
+	UESecurityCapabilities      struct {
+		NREncAlgs    [2]byte
+		NRIntAlgs    [2]byte
 		EUTRAEncAlgs [2]byte
 		EUTRAIntAlgs [2]byte
 	}
@@ -181,6 +183,13 @@ func EncodeInitialContextSetupRequest(req *InitialContextSetupRequest) ([]byte, 
 
 	ies = append(ies, ProtocolIE{ID: IEIDAMFUENGAPID, Criticality: CriticalityReject, Value: amfIDVal})
 	ies = append(ies, ProtocolIE{ID: IEIDRANUENGAPID, Criticality: CriticalityReject, Value: ranIDVal})
+
+	// UEAggregateMaximumBitRate (mandatory)
+	ambrVal, err := EncodeUEAggregateMaximumBitRate(req.UEAggregateMaximumBitRateDL, req.UEAggregateMaximumBitRateUL)
+	if err != nil {
+		return nil, fmt.Errorf("ngap: UEAggregateMaximumBitRate: %w", err)
+	}
+	ies = append(ies, ProtocolIE{ID: IEIDUEAggMaxBitRate, Criticality: CriticalityReject, Value: ambrVal})
 
 	// GUAMI (mandatory)
 	ies = append(ies, ProtocolIE{ID: IEIDGUAMI, Criticality: CriticalityReject, Value: EncodeGUAMI(req.GUAMI)})

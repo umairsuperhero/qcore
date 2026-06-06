@@ -16,7 +16,7 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-05)
+## Current baseline (2026-06-06)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -47,8 +47,9 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
   - **C2 (T8) → C3 (T9) → T10:** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view), then
     **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline. **T10 is now
-    partially reproduced** (a real UERANSIM replay reaches AUSF confirmation) **but
-    blocked at Security Mode Command integrity** — see `docs/ueransim-compat.md`.
+    partially reproduced** (a real UERANSIM replay reaches Security Mode Complete) **but
+    blocked at Registration Accept delivery / likely InitialContextSetupRequest** — see
+    `docs/ueransim-compat.md`.
   - **B2 — embedded offline SLM:** code merged (see status update above); only live
     model-serve validation remains (charter §9.3 / D5).
 

@@ -11,9 +11,9 @@ import "fmt"
 // NGSetupRequest is sent by the gNB to initiate NG Setup with the AMF.
 // TS 38.413 §9.2.6.1
 type NGSetupRequest struct {
-	GlobalRANNodeID GlobalGNBID
-	RANNodeName     string // optional
-	SupportedTAList []SupportedTA
+	GlobalRANNodeID  GlobalGNBID
+	RANNodeName      string // optional
+	SupportedTAList  []SupportedTA
 	DefaultPagingDRX uint8 // 0=v32, 1=v64, 2=v128, 3=v256
 }
 
@@ -136,9 +136,9 @@ func DecodeNGSetupResponse(ies []ProtocolIE) (*NGSetupResponse, error) {
 // InitialUEMessage is sent by the gNB to the AMF when a UE initiates contact.
 // TS 38.413 §9.2.5.1
 type InitialUEMessage struct {
-	RANUENGAPID          uint64
-	NASPDU               []byte
-	UserLocationInfo     UserLocationInformationNR
+	RANUENGAPID           uint64
+	NASPDU                []byte
+	UserLocationInfo      UserLocationInformationNR
 	RRCEstablishmentCause RRCEstablishmentCause
 }
 
@@ -332,6 +332,8 @@ func DecodeInitialContextSetupRequest(ies []ProtocolIE) (*InitialContextSetupReq
 			req.AMFUENGAPID, err = DecodeAMFUENGAPID(ie.Value)
 		case IEIDRANUENGAPID:
 			req.RANUENGAPID, err = DecodeRANUENGAPID(ie.Value)
+		case IEIDUEAggMaxBitRate:
+			req.UEAggregateMaximumBitRateDL, req.UEAggregateMaximumBitRateUL, err = DecodeUEAggregateMaximumBitRate(ie.Value)
 		case IEIDGUAMI:
 			req.GUAMI, err = DecodeGUAMI(ie.Value)
 		case IEIDUESecurityCapabilities:

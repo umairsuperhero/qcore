@@ -2,9 +2,10 @@
 
 **Status: T10 is partially reproduced, not shipped.**
 
-As of 2026-06-04, QCore has been replayed against UERANSIM v3.2.8 in Docker Compose
-over native SCTP. The original `DownlinkNASTransport` APER `transfer-syntax-error`
-blocker is fixed, but external registration is not complete.
+As of 2026-06-06, QCore has been replayed against UERANSIM v3.2.8 in Docker Compose
+over native SCTP on GitHub Actions cloud Linux. The original `DownlinkNASTransport`
+APER `transfer-syntax-error` blocker is fixed, and PR #28's K_AMF fix gets the UE past
+Security Mode Control. External registration is still not complete.
 
 ## Verified In Replay
 
@@ -14,19 +15,62 @@ blocker is fixed, but external registration is not complete.
 - AMF sends Authentication Request; UERANSIM parses RAND/AUTN.
 - UERANSIM sends Authentication Response.
 - AUSF confirmation succeeds.
+- AMF sends Security Mode Command.
+- UERANSIM accepts the SMC (`Selected integrity[2] ciphering[0]`) with no integrity
+  failure.
+- AMF receives Security Mode Complete and sends Registration Accept.
 
 ## Current T10 Blocker
 
-UERANSIM rejects QCore's Security Mode Command:
+Registration does not complete after Security Mode Complete. The AMF logs:
 
 ```text
-Security Mode Command received
-Security Mode Command integrity check failed
-Rejecting Security Mode Command with cause [SEC_MODE_REJECTED_UNSPECIFIED]
+amf: SMC Complete — sending Registration Accept
 ```
+
+The UE does not reach Registration Accept and `T3510` expires. The UERANSIM gNB log now
+confirms that it rejects QCore's `InitialContextSetupRequest` at APER decode time:
+
+```text
+[ngap] [error] APER decoding failed for SCTP message
+[ngap] [warning] Sending an error indication with cause: protocol/transfer-syntax-error
+```
+
+`InitialContextSetupRequest` carries the Registration Accept. PR #28 now includes the
+mandatory `UEAggregateMaximumBitRate` IE as a standards-correct candidate/prerequisite,
+but the latest UERANSIM replay still shows the APER transfer-syntax error. The remaining
+bug is therefore in the wire encoding/content of `InitialContextSetupRequest`, not in
+SMC integrity or NAS Registration Accept itself.
 
 Do not claim "UERANSIM compatible", "5G shipped", Registration Accept, PDU session, or
 data-plane success until this blocker is resolved and replay evidence exists.
+
+## Confirmed Fix: K_AMF Bare-IMSI Input
+
+Root-caused by code inspection to the **K_AMF derivation input**. The AMF was deriving
+K_AMF with `P0 = ue.SUPI = "imsi-<15 digits>"` (the SBI/JSON representation), whereas
+TS 33.501 Annex A.7 specifies `P0 = SUPI` = the **bare IMSI**. UERANSIM/free5GC derive
+K_AMF from the bare IMSI digits, so the `imsi-` prefix produced a different
+K_AMF → K_NASint at QCore than at the UE — which is exactly why the SMC MAC fails to
+verify while authentication (whose keys come from the auth vector, not K_AMF) succeeds.
+
+Fix: `pkg/amf/nas.go` now strips the `imsi-` prefix for the K_AMF KDF input only
+(`ue.SUPI` keeps the `imsi-` form for SBI/N11/telemetry). Pinned by
+`TestAMF_KAMF_UsesBareIMSI` (bare vs prefixed K_AMF must differ). Other suspects ruled
+out by inspection: the integrity algorithm chain is consistent (NIA2 advertised in the
+SMC, K_NASint derived with algID=2, MAC = AES-CMAC), ABBA = `0x0000`, BEARER = 1
+(matches free5GC's `Bearer3GPP`).
+
+Confirmed by the `ueransim-interop` GitHub Actions job on PR #28:
+
+```text
+reached_smc=1 integrity_failed=0 registered=0
+Security Mode Command received
+Selected integrity[2] ciphering[0]
+amf: SMC Complete — sending Registration Accept
+```
+
+This resolves the SMC-integrity blocker. It does **not** complete T10.
 
 ## Replay Command
 

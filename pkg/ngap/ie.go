@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const maxNGAPBitRate uint64 = 4000000000000
+
 // This file provides two forms of each complex IE:
 //
 //  writeX(enc, v) — writes the IE inline into an existing encoder (used when X
@@ -159,12 +161,12 @@ func DecodeNRCGI(data []byte) (NRCGI, error) {
 // EncodeUserLocationInformationNR encodes the UserLocationInformation IE value
 // for a 5G NR cell, including the CHOICE wrapper.
 //
-// UserLocationInformation ::= CHOICE {
-//   userLocationInformationEUTRA (0),
-//   userLocationInformationNR    (1),   ← we always encode this
-//   userLocationInformationN3IWF (2),
-//   ...
-// }
+//	UserLocationInformation ::= CHOICE {
+//	  userLocationInformationEUTRA (0),
+//	  userLocationInformationNR    (1),   ← we always encode this
+//	  userLocationInformationN3IWF (2),
+//	  ...
+//	}
 func EncodeUserLocationInformationNR(loc UserLocationInformationNR) []byte {
 	enc := NewPEREncoder()
 	_ = enc.PutChoiceIndex(1, 4, false) // NR = index 1
@@ -610,6 +612,75 @@ func DecodeCause(data []byte) (CauseGroup, uint8, error) {
 		return 0, 0, err
 	}
 	return CauseGroup(idx), b[0], nil
+}
+
+// --- UE Aggregate Maximum Bit Rate -------------------------------------------
+
+// EncodeUEAggregateMaximumBitRate encodes UEAggregateMaximumBitRate.
+//
+//	UEAggregateMaximumBitRate ::= SEQUENCE {
+//	  uEAggregateMaximumBitRateDL BitRate,
+//	  uEAggregateMaximumBitRateUL BitRate,
+//	  iE-Extensions OPTIONAL,
+//	  ...
+//	}
+//
+// BitRate ::= INTEGER (0..4000000000000). The constrained value needs 42 bits,
+// so aligned PER carries it as a byte-aligned 6-octet whole number.
+func EncodeUEAggregateMaximumBitRate(dl, ul uint64) ([]byte, error) {
+	enc := NewPEREncoder()
+	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), absent
+	if err := putBitRate(enc, dl); err != nil {
+		return nil, fmt.Errorf("DL: %w", err)
+	}
+	if err := putBitRate(enc, ul); err != nil {
+		return nil, fmt.Errorf("UL: %w", err)
+	}
+	return enc.Bytes(), nil
+}
+
+func DecodeUEAggregateMaximumBitRate(data []byte) (dl, ul uint64, err error) {
+	dec := NewPERDecoder(data)
+	if _, _, err = dec.GetSequenceHeader(true, 1); err != nil {
+		return 0, 0, err
+	}
+	if dl, err = getBitRate(dec); err != nil {
+		return 0, 0, fmt.Errorf("DL: %w", err)
+	}
+	if ul, err = getBitRate(dec); err != nil {
+		return 0, 0, fmt.Errorf("UL: %w", err)
+	}
+	return dl, ul, nil
+}
+
+func putBitRate(enc *PEREncoder, v uint64) error {
+	if v > maxNGAPBitRate {
+		return fmt.Errorf("bitrate %d out of range [0,%d]", v, maxNGAPBitRate)
+	}
+	enc.align()
+	var b [6]byte
+	for i := len(b) - 1; i >= 0; i-- {
+		b[i] = byte(v)
+		v >>= 8
+	}
+	enc.PutBytes(b[:])
+	return nil
+}
+
+func getBitRate(dec *PERDecoder) (uint64, error) {
+	dec.align()
+	b, err := dec.GetBytes(6)
+	if err != nil {
+		return 0, err
+	}
+	var v uint64
+	for _, x := range b {
+		v = (v << 8) | uint64(x)
+	}
+	if v > maxNGAPBitRate {
+		return 0, fmt.Errorf("bitrate %d out of range [0,%d]", v, maxNGAPBitRate)
+	}
+	return v, nil
 }
 
 // --- UESecurityCapabilities --------------------------------------------------
