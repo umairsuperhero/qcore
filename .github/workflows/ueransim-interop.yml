@@ -27,9 +27,18 @@ jobs:
 
       - name: Bring up 5G stack + UERANSIM (AMF in SCTP mode)
         run: |
-          $COMPOSE up -d --build
-          echo "--- containers ---"
-          $COMPOSE ps
+          # Build once, then bring up with retries to survive NF startup races
+          # (e.g. UDM can exit(1) if UDR/Postgres isn't ready yet). Retrying
+          # `up -d` restarts any exited container now that its deps are healthy.
+          $COMPOSE build
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if $COMPOSE up -d; then ok=1; break; fi
+            echo "compose up attempt $attempt failed (likely a startup race) — retrying in 10s"
+            sleep 10
+          done
+          echo "--- containers ---"; $COMPOSE ps
+          if [ "$ok" != 1 ]; then echo "::error::stack failed to come up after retries"; exit 1; fi
 
       - name: Validate — UE must get past the SMC (no integrity failure)
         id: outcome
@@ -69,7 +78,10 @@ jobs:
       - name: Dump logs (always)
         if: always()
         run: |
-          echo "===== AMF ====="; $COMPOSE logs amf 2>&1 | tail -150 || true
+          echo "===== compose ps ====="; $COMPOSE ps -a || true
+          for svc in postgres udr udm ausf nrf amf smf upf; do
+            echo "===== $svc ====="; $COMPOSE logs $svc 2>&1 | tail -60 || true
+          done
           echo "===== UERANSIM gNB ====="; $COMPOSE logs ueransim 2>&1 | tail -150 || true
           echo "===== UERANSIM UE ====="; $COMPOSE logs ueransim-ue 2>&1 | tail -150 || true
 
