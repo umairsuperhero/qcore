@@ -473,6 +473,26 @@ func TestAMF_KeyDerivation(t *testing.T) {
 	assert.Equal(t, kamf, kamf2)
 }
 
+// TestAMF_KAMF_UsesBareIMSI pins the T10 fix: K_AMF P0 is the bare SUPI value
+// (TS 33.501 Annex A.7), not the SBI "imsi-<digits>" representation. UERANSIM/
+// free5GC derive K_AMF from the bare IMSI, so the prefixed and bare forms MUST
+// produce different keys — and the AMF registration path must feed the bare form,
+// or the Security Mode Command MAC will not verify at the UE. If this assertion
+// ever fails, someone collapsed the two forms and reintroduced the SMC-integrity
+// regression.
+func TestAMF_KAMF_UsesBareIMSI(t *testing.T) {
+	kseaf := make([]byte, 32)
+	abba := []byte{0x00, 0x00}
+
+	bare, err := DeriveKAMF(kseaf, "001010000000001", abba)
+	require.NoError(t, err)
+	prefixed, err := DeriveKAMF(kseaf, "imsi-001010000000001", abba)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, bare, prefixed,
+		"K_AMF must differ for bare vs imsi-prefixed SUPI; the registration path must use the bare IMSI (TS 33.501 A.7)")
+}
+
 // TestAMF_NASWrap verifies WrapNAS5G + VerifyNAS5GUplink round-trip.
 func TestAMF_NASWrap(t *testing.T) {
 	kseaf := make([]byte, 32)

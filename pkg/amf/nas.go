@@ -321,7 +321,14 @@ func (s *Service) handleAuthenticationResponse(ctx context.Context, ue *UEContex
 		ue.SUPI = supi
 	}
 
-	kamf, err := DeriveKAMF(kseaf, ue.SUPI, []byte{0x00, 0x00})
+	// K_AMF P0 is the bare SUPI value (TS 33.501 Annex A.7). The "imsi-" prefix
+	// is an SBI/JSON representation, NOT part of the SUPI — UERANSIM/free5GC derive
+	// K_AMF from the bare IMSI digits. Passing the prefixed form yields a different
+	// K_AMF → K_NASint and makes the Security Mode Command MAC fail to verify at the
+	// UE ("Security Mode Command integrity check failed"), so strip it here. ue.SUPI
+	// keeps the imsi- form for SBI/N11/telemetry.
+	kdfSUPI := strings.TrimPrefix(ue.SUPI, "imsi-")
+	kamf, err := DeriveKAMF(kseaf, kdfSUPI, []byte{0x00, 0x00})
 	if err != nil {
 		return err
 	}
