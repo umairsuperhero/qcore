@@ -28,10 +28,19 @@ Registration does not complete after Security Mode Complete. The AMF logs:
 amf: SMC Complete — sending Registration Accept
 ```
 
-The UE does not reach Registration Accept and `T3510` expires. The next evidence target
-is the UERANSIM gNB log around QCore's `InitialContextSetupRequest`, because the
-Registration Accept is carried there and a real gNB may require IEs that QCore's
-in-process mock gNB never enforced.
+The UE does not reach Registration Accept and `T3510` expires. The UERANSIM gNB log now
+confirms that it rejects QCore's `InitialContextSetupRequest` at APER decode time:
+
+```text
+[ngap] [error] APER decoding failed for SCTP message
+[ngap] [warning] Sending an error indication with cause: protocol/transfer-syntax-error
+```
+
+`InitialContextSetupRequest` carries the Registration Accept. PR #28 now includes the
+mandatory `UEAggregateMaximumBitRate` IE as a standards-correct candidate/prerequisite,
+but the latest UERANSIM replay still shows the APER transfer-syntax error. The remaining
+bug is therefore in the wire encoding/content of `InitialContextSetupRequest`, not in
+SMC integrity or NAS Registration Accept itself.
 
 Do not claim "UERANSIM compatible", "5G shipped", Registration Accept, PDU session, or
 data-plane success until this blocker is resolved and replay evidence exists.

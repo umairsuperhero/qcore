@@ -64,7 +64,7 @@ with the spec reference and the fix.
 |---|---|---|---|
 | 2026-06-04 | UERANSIM rejected `DownlinkNASTransport` with an APER `transfer-syntax-error` | TS 38.413 | Fixed (UE-NGAP-ID + NAS Auth Request encoding) — merged |
 | 2026-06-05 | UERANSIM rejects the Security Mode Command (`integrity check failed`). Root cause: K_AMF derived from the SBI `imsi-<digits>` string instead of the bare IMSI | TS 33.501 A.7 | **Fixed on PR #28 and validated by `ueransim-interop` on GitHub Actions cloud Linux.** UE accepts SMC and AMF receives Security Mode Complete. |
-| 2026-06-06 | After SMC Complete, AMF sends Registration Accept but UE never receives it; T3510 expires | TS 38.413 / TS 24.501 | **Open.** Next evidence target is the UERANSIM gNB log for QCore's `InitialContextSetupRequest`; likely missing or malformed gNB-required IEs compared with the in-process mock gNB. |
+| 2026-06-06 | After SMC Complete, AMF sends Registration Accept but UE never receives it; T3510 expires. The UERANSIM gNB reports APER `transfer-syntax-error` on QCore's `InitialContextSetupRequest`. | TS 38.413 / TS 24.501 | **Open.** Added mandatory `UEAggregateMaximumBitRate` as a standards-correct candidate/prerequisite, but the latest replay still fails APER decode. Next step is byte-level comparison of QCore's `InitialContextSetupRequest` against a known-good UERANSIM/free5GC/open5GS corpus. |
 
 ## How this doc is maintained
 
