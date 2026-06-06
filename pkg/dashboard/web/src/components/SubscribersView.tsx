@@ -132,7 +132,7 @@ export default function SubscribersView() {
             placeholder="8000"
           />
           {submitErr && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+            <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
               {submitErr}
             </div>
           )}
@@ -145,7 +145,7 @@ export default function SubscribersView() {
       )}
 
       {err && (
-        <div className="card border-red-200 bg-red-50 text-red-800">{err}</div>
+        <div className="card border-red-500/30 bg-red-500/10 text-red-400">{err}</div>
       )}
       {loading ? (
         <div className="text-slateblue-500">Loading…</div>
@@ -156,7 +156,7 @@ export default function SubscribersView() {
       ) : (
         <div className="card overflow-hidden p-0">
           <table className="w-full text-sm">
-            <thead className="bg-slateblue-50 text-left text-xs uppercase tracking-wide text-slateblue-500">
+            <thead className="bg-darkbg-800 text-left text-xs uppercase tracking-wide text-slateblue-500">
               <tr>
                 <th className="px-4 py-2">IMSI</th>
                 <th className="px-4 py-2">Ki</th>
@@ -167,7 +167,7 @@ export default function SubscribersView() {
             </thead>
             <tbody className="font-mono">
               {subs.map((s) => (
-                <tr key={s.imsi} className="border-t border-slateblue-100">
+                <tr key={s.imsi} className="border-t border-darkbg-700">
                   <td className="px-4 py-2">{s.imsi}</td>
                   <td className="px-4 py-2 text-slateblue-500">{mask(s.ki)}</td>
                   <td className="px-4 py-2 text-slateblue-500">{mask(s.opc)}</td>

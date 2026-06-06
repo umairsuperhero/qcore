@@ -44,7 +44,7 @@ export default function HealthView({ onStartSim }: Props) {
 
   if (err && !health) {
     return (
-      <div className="card border-red-200 bg-red-50 text-red-800">
+      <div className="card border-red-500/30 bg-red-500/10 text-red-400">
         Dashboard backend unreachable: {err}
       </div>
     );
@@ -57,11 +57,11 @@ export default function HealthView({ onStartSim }: Props) {
     <div className="space-y-6">
       <div
         className={`card flex items-center justify-between ${
-          health.ready_for_use ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+          health.ready_for_use ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"
         }`}
       >
         <div>
-          <h2 className={health.ready_for_use ? "text-emerald-800" : "text-amber-800"}>
+          <h2 className={health.ready_for_use ? "text-emerald-400" : "text-amber-400"}>
             {health.ready_for_use ? "Core is up and ready." : "Core is not fully up."}
           </h2>
           <p className="text-sm mt-1 text-slateblue-700">
@@ -130,8 +130,8 @@ function NFCard({ nf }: { nf: NFStatus }) {
         <span
           className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
             nf.reachable
-              ? "bg-emerald-100 text-emerald-800"
-              : "bg-red-100 text-red-800"
+              ? "bg-emerald-500/15 text-emerald-400"
+              : "bg-red-500/15 text-red-400"
           }`}
         >
           {nf.reachable ? "up" : "down"}
@@ -141,7 +141,7 @@ function NFCard({ nf }: { nf: NFStatus }) {
         {nf.reachable ? (
           <>responded in {nf.latency_ms} ms</>
         ) : (
-          <span className="text-red-700">{nf.error || "no response"}</span>
+          <span className="text-red-400">{nf.error || "no response"}</span>
         )}
       </div>
     </div>
