@@ -44,15 +44,18 @@ binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to mai
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
-  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED at
-    Registration Accept delivery.** A real UERANSIM replay over native SCTP now reaches
-    NGSetup → InitialUEMessage → Authentication Request → Authentication Response → AUSF
-    confirmation → Security Mode Complete. The earlier `DownlinkNASTransport` APER
-    `transfer-syntax-error` and SMC-integrity blockers are fixed; PR #28 validates the
-    K_AMF/bare-IMSI fix against real UERANSIM on cloud Linux. The current blocker is that
-    the AMF logs `SMC Complete — sending Registration Accept`, but the UE never receives
-    Registration Accept and T3510 expires. Suspect area: `InitialContextSetupRequest` /
-    gNB-side required IEs. Evidence + exact blocker: `docs/ueransim-compat.md`.
+  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED after
+    InitialContextSetup.** A real UERANSIM replay over native SCTP now reaches NGSetup →
+    InitialUEMessage → Authentication Request → Authentication Response → AUSF
+    confirmation → Security Mode Complete → InitialContextSetupRequest accepted by the
+    gNB → InitialContextSetupResponse received by the AMF. The earlier
+    `DownlinkNASTransport` APER `transfer-syntax-error`, SMC-integrity, and
+    `InitialContextSetupRequest` APER blockers are fixed; PR #28 validates the
+    K_AMF/bare-IMSI fix, and `codex/t10-initial-context-setup-aper` validates the APER
+    fixes against real UERANSIM on cloud Linux. The current blocker is that
+    `ueransim-ue` exits 139 after InitialContextSetup and the gNB reports UE signal lost;
+    no successful Registration Accept, PDU session, or data-plane claim exists yet.
+    Evidence + exact blocker: `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve

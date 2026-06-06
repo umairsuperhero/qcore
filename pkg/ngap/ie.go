@@ -625,8 +625,9 @@ func DecodeCause(data []byte) (CauseGroup, uint8, error) {
 //	  ...
 //	}
 //
-// BitRate ::= INTEGER (0..4000000000000). The constrained value needs 42 bits,
-// so aligned PER carries it as a byte-aligned 6-octet whole number.
+// BitRate ::= INTEGER (0..4000000000000,...). asn1c's aligned PER path emits
+// a one-bit extension marker, a 3-bit byte-count prefix for the 42-bit range,
+// then the byte-aligned minimum-width integer.
 func EncodeUEAggregateMaximumBitRate(dl, ul uint64) ([]byte, error) {
 	enc := NewPEREncoder()
 	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), absent
@@ -657,19 +658,40 @@ func putBitRate(enc *PEREncoder, v uint64) error {
 	if v > maxNGAPBitRate {
 		return fmt.Errorf("bitrate %d out of range [0,%d]", v, maxNGAPBitRate)
 	}
+	enc.PutBool(false) // BitRate extension marker: root value.
+	width := 1
+	for tmp := v; tmp > 0xff; tmp >>= 8 {
+		width++
+	}
+	enc.putBits(uint8(width-1), 3) // max root width is 6 bytes for 42 bits.
 	enc.align()
-	var b [6]byte
+	b := make([]byte, width)
 	for i := len(b) - 1; i >= 0; i-- {
 		b[i] = byte(v)
 		v >>= 8
 	}
-	enc.PutBytes(b[:])
+	enc.PutBytes(b)
 	return nil
 }
 
 func getBitRate(dec *PERDecoder) (uint64, error) {
+	extended, err := dec.GetBool()
+	if err != nil {
+		return 0, err
+	}
+	if extended {
+		return 0, fmt.Errorf("extended BitRate values are not supported")
+	}
+	widthMinusOne, err := dec.GetBits(3)
+	if err != nil {
+		return 0, err
+	}
+	width := int(widthMinusOne) + 1
+	if width > 6 {
+		return 0, fmt.Errorf("BitRate width %d exceeds 42-bit root range", width)
+	}
 	dec.align()
-	b, err := dec.GetBytes(6)
+	b, err := dec.GetBytes(width)
 	if err != nil {
 		return 0, err
 	}
@@ -690,10 +712,10 @@ func getBitRate(dec *PERDecoder) (uint64, error) {
 func EncodeUESecurityCapabilities(nrEnc, nrInt, eutraEnc, eutraInt [2]byte) []byte {
 	enc := NewPEREncoder()
 	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), absent
-	enc.PutFixedOctetString(nrEnc[:])
-	enc.PutFixedOctetString(nrInt[:])
-	enc.PutFixedOctetString(eutraEnc[:])
-	enc.PutFixedOctetString(eutraInt[:])
+	for _, algs := range [][2]byte{nrEnc, nrInt, eutraEnc, eutraInt} {
+		enc.PutBool(false) // Algorithm BIT STRING SIZE(16,...) root marker.
+		enc.PutFixedOctetString(algs[:])
+	}
 	return enc.Bytes()
 }
 
@@ -704,6 +726,15 @@ func DecodeUESecurityCapabilities(data []byte) (nrEnc, nrInt, eutraEnc, eutraInt
 		return
 	}
 	for _, dst := range []*[2]byte{&nrEnc, &nrInt, &eutraEnc, &eutraInt} {
+		var extended bool
+		extended, err = dec.GetBool()
+		if err != nil {
+			return
+		}
+		if extended {
+			err = fmt.Errorf("extended UE security capability bit strings are not supported")
+			return
+		}
 		var b []byte
 		b, err = dec.GetFixedOctetString(2)
 		if err != nil {

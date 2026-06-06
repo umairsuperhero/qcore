@@ -19,7 +19,7 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | 4G EPC | HSS (subscriber management + Milenage), MME (S1AP/NAS attach, auth, security mode), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured event schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
-| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening and 5G Phase-A telemetry are complete. **T10/UERANSIM is partially reproduced, not shipped:** native SCTP, NGSetup, InitialUEMessage, Authentication Request/Response, AUSF confirmation, and Security Mode Control now work against real UERANSIM on cloud Linux; current external blocker is Registration Accept delivery after SMC Complete (likely `InitialContextSetupRequest`/gNB-side requirements). Plan: `docs/v1-gap-closure-plan.md`; evidence: `docs/ueransim-compat.md`. | 🔭 In progress |
+| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening and 5G Phase-A telemetry are complete. **T10/UERANSIM is partially reproduced, not shipped:** native SCTP, NGSetup, InitialUEMessage, Authentication Request/Response, AUSF confirmation, Security Mode Control, and InitialContextSetup now work against real UERANSIM on cloud Linux. Current external blocker is post-InitialContextSetup UE failure: `ueransim-ue` exits 139 and the gNB reports UE signal lost before completed registration/PDU/data-plane proof. Plan: `docs/v1-gap-closure-plan.md`; evidence: `docs/ueransim-compat.md`. | 🔭 In progress |
 | Phase C — Diagnostic AI | Symptom→cause catalog deepened to 13 typed rules across ≥9 cause categories (4G + 5G); AI Level 1 (explain) + Level 2 (root-cause + fix); optional cloud (Gemini) escalation. **Offline embedded SLM (B2): code merged + unit-tested green** (`pkg/ai` local provider, `make up-ai` llama.cpp sidecar with a baked Qwen2.5-1.5B GGUF; catalog still runs first, the SLM only handles misses over the same grounded prompt). Live model-serve validation (real GGUF pull / air-gapped render) not yet run. | 🔭 In progress |
 | Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. **Now runs on real `/api/events/stream` data (un-mocked); live failures are decoded by the real diagnostic engine. Build migrated esbuild→Vite.** | ✅ Shipped |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 In progress |
@@ -40,11 +40,12 @@ pass an in-process E2E test over native SCTP; the diagnostic catalog and the off
 
 **The path to v1 (two parallel tracks):**
 1. **5G-leading headline — real-RAN validation (T10).** Get a real UERANSIM gNB/UE to
-   register and run a PDU session through QCore. *Current gate:* Registration Accept
-   delivery after Security Mode Complete; the prior SMC-integrity blocker is validated
-   fixed on PR #28. Until full registration + PDU/data-plane passes, the 5G track is
-   **not** "shipped" and we don't claim UERANSIM compatibility. Then: 5G simulator UX
-   (C2/T8) and dashboard 5G mode (C3/T9).
+   register and run a PDU session through QCore. *Current gate:* post-InitialContextSetup
+   UE failure (`ueransim-ue` exit 139 / gNB UE signal lost). The prior SMC-integrity and
+   InitialContextSetup APER blockers are validated fixed against real UERANSIM on cloud
+   Linux. Until full registration + PDU/data-plane passes, the 5G track is **not**
+   "shipped" and we don't claim UERANSIM compatibility. Then: 5G simulator UX (C2/T8)
+   and dashboard 5G mode (C3/T9).
 2. **The AI moat.** Catalog (shipped) + offline SLM (code merged); next is live
    model-serve validation, then deeper root-cause diagnosis.
 

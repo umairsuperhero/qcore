@@ -362,6 +362,15 @@ func (s *gNBSession) sendInitialContextSetup(ue *UEContext, nasPDU []byte) error
 	if err != nil {
 		return err
 	}
+	if s.amf.cfg.TraceNGAPHex {
+		s.log.WithFields(map[string]interface{}{
+			"procedure":      "InitialContextSetupRequest",
+			"amf_ue_ngap_id": ue.AMFUENGAPID,
+			"ran_ue_ngap_id": ue.RANUENGAPID,
+			"bytes":          len(pdu),
+			"hex":            hex.EncodeToString(pdu),
+		}).Info("amf: NGAP raw PDU")
+	}
 	return s.send(pdu)
 }
 
