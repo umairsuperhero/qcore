@@ -69,7 +69,7 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 	case msg.Header.MessageType == nas5g.MsgTypeRegistrationComplete:
 		return s.handleRegistrationComplete(ctx, ue)
 	case msg.Header.MessageType == nas5g.MsgTypeULNASTransport:
-		return s.handleULNASTransport(ctx, ue, raw)
+		return s.handleULNASTransport(ctx, ue, plainRaw)
 	default:
 		s.log.WithField("type", msg.Header.MessageType).Warn("amf: unhandled NAS message")
 		return nil
