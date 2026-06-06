@@ -99,6 +99,7 @@ func runServer() error {
 		AMFName:            "QCore-AMF",
 		ServingNetworkName: cfg.AMF.ServingNetworkName,
 		AMFInstanceID:      cfg.AMF.AMFInstanceID,
+		TraceNGAPHex:       os.Getenv("QCORE_AMF_TRACE_NGAP_HEX") == "true",
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

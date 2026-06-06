@@ -5,7 +5,7 @@ name: ueransim-interop
 # registration/PDU/data-plane validation remains a later T10 gate.
 on:
   push:
-    branches: [fix/t10-kamf-supi-prefix]
+    branches: [fix/t10-kamf-supi-prefix, codex/t10-initial-context-setup-aper]
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,7 @@ jobs:
     env:
       COMPOSE_PROFILES: "5g"
       COMPOSE: "docker compose -f deployments/docker/docker-compose.yml"
+      QCORE_AMF_TRACE_NGAP_HEX: "true"
     steps:
       - uses: actions/checkout@v4
 

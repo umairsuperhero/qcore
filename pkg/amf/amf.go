@@ -55,6 +55,10 @@ type Config struct {
 	// calls Nsmf_PDUSession on this URL when a UE requests a PDU session.
 	// Discovered via NRF when available; falls back to this static value.
 	SMFURL string
+
+	// TraceNGAPHex enables dev-only raw NGAP PDU logging for interop replay.
+	// These payloads can contain NAS messages and derived security material.
+	TraceNGAPHex bool
 }
 
 // Service is the AMF. Call Serve() to block and accept gNB connections.
@@ -174,4 +178,3 @@ func (s *Service) removeUE(amfID uint64) {
 	defer s.mu.Unlock()
 	delete(s.ues, amfID)
 }
-
