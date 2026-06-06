@@ -171,7 +171,7 @@ func TestCauseRoundTrip(t *testing.T) {
 }
 
 func TestUESecurityCapabilitiesRoundTrip(t *testing.T) {
-	nrEnc := [2]byte{0xE0, 0x00}  // NIA1+NIA2+NIA3 supported
+	nrEnc := [2]byte{0xE0, 0x00} // NIA1+NIA2+NIA3 supported
 	nrInt := [2]byte{0xE0, 0x00}
 	eutraEnc := [2]byte{0xF0, 0x00}
 	eutraInt := [2]byte{0xF0, 0x00}
@@ -244,8 +244,8 @@ func TestNGSetupRequestRoundTrip(t *testing.T) {
 
 func TestNGSetupResponseRoundTrip(t *testing.T) {
 	resp := &NGSetupResponse{
-		AMFName:         "QCore-AMF",
-		ServedGUAMIList: []ServedGUAMIItem{{GUAMI: testGUAMI}},
+		AMFName:          "QCore-AMF",
+		ServedGUAMIList:  []ServedGUAMIItem{{GUAMI: testGUAMI}},
 		RelativeCapacity: 100,
 		PLMNSupportList: []PLMNSupportItem{
 			{PLMN: plmn001_01, SNSSAIs: []SNSSAI{{SST: 1}}},
@@ -425,12 +425,14 @@ func TestUplinkNASTransportRoundTrip(t *testing.T) {
 
 func TestInitialContextSetupRoundTrip(t *testing.T) {
 	req := &InitialContextSetupRequest{
-		AMFUENGAPID:  1,
-		RANUENGAPID:  42,
-		GUAMI:        testGUAMI,
-		AllowedNSSAI: []SNSSAI{{SST: 1}},
-		SecurityKey:  [32]byte{0: 0xAA, 31: 0xBB},
-		NASPDU:       []byte{0x7E, 0x00, 0x42}, // fake Registration Accept
+		AMFUENGAPID:                 1,
+		RANUENGAPID:                 42,
+		UEAggregateMaximumBitRateDL: 1000000000,
+		UEAggregateMaximumBitRateUL: 500000000,
+		GUAMI:                       testGUAMI,
+		AllowedNSSAI:                []SNSSAI{{SST: 1}},
+		SecurityKey:                 [32]byte{0: 0xAA, 31: 0xBB},
+		NASPDU:                      []byte{0x7E, 0x00, 0x42}, // fake Registration Accept
 	}
 	req.UESecurityCapabilities.NREncAlgs = [2]byte{0xE0, 0x00}
 	req.UESecurityCapabilities.NRIntAlgs = [2]byte{0xE0, 0x00}
@@ -450,6 +452,8 @@ func TestInitialContextSetupRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, req.AMFUENGAPID, decoded.AMFUENGAPID)
 	assert.Equal(t, req.RANUENGAPID, decoded.RANUENGAPID)
+	assert.Equal(t, req.UEAggregateMaximumBitRateDL, decoded.UEAggregateMaximumBitRateDL)
+	assert.Equal(t, req.UEAggregateMaximumBitRateUL, decoded.UEAggregateMaximumBitRateUL)
 	assert.Equal(t, testGUAMI, decoded.GUAMI)
 	assert.Equal(t, req.SecurityKey, decoded.SecurityKey)
 	assert.True(t, bytes.Equal(req.NASPDU, decoded.NASPDU))

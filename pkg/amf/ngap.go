@@ -336,11 +336,13 @@ func (s *gNBSession) sendDownlinkNAS(ue *UEContext, nasPDU []byte) error {
 // sendInitialContextSetup sends InitialContextSetupRequest to the gNB.
 func (s *gNBSession) sendInitialContextSetup(ue *UEContext, nasPDU []byte) error {
 	req := &ngap.InitialContextSetupRequest{
-		AMFUENGAPID:  ue.AMFUENGAPID,
-		RANUENGAPID:  ue.RANUENGAPID,
-		GUAMI:        s.amf.cfg.GUAMI,
-		AllowedNSSAI: ue.NSSAI,
-		NASPDU:       nasPDU,
+		AMFUENGAPID:                 ue.AMFUENGAPID,
+		RANUENGAPID:                 ue.RANUENGAPID,
+		UEAggregateMaximumBitRateDL: 1000000000,
+		UEAggregateMaximumBitRateUL: 1000000000,
+		GUAMI:                       s.amf.cfg.GUAMI,
+		AllowedNSSAI:                ue.NSSAI,
+		NASPDU:                      nasPDU,
 	}
 	// Security capabilities
 	if len(ue.UESecCaps) >= 4 {
