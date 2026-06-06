@@ -64,13 +64,11 @@ func (a *sctpAssociation) Write(data []byte, streamID uint16) error {
 	// Build sctp_sndrcvinfo for control msg
 	info := sctpSndRcvInfo{
 		Stream: streamID,
+		Ppid:   1006632960, // htonl(60) for NGAP
 	}
 
 	// cmsg header: Length (size_t -> 8 bytes on 64-bit), Level (int32), Type (int32)
 	// We use unix.CmsgSpace to format it
-	cmsgData := make([]byte, 32)
-	binary.LittleEndian.PutUint16(cmsgData[0:2], info.Stream)
-
 	cmsgs := unix.CmsgSpace(32)
 	control := make([]byte, cmsgs)
 
@@ -79,7 +77,9 @@ func (a *sctpAssociation) Write(data []byte, streamID uint16) error {
 	h.Level = SOL_SCTP
 	h.Type = SCTP_SNDRCV
 	h.SetLen(unix.CmsgLen(32))
-	copy(control[unix.CmsgLen(0):], cmsgData)
+	
+	infoBytes := (*[32]byte)(unsafe.Pointer(&info))[:]
+	copy(control[unix.CmsgLen(0):], infoBytes)
 
 	return syscall.Sendmsg(a.fd, data, control, a.peerAddr, 0)
 }
@@ -196,6 +196,13 @@ func (l *sctpListener) recvLoop() {
 			continue
 		}
 
+		if n >= 2 {
+			msgType := binary.LittleEndian.Uint16(buf[:2])
+			if msgType >= 0x8000 {
+				continue // skip SCTP notification
+			}
+		}
+
 		peerStr := sockaddrStr(from)
 		l.mu.Lock()
 		assoc, ok := l.assocs[peerStr]
@@ -292,6 +299,13 @@ func dialSCTP(addr string) (Association, error) {
 					return
 				}
 				continue
+			}
+
+			if n >= 2 {
+				msgType := binary.LittleEndian.Uint16(buf[:2])
+				if msgType >= 0x8000 {
+					continue // skip SCTP notification
+				}
 			}
 
 			var streamID uint16

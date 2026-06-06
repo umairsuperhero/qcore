@@ -167,9 +167,7 @@ func DecodeNRCGI(data []byte) (NRCGI, error) {
 // }
 func EncodeUserLocationInformationNR(loc UserLocationInformationNR) []byte {
 	enc := NewPEREncoder()
-	// CHOICE (extensible, 3 root alternatives): ext bit (0) + index in 2 bits
-	enc.putBits(0, 1)           // extension = false
-	_ = enc.PutChoiceIndex(1, 3) // NR = index 1
+	_ = enc.PutChoiceIndex(1, 4, false) // NR = index 1
 
 	// UserLocationInformationNR SEQUENCE: extensible, 2 optionals (timeStamp, iE-Ext), both absent
 	enc.PutSequenceHeader(true, 0, 2)
@@ -189,16 +187,7 @@ func DecodeUserLocationInformationNR(data []byte) (UserLocationInformationNR, er
 	dec := NewPERDecoder(data)
 	var loc UserLocationInformationNR
 
-	// CHOICE: extension bit
-	ext, err := dec.getBits(1)
-	if err != nil {
-		return loc, fmt.Errorf("ngap: UserLocationInfo ext: %w", err)
-	}
-	if ext == 1 {
-		return loc, fmt.Errorf("ngap: UserLocationInfo: extension not supported")
-	}
-
-	idx, err := dec.GetChoiceIndex(3)
+	idx, err := dec.GetChoiceIndex(4, false)
 	if err != nil {
 		return loc, fmt.Errorf("ngap: UserLocationInfo index: %w", err)
 	}
@@ -232,17 +221,16 @@ func DecodeUserLocationInformationNR(data []byte) (UserLocationInformationNR, er
 //
 // GlobalGNB-ID ::= SEQUENCE { pLMNIdentity, gNB-ID CHOICE { gNB-ID BIT STRING(22..32), ... } }
 // gNB-ID is extensible CHOICE with 1 root alternative; wire = ext_bit(0) + constrained length + value.
-func EncodeGlobalGNBID(g GlobalGNBID) ([]byte, error) {
+func writeGlobalGNBID(enc *PEREncoder, g GlobalGNBID) error {
 	bits := g.GNBIDBits
 	if bits == 0 {
 		bits = 32
 	}
 	if bits < 22 || bits > 32 {
-		return nil, fmt.Errorf("ngap: gNB-ID bit length %d out of range [22,32]", bits)
+		return fmt.Errorf("ngap: gNB-ID bit length %d out of range [22,32]", bits)
 	}
 
-	enc := NewPEREncoder()
-	enc.PutSequenceHeader(true, 0, 0)
+	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), absent
 	enc.PutFixedOctetString(g.PLMN[:])
 
 	// GNB-ID CHOICE: ext bit (0), no index (1 root alt)
@@ -250,7 +238,7 @@ func EncodeGlobalGNBID(g GlobalGNBID) ([]byte, error) {
 
 	// gNB-ID BIT STRING SIZE(22..32): constrained length (22..32, 4 bits) then value
 	if err := enc.PutConstrainedInt(int64(bits), 22, 32); err != nil {
-		return nil, fmt.Errorf("ngap: gNB-ID length: %w", err)
+		return fmt.Errorf("ngap: gNB-ID length: %w", err)
 	}
 	byteLen := (int(bits) + 7) / 8
 	enc.align()
@@ -271,15 +259,13 @@ func EncodeGlobalGNBID(g GlobalGNBID) ([]byte, error) {
 		b[byteLen-1] &^= (1 << pad) - 1
 	}
 	enc.PutBytes(b)
-	return enc.Bytes(), nil
+	return nil
 }
 
-// DecodeGlobalGNBID decodes a GlobalGNB-ID IE value.
-func DecodeGlobalGNBID(data []byte) (GlobalGNBID, error) {
-	dec := NewPERDecoder(data)
+func readGlobalGNBID(dec *PERDecoder) (GlobalGNBID, error) {
 	var g GlobalGNBID
 
-	if _, _, err := dec.GetSequenceHeader(true, 0); err != nil {
+	if _, _, err := dec.GetSequenceHeader(true, 1); err != nil {
 		return g, fmt.Errorf("ngap: GlobalGNB-ID seq: %w", err)
 	}
 	plmn, err := dec.GetFixedOctetString(3)
@@ -318,6 +304,20 @@ func DecodeGlobalGNBID(data []byte) (GlobalGNBID, error) {
 	return g, nil
 }
 
+// EncodeGlobalGNBID encodes a GlobalGNB-ID IE value.
+func EncodeGlobalGNBID(g GlobalGNBID) ([]byte, error) {
+	enc := NewPEREncoder()
+	if err := writeGlobalGNBID(enc, g); err != nil {
+		return nil, err
+	}
+	return enc.Bytes(), nil
+}
+
+// DecodeGlobalGNBID decodes a GlobalGNB-ID IE value.
+func DecodeGlobalGNBID(data []byte) (GlobalGNBID, error) {
+	return readGlobalGNBID(NewPERDecoder(data))
+}
+
 // --- ServedGUAMIList ---------------------------------------------------------
 
 // EncodeServedGUAMIList encodes a ServedGUAMIList IE value.
@@ -335,12 +335,12 @@ func EncodeServedGUAMIList(items []ServedGUAMIItem) ([]byte, error) {
 		backupPresent := item.BackupAMFName != ""
 		var optBits uint64
 		if backupPresent {
-			optBits = 1
+			optBits = 2 // first optional field, MSB of 2-bit map
 		}
 		enc.PutSequenceHeader(true, optBits, 2)
 		writeGUAMI(enc, item.GUAMI) // inline — no length prefix
 		if backupPresent {
-			if err := enc.PutOctetString([]byte(item.BackupAMFName)); err != nil {
+			if err := enc.PutPrintableString(item.BackupAMFName, 1, 150, true); err != nil {
 				return nil, err
 			}
 		}
@@ -366,12 +366,12 @@ func DecodeServedGUAMIList(data []byte) ([]ServedGUAMIItem, error) {
 		if err != nil {
 			return nil, fmt.Errorf("ngap: ServedGUAMIItem[%d] GUAMI: %w", i, err)
 		}
-		if opts&1 != 0 {
-			nameBytes, err := dec.GetOctetString()
+		if opts&2 != 0 {
+			name, err := dec.GetPrintableString(1, 150, true)
 			if err != nil {
 				return nil, fmt.Errorf("ngap: ServedGUAMIItem[%d] backupAMFName: %w", i, err)
 			}
-			items[i].BackupAMFName = string(nameBytes)
+			items[i].BackupAMFName = name
 		}
 	}
 	return items, nil
@@ -410,7 +410,7 @@ func EncodeSupportedTAList(tas []SupportedTA) ([]byte, error) {
 				// S-NSSAI SEQUENCE: extensible, 2 optionals (sD, iE-Ext)
 				var optBits uint64
 				if sdPresent {
-					optBits = 1
+					optBits = 2
 				}
 				enc.PutSequenceHeader(true, optBits, 2)
 				enc.PutFixedOctetString([]byte{nssai.SST})
@@ -475,7 +475,7 @@ func DecodeSupportedTAList(data []byte) ([]SupportedTA, error) {
 					return nil, fmt.Errorf("ngap: S-NSSAI SST: %w", err)
 				}
 				tas[i].BroadcastPLMN[j].SNSSAI[k].SST = sst[0]
-				if opts&1 != 0 {
+				if opts&2 != 0 {
 					sd, err := dec.GetFixedOctetString(3)
 					if err != nil {
 						return nil, fmt.Errorf("ngap: S-NSSAI SD: %w", err)
@@ -510,7 +510,7 @@ func EncodePLMNSupportList(items []PLMNSupportItem) ([]byte, error) {
 			enc.PutSequenceHeader(true, 0, 1) // SliceSupportItem
 			var optBits uint64
 			if sdPresent {
-				optBits = 1
+				optBits = 2 // first optional field, MSB of 2-bit map
 			}
 			enc.PutSequenceHeader(true, optBits, 2) // S-NSSAI
 			enc.PutFixedOctetString([]byte{nssai.SST})
@@ -526,34 +526,63 @@ func EncodePLMNSupportList(items []PLMNSupportItem) ([]byte, error) {
 
 // EncodeAMFUENGAPID encodes an AMF-UE-NGAP-ID IE value (INTEGER 0..1099511627775).
 func EncodeAMFUENGAPID(id uint64) ([]byte, error) {
-	enc := NewPEREncoder()
-	if err := enc.PutConstrainedInt(int64(id), 0, 1099511627775); err != nil {
-		return nil, err
-	}
-	return enc.Bytes(), nil
+	return encodeUENGAPID(id, 1099511627775)
 }
 
 // DecodeAMFUENGAPID decodes an AMF-UE-NGAP-ID IE value.
 func DecodeAMFUENGAPID(data []byte) (uint64, error) {
-	dec := NewPERDecoder(data)
-	v, err := dec.GetConstrainedInt(0, 1099511627775)
-	return uint64(v), err
+	return decodeUENGAPID(data, 1099511627775)
 }
 
 // EncodeRANUENGAPID encodes a RAN-UE-NGAP-ID IE value (INTEGER 0..4294967295).
 func EncodeRANUENGAPID(id uint64) ([]byte, error) {
-	enc := NewPEREncoder()
-	if err := enc.PutConstrainedInt(int64(id), 0, 4294967295); err != nil {
-		return nil, err
-	}
-	return enc.Bytes(), nil
+	return encodeUENGAPID(id, 4294967295)
 }
 
 // DecodeRANUENGAPID decodes a RAN-UE-NGAP-ID IE value.
 func DecodeRANUENGAPID(data []byte) (uint64, error) {
-	dec := NewPERDecoder(data)
-	v, err := dec.GetConstrainedInt(0, 4294967295)
-	return uint64(v), err
+	return decodeUENGAPID(data, 4294967295)
+}
+
+func encodeUENGAPID(id, max uint64) ([]byte, error) {
+	if id > max {
+		return nil, fmt.Errorf("value %d out of range [0, %d]", id, max)
+	}
+	width := 2
+	for tmp := id; tmp > 0xffff; tmp >>= 8 {
+		width++
+	}
+	maxWidth := 4
+	if max > 0xffffffff {
+		maxWidth = 5
+	}
+	if width > maxWidth {
+		width = maxWidth
+	}
+	out := make([]byte, width)
+	for i := width - 1; i >= 0; i-- {
+		out[i] = uint8(id)
+		id >>= 8
+	}
+	return out, nil
+}
+
+func decodeUENGAPID(data []byte, max uint64) (uint64, error) {
+	maxWidth := 4
+	if max > 0xffffffff {
+		maxWidth = 5
+	}
+	if len(data) == 0 || len(data) > maxWidth {
+		return 0, fmt.Errorf("need 1..%d bytes, have %d", maxWidth, len(data))
+	}
+	var id uint64
+	for _, b := range data {
+		id = (id << 8) | uint64(b)
+	}
+	if id > max {
+		return 0, fmt.Errorf("value %d out of range [0, %d]", id, max)
+	}
+	return id, nil
 }
 
 // --- Cause -------------------------------------------------------------------
@@ -562,8 +591,7 @@ func DecodeRANUENGAPID(data []byte) (uint64, error) {
 // Cause ::= CHOICE { radioNetwork(0), transport(1), nas(2), protocol(3), misc(4), ... }
 func EncodeCause(group CauseGroup, value uint8) []byte {
 	enc := NewPEREncoder()
-	enc.putBits(0, 1) // extension = false
-	_ = enc.PutChoiceIndex(int(group), 5)
+	_ = enc.PutChoiceIndex(int(group), 5, true)
 	enc.align()
 	enc.PutBytes([]byte{value})
 	return enc.Bytes()
@@ -572,14 +600,7 @@ func EncodeCause(group CauseGroup, value uint8) []byte {
 // DecodeCause decodes a Cause IE value.
 func DecodeCause(data []byte) (CauseGroup, uint8, error) {
 	dec := NewPERDecoder(data)
-	ext, err := dec.getBits(1)
-	if err != nil {
-		return 0, 0, err
-	}
-	if ext == 1 {
-		return 0, 0, fmt.Errorf("ngap: Cause extension not supported")
-	}
-	idx, err := dec.GetChoiceIndex(5)
+	idx, err := dec.GetChoiceIndex(5, true)
 	if err != nil {
 		return 0, 0, err
 	}

@@ -113,6 +113,14 @@ func runServer() error {
 		NFType:       nrfclient.NFTypeAMF,
 		NFStatus:     nrfclient.StatusRegistered,
 		PLMN:         cfg.AMF.PLMN,
+		Services: []nrfclient.NFService{{
+			ServiceName: "namf-comm",
+			Versions:    []string{"v1"},
+			Scheme:      "http",
+			FQDN:        "amf",
+			IPAddr:      cfg.AMF.BindAddress,
+			Port:        cfg.AMF.APIPort,
+		}},
 	}
 	lcm := nrfclient.NewLifecycleManager(nrfCli, amfProfile, cfg.AMF.NRFURL, noopEmitter, log)
 	go lcm.Start(ctx)

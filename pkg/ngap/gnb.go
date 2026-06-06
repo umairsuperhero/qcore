@@ -23,21 +23,18 @@ func EncodeNGSetupRequest(req *NGSetupRequest) ([]byte, error) {
 
 	// GlobalRANNodeID (mandatory)
 	// GlobalRANNodeID ::= CHOICE { globalGNB-ID(0), globalNgENB-ID(1), globalN3IWF-ID(2), ... }
-	gnbIDBytes, err := EncodeGlobalGNBID(req.GlobalRANNodeID)
-	if err != nil {
-		return nil, fmt.Errorf("ngap: GlobalRANNodeID: %w", err)
-	}
 	// Wrap in the CHOICE: ext bit (0) + index 0 (for globalGNB-ID)
 	choiceEnc := NewPEREncoder()
-	choiceEnc.putBits(0, 1)           // ext = false
-	_ = choiceEnc.PutChoiceIndex(0, 3) // globalGNB-ID = 0
-	choiceEnc.PutBytes(gnbIDBytes)
+	_ = choiceEnc.PutChoiceIndex(0, 3, true) // globalGNB-ID = 0
+	if err := writeGlobalGNBID(choiceEnc, req.GlobalRANNodeID); err != nil {
+		return nil, fmt.Errorf("ngap: GlobalRANNodeID: %w", err)
+	}
 	ies = append(ies, ProtocolIE{ID: IEIDGlobalRANNodeID, Criticality: CriticalityReject, Value: choiceEnc.Bytes()})
 
 	// RANNodeName (optional)
 	if req.RANNodeName != "" {
 		nameEnc := NewPEREncoder()
-		if err := nameEnc.PutOctetString([]byte(req.RANNodeName)); err != nil {
+		if err := nameEnc.PutPrintableString(req.RANNodeName, 1, 150, true); err != nil {
 			return nil, err
 		}
 		ies = append(ies, ProtocolIE{ID: IEIDRANNodeName, Criticality: CriticalityIgnore, Value: nameEnc.Bytes()})
@@ -72,35 +69,25 @@ func EncodeNGSetupRequest(req *NGSetupRequest) ([]byte, error) {
 // DecodeNGSetupRequest decodes an NGSetupRequest from its IE list.
 func DecodeNGSetupRequest(ies []ProtocolIE) (*NGSetupRequest, error) {
 	req := &NGSetupRequest{}
+
 	for _, ie := range ies {
 		var err error
 		switch ie.ID {
 		case IEIDGlobalRANNodeID:
 			// Unwrap GlobalRANNodeID CHOICE: ext bit + index + GlobalGNB-ID bytes
 			dec := NewPERDecoder(ie.Value)
-			ext, e := dec.getBits(1)
-			if e != nil {
-				return nil, fmt.Errorf("ngap: GlobalRANNodeID ext: %w", e)
-			}
-			if ext == 1 {
-				return nil, fmt.Errorf("ngap: GlobalRANNodeID extension not supported")
-			}
-			idx, e := dec.GetChoiceIndex(3)
+			idx, e := dec.GetChoiceIndex(3, true)
 			if e != nil {
 				return nil, fmt.Errorf("ngap: GlobalRANNodeID index: %w", e)
 			}
 			if idx != 0 {
 				return nil, fmt.Errorf("ngap: GlobalRANNodeID: only globalGNB-ID supported, got %d", idx)
 			}
-			// Remaining bytes are the GlobalGNB-ID value
-			remaining := ie.Value[len(ie.Value)-dec.Remaining():]
-			req.GlobalRANNodeID, err = DecodeGlobalGNBID(remaining)
+			req.GlobalRANNodeID, err = readGlobalGNBID(dec)
 
 		case IEIDRANNodeName:
 			dec := NewPERDecoder(ie.Value)
-			var nameBytes []byte
-			nameBytes, err = dec.GetOctetString()
-			req.RANNodeName = string(nameBytes)
+			req.RANNodeName, err = dec.GetPrintableString(1, 150, true)
 
 		case IEIDSupportedTAList:
 			req.SupportedTAList, err = DecodeSupportedTAList(ie.Value)
@@ -126,9 +113,10 @@ func DecodeNGSetupResponse(ies []ProtocolIE) (*NGSetupResponse, error) {
 		switch ie.ID {
 		case IEIDAMFName:
 			dec := NewPERDecoder(ie.Value)
-			var b []byte
-			b, err = dec.GetOctetString()
-			resp.AMFName = string(b)
+			name, err := dec.GetPrintableString(1, 150, true)
+			if err == nil {
+				resp.AMFName = name
+			}
 		case IEIDServedGUAMIList:
 			resp.ServedGUAMIList, err = DecodeServedGUAMIList(ie.Value)
 		case IEIDRelativeAMFCapacity:
@@ -391,8 +379,7 @@ func EncodeUEContextReleaseRequest(req *UEContextReleaseRequest) ([]byte, error)
 
 	// UE-NGAP-IDs CHOICE: pair (index 0)
 	pairEnc := NewPEREncoder()
-	pairEnc.putBits(0, 1)
-	_ = pairEnc.PutChoiceIndex(0, 2)
+	_ = pairEnc.PutChoiceIndex(0, 2, true)
 	pairEnc.PutSequenceHeader(true, 0, 0)
 	pairEnc.PutBytes(amfIDVal)
 	pairEnc.PutBytes(ranIDVal)

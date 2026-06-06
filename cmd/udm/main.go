@@ -90,6 +90,9 @@ func runServer() error {
 			return fmt.Errorf("running migrations: %w", err)
 		}
 		subsvc := subscriber.NewService(db, log, nil, [3]byte{})
+		if err := resetDemoSubscriberIfRequested(context.Background(), subsvc, log); err != nil {
+			log.Warnf("Could not reset demo subscriber (not fatal): %v", err)
+		}
 		amSrc := udm.NewStoreSource(subsvc)
 		authSrc := udm.NewStoreAuthSource(subsvc)
 		udmSvc = udm.NewService(amSrc, log).WithAuthSource(authSrc)
@@ -122,6 +125,7 @@ func runServer() error {
 			ServiceName: "nudm-sdm",
 			Versions:    []string{"v1"},
 			Scheme:      "http",
+			FQDN:        "udm",
 			IPAddr:      cfg.UDM.BindAddress,
 			Port:        cfg.UDM.Port,
 		}},
@@ -150,4 +154,29 @@ func runServer() error {
 	shutCtx, shutCancel := context.WithCancel(ctx)
 	defer shutCancel()
 	return sbiSrv.Shutdown(shutCtx)
+}
+
+func resetDemoSubscriberIfRequested(ctx context.Context, service *subscriber.Service, log logger.Logger) error {
+	if os.Getenv("QCORE_RESET_DEMO_SUBSCRIBER") != "true" {
+		return nil
+	}
+
+	demo := &subscriber.Subscriber{
+		IMSI:   "001010000000001",
+		Ki:     "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:    "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:    "8000",
+		SQN:    "000000000020",
+		APN:    "internet",
+		Status: 0,
+	}
+	if err := service.UpdateSubscriber(ctx, demo.IMSI, demo); err != nil {
+		if createErr := service.CreateSubscriber(ctx, demo); createErr != nil {
+			return fmt.Errorf("update demo subscriber: %v; create demo subscriber: %w", err, createErr)
+		}
+		log.Infof("Created demo subscriber (IMSI=%s) for UDM direct-mode auth.", demo.IMSI)
+		return nil
+	}
+	log.Infof("Reset demo subscriber (IMSI=%s) for UDM direct-mode auth.", demo.IMSI)
+	return nil
 }

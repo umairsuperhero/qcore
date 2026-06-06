@@ -1,20 +1,44 @@
 # UERANSIM Compatibility (5G SA)
 
-QCore has been verified against UERANSIM in 5G SA mode.
+**Status: T10 is partially reproduced, not shipped.**
 
-## Components Verified
-- **AMF (NGAP + NAS-5G):** Successfully handles NG Setup, Initial UE Message, Authentication, Security Mode Control, and Registration flows.
-- **AUSF & UDM:** Successfully delegates and generates 5G AKA authentication vectors based on UDR credentials.
-- **Native SCTP:** UERANSIM connects to QCore AMF using native Linux kernel SCTP sockets.
+As of 2026-06-04, QCore has been replayed against UERANSIM v3.2.8 in Docker Compose
+over native SCTP. The original `DownlinkNASTransport` APER `transfer-syntax-error`
+blocker is fixed, but external registration is not complete.
 
-## Running UERANSIM via Docker Compose
-A `ueransim` service has been added to `deployments/docker/docker-compose.yml`. This allows for a one-click end-to-end verification of the 5G SA control plane.
+## Verified In Replay
 
-```bash
-# Start the full 5G core + UERANSIM gNB & UE
-docker-compose up -d amf ausf udm udr nrf postgres hss spgw collector dashboard ueransim
+- Native SCTP association from UERANSIM gNB to QCore AMF.
+- NGSetup Request/Response succeeds.
+- InitialUEMessage is received and decoded.
+- AMF sends Authentication Request; UERANSIM parses RAND/AUTN.
+- UERANSIM sends Authentication Response.
+- AUSF confirmation succeeds.
+
+## Current T10 Blocker
+
+UERANSIM rejects QCore's Security Mode Command:
+
+```text
+Security Mode Command received
+Security Mode Command integrity check failed
+Rejecting Security Mode Command with cause [SEC_MODE_REJECTED_UNSPECIFIED]
 ```
 
-## Known Limitations
-- The current integration primarily tests the control plane (Registration). User plane (PDU sessions and GTP-U) validation will be strengthened in Phase 3.
-- `pkg/simulator` provides a lightweight, built-in alternative for quick checks without requiring a full UERANSIM container or native SCTP kernel modules.
+Do not claim "UERANSIM compatible", "5G shipped", Registration Accept, PDU session, or
+data-plane success until this blocker is resolved and replay evidence exists.
+
+## Replay Command
+
+```bash
+docker compose -f deployments/docker/docker-compose.yml --profile 5g down
+docker compose -f deployments/docker/docker-compose.yml --profile 5g up --build
+```
+
+## Notes
+
+- The compose UE config is aligned with QCore's seeded demo subscriber.
+- The dev reset seeds the demo SQN at `000000000020`, because UERANSIM starts with
+  `SQN-MS=000000000000` and rejects a network SQN whose sequence part is not ahead.
+- On macOS Docker, UPF falls back to dummy egress because `/dev/net/tun` is unavailable;
+  full PDU/data-plane validation needs a Linux host or privileged TUN-capable runtime.

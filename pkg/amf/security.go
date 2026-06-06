@@ -38,13 +38,13 @@ func DeriveKAMF(kseaf []byte, supi string, abba []byte) ([]byte, error) {
 }
 
 // DeriveKNASint5G derives the 5G NAS integrity key from KAMF.
-// TS 33.501 Annex A.8: FC=0x73, P0=alg-type=0x02 (NAS-int), P1=alg-ID.
+// TS 33.501 Annex A.8: FC=0x69, P0=alg-type=0x02 (NAS-int), P1=alg-ID.
 func DeriveKNASint5G(kamf []byte, algID uint8) ([]byte, error) {
 	return deriveNASKey5G(kamf, 0x02, algID)
 }
 
 // DeriveKNASenc5G derives the 5G NAS encryption key from KAMF.
-// TS 33.501 Annex A.8: FC=0x73, P0=alg-type=0x01 (NAS-enc), P1=alg-ID.
+// TS 33.501 Annex A.8: FC=0x69, P0=alg-type=0x01 (NAS-enc), P1=alg-ID.
 func DeriveKNASenc5G(kamf []byte, algID uint8) ([]byte, error) {
 	return deriveNASKey5G(kamf, 0x01, algID)
 }
@@ -54,7 +54,7 @@ func deriveNASKey5G(kamf []byte, algType, algID uint8) ([]byte, error) {
 		return nil, fmt.Errorf("amf: KAMF must be 32 bytes, got %d", len(kamf))
 	}
 	// S = FC(1) || P0(1) || L0(2) || P1(1) || L1(2)
-	s := []byte{0x73, algType, 0x00, 0x01, algID, 0x00, 0x01}
+	s := []byte{0x69, algType, 0x00, 0x01, algID, 0x00, 0x01}
 	derived := kdf(kamf, s)
 	return derived[16:], nil // last 16 bytes = 128-bit NAS key
 }

@@ -22,8 +22,8 @@ func EncodeNGSetupResponse(resp *NGSetupResponse) ([]byte, error) {
 
 	// AMFName (mandatory)
 	nameEnc := NewPEREncoder()
-	if err := nameEnc.PutOctetString([]byte(resp.AMFName)); err != nil {
-		return nil, fmt.Errorf("ngap: AMFName: %w", err)
+	if err := nameEnc.PutPrintableString(resp.AMFName, 1, 150, true); err != nil {
+		return nil, err
 	}
 	ies = append(ies, ProtocolIE{ID: IEIDAMFName, Criticality: CriticalityReject, Value: nameEnc.Bytes()})
 
@@ -36,7 +36,9 @@ func EncodeNGSetupResponse(resp *NGSetupResponse) ([]byte, error) {
 
 	// RelativeAMFCapacity (mandatory)
 	capEnc := NewPEREncoder()
-	capEnc.PutFixedOctetString([]byte{resp.RelativeCapacity})
+	if err := capEnc.PutConstrainedInt(int64(resp.RelativeCapacity), 0, 255); err != nil {
+		return nil, err
+	}
 	ies = append(ies, ProtocolIE{ID: IEIDRelativeAMFCapacity, Criticality: CriticalityIgnore, Value: capEnc.Bytes()})
 
 	// PLMNSupportList (mandatory)
@@ -241,7 +243,7 @@ func encodeAllowedNSSAI(nssais []SNSSAI) ([]byte, error) {
 		// S-NSSAI inline
 		var optBits uint64
 		if sdPresent {
-			optBits = 1
+			optBits = 2
 		}
 		enc.PutSequenceHeader(true, optBits, 2)
 		enc.PutFixedOctetString([]byte{nssai.SST})
@@ -267,8 +269,7 @@ type UEContextReleaseCommand struct {
 func EncodeUEContextReleaseCommand(cmd *UEContextReleaseCommand) ([]byte, error) {
 	// UE-NGAP-IDs: CHOICE { uE-NGAP-ID-pair(0), aMF-UE-NGAP-ID(1), ... }
 	pairEnc := NewPEREncoder()
-	pairEnc.putBits(0, 1) // ext = false
-	_ = pairEnc.PutChoiceIndex(0, 2) // pair
+	_ = pairEnc.PutChoiceIndex(0, 2, true) // pair
 	amfIDVal, err := EncodeAMFUENGAPID(cmd.AMFUENGAPID)
 	if err != nil {
 		return nil, err

@@ -119,7 +119,13 @@ func (d *PERDecoder) GetConstrainedInt(lb, ub int64) (int64, error) {
 			return 0, err
 		}
 		v = int64(b)
-	case rng <= 256:
+	case rng <= 255:
+		b, err := d.getBits(bitsNeeded(uint64(rng)))
+		if err != nil {
+			return 0, err
+		}
+		v = int64(b)
+	case rng == 256:
 		d.align()
 		b, err := d.GetBytes(1)
 		if err != nil {
@@ -137,6 +143,20 @@ func (d *PERDecoder) GetConstrainedInt(lb, ub int64) (int64, error) {
 		return d.GetUnconstrainedInt()
 	}
 	return v + lb, nil
+}
+
+// bitsNeeded returns the minimum number of bits required to represent values 0..(range-1).
+func bitsNeeded(rng uint64) uint {
+	if rng <= 1 {
+		return 0
+	}
+	r := rng - 1
+	var bits uint
+	for r > 0 {
+		bits++
+		r >>= 1
+	}
+	return bits
 }
 
 // GetUnconstrainedInt decodes a length-prefixed unconstrained integer (up to 8 bytes).
@@ -179,15 +199,73 @@ func (d *PERDecoder) GetLengthDeterminant() (int, error) {
 	return int(val), nil
 }
 
+// GetOctetString decodes an unconstrained OCTET STRING.
 func (d *PERDecoder) GetOctetString() ([]byte, error) {
-	length, err := d.GetLengthDeterminant()
+	d.align()
+	l, err := d.GetLengthDeterminant()
 	if err != nil {
 		return nil, err
 	}
-	return d.GetBytes(length)
+	return d.GetBytes(int(l))
+}
+
+// GetPrintableString decodes a PrintableString with a known size constraint.
+func (d *PERDecoder) GetPrintableString(lb, ub int, ext bool) (string, error) {
+	isExt := false
+	var err error
+	if ext {
+		v, e := d.getBits(1)
+		if e != nil {
+			return "", e
+		}
+		isExt = (v == 1)
+	}
+	var length int
+	if !isExt {
+		if ub >= lb {
+			// constrained length
+			l, err := d.GetConstrainedInt(int64(lb), int64(ub))
+			if err != nil {
+				return "", err
+			}
+			length = int(l)
+		} else {
+			d.align()
+			length, err = d.GetLengthDeterminant()
+			if err != nil {
+				return "", err
+			}
+		}
+	} else {
+		// unconstrained length
+		d.align()
+		length, err = d.GetLengthDeterminant()
+		if err != nil {
+			return "", err
+		}
+	}
+	
+	// Characters are 8 bits each, so align before reading
+	d.align()
+	b, err := d.GetBytes(length)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func (d *PERDecoder) GetFixedOctetString(n int) ([]byte, error) {
+	if n <= 2 {
+		b := make([]byte, n)
+		for i := 0; i < n; i++ {
+			val, err := d.getBits(8)
+			if err != nil {
+				return nil, err
+			}
+			b[i] = uint8(val)
+		}
+		return b, nil
+	}
 	d.align()
 	return d.GetBytes(n)
 }
@@ -205,7 +283,16 @@ func (d *PERDecoder) GetBytes(n int) ([]byte, error) {
 	return result, nil
 }
 
-func (d *PERDecoder) GetChoiceIndex(numChoices int) (int, error) {
+func (d *PERDecoder) GetChoiceIndex(numChoices int, ext bool) (int, error) {
+	if ext {
+		extended, err := d.GetBool()
+		if err != nil {
+			return 0, err
+		}
+		if extended {
+			return 0, fmt.Errorf("extended choice not supported")
+		}
+	}
 	v, err := d.GetConstrainedInt(0, int64(numChoices-1))
 	return int(v), err
 }
@@ -227,7 +314,7 @@ func (d *PERDecoder) GetSequenceHeader(extensible bool, numOptional int) (extend
 			return false, 0, e
 		}
 		if b == 1 {
-			bits |= 1 << uint(i)
+			bits |= 1 << uint(numOptional-1-i)
 		}
 	}
 	return false, bits, nil
@@ -306,9 +393,9 @@ func (e *PEREncoder) PutConstrainedInt(val, lb, ub int64) error {
 		e.putBits(uint8(v), 5)
 	case rng <= 64:
 		e.putBits(uint8(v), 6)
-	case rng <= 128:
-		e.putBits(uint8(v), 7)
-	case rng <= 256:
+	case rng <= 255:
+		e.putBits(uint8(v), bitsNeeded(uint64(rng)))
+	case rng == 256:
 		e.align()
 		e.PutBytes([]byte{uint8(v)})
 	case rng <= 65536:
@@ -373,6 +460,7 @@ func (e *PEREncoder) PutLengthDeterminant(length int) error {
 }
 
 func (e *PEREncoder) PutOctetString(data []byte) error {
+	e.align()
 	if err := e.PutLengthDeterminant(len(data)); err != nil {
 		return err
 	}
@@ -380,7 +468,54 @@ func (e *PEREncoder) PutOctetString(data []byte) error {
 	return nil
 }
 
+// PutPrintableString encodes a PrintableString with a known size constraint.
+func (e *PEREncoder) PutPrintableString(s string, lb, ub int, ext bool) error {
+	b := []byte(s)
+	l := len(b)
+	
+	if ext {
+		isExt := l < lb || l > ub
+		isExtBit := uint8(0)
+		if isExt {
+			isExtBit = 1
+		}
+		e.putBits(isExtBit, 1)
+		if isExt {
+			e.align()
+			if err := e.PutLengthDeterminant(l); err != nil {
+				return err
+			}
+		} else {
+			if err := e.PutConstrainedInt(int64(l), int64(lb), int64(ub)); err != nil {
+				return err
+			}
+		}
+	} else {
+		if ub >= lb {
+			if err := e.PutConstrainedInt(int64(l), int64(lb), int64(ub)); err != nil {
+				return err
+			}
+		} else {
+			e.align()
+			if err := e.PutLengthDeterminant(l); err != nil {
+				return err
+			}
+		}
+	}
+	
+	e.align()
+	e.PutBytes(b)
+	return nil
+}
+
 func (e *PEREncoder) PutFixedOctetString(data []byte) {
+	n := len(data)
+	if n <= 2 {
+		for i := 0; i < n; i++ {
+			e.putBits(data[i], 8)
+		}
+		return
+	}
 	e.align()
 	e.PutBytes(data)
 }
@@ -401,9 +536,12 @@ func (e *PEREncoder) PutBytes(data []byte) {
 	e.buf = append(e.buf, data...)
 }
 
-func (e *PEREncoder) PutChoiceIndex(index, numChoices int) error {
+func (e *PEREncoder) PutChoiceIndex(index, numChoices int, ext bool) error {
 	if index < 0 || index >= numChoices {
 		return fmt.Errorf("choice index %d out of range [0, %d)", index, numChoices)
+	}
+	if ext {
+		e.putBits(0, 1) // not extended
 	}
 	return e.PutConstrainedInt(int64(index), 0, int64(numChoices-1))
 }
@@ -413,7 +551,7 @@ func (e *PEREncoder) PutSequenceHeader(extensible bool, optionalBits uint64, num
 		e.putBits(0, 1)
 	}
 	for i := 0; i < numOptional; i++ {
-		if optionalBits&(1<<uint(i)) != 0 {
+		if optionalBits&(1<<uint(numOptional-1-i)) != 0 {
 			e.putBits(1, 1)
 		} else {
 			e.putBits(0, 1)
