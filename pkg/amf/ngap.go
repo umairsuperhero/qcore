@@ -48,12 +48,30 @@ func (s *gNBSession) run(ctx context.Context) {
 	}
 }
 
+func (s *gNBSession) traceNGAP(direction string, raw []byte) {
+	if !s.amf.cfg.TraceNGAPHex {
+		return
+	}
+	fields := map[string]interface{}{
+		"direction": direction,
+		"bytes":     len(raw),
+		"hex":       hex.EncodeToString(raw),
+	}
+	if pdu, err := ngap.DecodePDU(raw); err == nil {
+		fields["type"] = pdu.Type
+		fields["procedure"] = pdu.ProcedureCode.String()
+		fields["procedure_code"] = pdu.ProcedureCode
+	}
+	s.log.WithFields(fields).Info("amf: NGAP raw PDU")
+}
+
 // dispatch decodes one NGAP PDU and routes it.
 func (s *gNBSession) dispatch(ctx context.Context, raw []byte) error {
 	pdu, err := ngap.DecodePDU(raw)
 	if err != nil {
 		return fmt.Errorf("decode PDU: %w", err)
 	}
+	s.traceNGAP("rx", raw)
 	ies, err := ngap.DecodeIEContainer(pdu.Value)
 	if err != nil {
 		return fmt.Errorf("decode IEs: %w", err)
@@ -362,18 +380,10 @@ func (s *gNBSession) sendInitialContextSetup(ue *UEContext, nasPDU []byte) error
 	if err != nil {
 		return err
 	}
-	if s.amf.cfg.TraceNGAPHex {
-		s.log.WithFields(map[string]interface{}{
-			"procedure":      "InitialContextSetupRequest",
-			"amf_ue_ngap_id": ue.AMFUENGAPID,
-			"ran_ue_ngap_id": ue.RANUENGAPID,
-			"bytes":          len(pdu),
-			"hex":            hex.EncodeToString(pdu),
-		}).Info("amf: NGAP raw PDU")
-	}
 	return s.send(pdu)
 }
 
 func (s *gNBSession) send(raw []byte) error {
+	s.traceNGAP("tx", raw)
 	return s.conn.Write(raw, 0)
 }

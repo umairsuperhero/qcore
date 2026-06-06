@@ -297,7 +297,7 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     volumes:
       - ./ueransim-config/ue.yaml:/ueransim/config/ue.yaml
-    command: /bin/bash -c "sleep 5 && /ueransim/nr-ue -c /ueransim/config/ue.yaml"
+    command: /bin/bash -lc "ulimit -c unlimited; sleep 5; /ueransim/nr-ue -c /ueransim/config/ue.yaml; code=$$?; echo UERANSIM_NR_UE_EXIT_CODE=$$code; ls -l core* /ueransim/core* 2>/dev/null || true; sleep 2; exit $$code"
 
   smf:
     profiles: ["5g"]
