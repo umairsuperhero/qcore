@@ -26,6 +26,37 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 
 ---
 
+## Roadmap — where we're headed
+
+QCore's bet: **win on developer experience, ship 5G-SA-leading.** Not a protocol
+feature-count race against open5GS/free5GC — a core that's fast to run, deeply
+observable, and explains its own failures. The full vision is in the
+[Experience Charter](docs/experience-charter.md); the executable plan is
+[`docs/v1-gap-closure-plan.md`](docs/v1-gap-closure-plan.md).
+
+**Where we are now:** the 4G EPC is end-to-end verified; the 5G SA control + user plane
+pass an in-process E2E test over native SCTP; the diagnostic catalog and the offline AI
+(B2) are merged; the live dashboard runs on real data.
+
+**The path to v1 (two parallel tracks):**
+1. **5G-leading headline — real-RAN validation (T10).** Get a real UERANSIM gNB/UE to
+   register and run a PDU session through QCore. *Current gate:* the Security Mode Command
+   integrity blocker — root-caused, candidate fix in flight, awaiting validation on a
+   Linux runner. Until this passes, the 5G track is **not** "shipped" and we don't claim
+   UERANSIM compatibility. Then: 5G simulator UX (C2/T8) and dashboard 5G mode (C3/T9).
+2. **The AI moat.** Catalog (shipped) + offline SLM (code merged); next is live
+   model-serve validation, then deeper root-cause diagnosis.
+
+**Then (Phase D):** scenario authoring, CI hooks, Learning Mode. Conformance & interop
+status lives in [`docs/3gpp-tracking.md`](docs/3gpp-tracking.md);
+the living audit is [`docs/audit-v1.0.md`](docs/audit-v1.0.md).
+
+> **Honesty note:** rows marked ✅ above mean *build + vet + tests pass* (and, where
+> stated, our in-process E2E test). "Validated against a real external gNB/UE" is a higher
+> bar, tracked separately as **T10**. We don't blur the two.
+
+---
+
 ## Quick Start
 
 ```bash
