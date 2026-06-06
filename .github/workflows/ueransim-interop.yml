@@ -1,8 +1,8 @@
 name: ueransim-interop
 # T10 real-RAN validation: bring up the 5G stack + a real UERANSIM gNB/UE over
-# native kernel SCTP and assert the UE registers (i.e. gets PAST the Security
-# Mode Command). GitHub-hosted ubuntu runners support SCTP + TUN + Docker
-# (verified), so this is our cloud-Linux validation for T10 / PR #28.
+# native kernel SCTP and assert PR #28's bounded claim: the UE gets past the
+# Security Mode Command and the AMF receives Security Mode Complete. Full
+# registration/PDU/data-plane validation remains a later T10 gate.
 on:
   push:
     branches: [fix/t10-kamf-supi-prefix]
@@ -40,39 +40,43 @@ jobs:
           echo "--- containers ---"; $COMPOSE ps
           if [ "$ok" != 1 ]; then echo "::error::stack failed to come up after retries"; exit 1; fi
 
-      - name: Validate — UE must get past the SMC (no integrity failure)
+      - name: Validate — UE must complete SMC (no integrity failure)
         id: outcome
         run: |
           # This branch's claim is the SMC-integrity fix. So the gate is:
-          #   PASS  = UE reaches the SMC and does NOT reject it for integrity
+          #   PASS  = UE reaches the SMC, accepts NIA2/NEA0, and AMF receives
+          #           Security Mode Complete
           #   FAIL  = "integrity check failed" (regression of this fix), or the
-          #           flow never even reaches the SMC (earlier-stage breakage)
+          #           flow never completes SMC (earlier-stage or SMC-response breakage)
           # Full registration is a SEPARATE, later T10 milestone (the Reg-Accept /
           # InitialContextSetupRequest blocker) and is reported as info, not a fail.
           echo "Watching the UERANSIM UE for the SMC outcome (up to ~150s)..."
-          REACHED_SMC=0; INTEGRITY_FAILED=0; REGISTERED=0
+          REACHED_SMC=0; SELECTED_ALGS=0; SMC_COMPLETE=0; INTEGRITY_FAILED=0; REGISTERED=0
           for i in $(seq 1 30); do
-            LOGS="$($COMPOSE logs ueransim-ue 2>/dev/null || true)"
-            echo "$LOGS" | grep -qiE "Security Mode Command received" && REACHED_SMC=1
-            echo "$LOGS" | grep -qi  "Security Mode Command integrity check failed" && INTEGRITY_FAILED=1
-            echo "$LOGS" | grep -qiE "Registration is successful|MM-REGISTERED|PDU Session establishment is successful" && REGISTERED=1
+            UE_LOGS="$($COMPOSE logs ueransim-ue 2>/dev/null || true)"
+            AMF_LOGS="$($COMPOSE logs amf 2>/dev/null || true)"
+            echo "$UE_LOGS" | grep -qiE "Security Mode Command received" && REACHED_SMC=1
+            echo "$UE_LOGS" | grep -qiE "Selected integrity\\[2\\] ciphering\\[0\\]" && SELECTED_ALGS=1
+            echo "$AMF_LOGS" | grep -qiE 'SMC Complete.*Registration Accept|"fields.msg":94' && SMC_COMPLETE=1
+            echo "$UE_LOGS" | grep -qi  "Security Mode Command integrity check failed" && INTEGRITY_FAILED=1
+            echo "$UE_LOGS" | grep -qiE "Registration is successful|MM-REGISTERED|PDU Session establishment is successful" && REGISTERED=1
             if [ "$INTEGRITY_FAILED" = 1 ] || [ "$REGISTERED" = 1 ]; then break; fi
-            if [ "$REACHED_SMC" = 1 ] && [ "$i" -ge 6 ]; then break; fi
+            if [ "$REACHED_SMC" = 1 ] && [ "$SELECTED_ALGS" = 1 ] && [ "$SMC_COMPLETE" = 1 ] && [ "$i" -ge 6 ]; then break; fi
             sleep 5
           done
-          echo "reached_smc=$REACHED_SMC integrity_failed=$INTEGRITY_FAILED registered=$REGISTERED"
+          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE integrity_failed=$INTEGRITY_FAILED registered=$REGISTERED"
           if [ "$INTEGRITY_FAILED" = 1 ]; then
             echo "::error::REGRESSION — UERANSIM rejected the SMC for integrity (this PR's fix is broken)"
             exit 1
           fi
-          if [ "$REACHED_SMC" != 1 ]; then
-            echo "::error::UE never reached the Security Mode Command — earlier-stage failure (see log dump)"
+          if [ "$REACHED_SMC" != 1 ] || [ "$SELECTED_ALGS" != 1 ] || [ "$SMC_COMPLETE" != 1 ]; then
+            echo "::error::UE did not complete Security Mode Control — see AMF/UE/gNB logs"
             exit 1
           fi
           if [ "$REGISTERED" = 1 ]; then
             echo "::notice::FULL REGISTRATION — T10 end-to-end works against real UERANSIM."
           else
-            echo "::notice::PR scope OK — UE accepted the SMC (no integrity failure). Full registration is not yet complete: known downstream blocker = Registration Accept / InitialContextSetupRequest (next T10 step), not this PR."
+            echo "::notice::PR scope OK — UE accepted the SMC and AMF received Security Mode Complete. Full registration is not yet complete: known downstream blocker = Registration Accept / InitialContextSetupRequest (next T10 step), not this PR."
           fi
 
       - name: Dump logs (always)
@@ -82,7 +86,7 @@ jobs:
           for svc in postgres udr udm ausf nrf amf smf upf; do
             echo "===== $svc ====="; $COMPOSE logs $svc 2>&1 | tail -60 || true
           done
-          echo "===== UERANSIM gNB ====="; $COMPOSE logs ueransim 2>&1 | tail -150 || true
+          echo "===== UERANSIM gNB ====="; $COMPOSE logs ueransim-gnb 2>&1 | tail -200 || true
           echo "===== UERANSIM UE ====="; $COMPOSE logs ueransim-ue 2>&1 | tail -150 || true
 
       - name: Teardown

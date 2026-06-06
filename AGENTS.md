@@ -16,7 +16,7 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-05)
+## Current baseline (2026-06-06)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -44,13 +44,15 @@ binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to mai
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
-  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED at Security
-    Mode Command integrity.** A real UERANSIM replay over native SCTP now reaches
+  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED at
+    Registration Accept delivery.** A real UERANSIM replay over native SCTP now reaches
     NGSetup → InitialUEMessage → Authentication Request → Authentication Response → AUSF
-    confirmation (the earlier `DownlinkNASTransport` APER `transfer-syntax-error` is
-    fixed); UERANSIM then rejects QCore's Security Mode Command with `Security Mode
-    Command integrity check failed` — the AMF's SMC MAC is not verifying. Evidence + exact
-    blocker: `docs/ueransim-compat.md`. This is the next 5G target.
+    confirmation → Security Mode Complete. The earlier `DownlinkNASTransport` APER
+    `transfer-syntax-error` and SMC-integrity blockers are fixed; PR #28 validates the
+    K_AMF/bare-IMSI fix against real UERANSIM on cloud Linux. The current blocker is that
+    the AMF logs `SMC Complete — sending Registration Accept`, but the UE never receives
+    Registration Accept and T3510 expires. Suspect area: `InitialContextSetupRequest` /
+    gNB-side required IEs. Evidence + exact blocker: `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve

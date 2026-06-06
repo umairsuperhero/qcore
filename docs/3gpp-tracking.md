@@ -2,7 +2,7 @@
 
 > Living reference. Maintained on the quarterly interop check-in cadence (see bottom)
 > and updated whenever a real-RAN interop finding lands.
-> Last updated: 2026-06-05
+> Last updated: 2026-06-06
 
 ## Principle: relevance, not parity
 
@@ -29,7 +29,7 @@ This is not a claim of Release completeness.
 |---|---|---|
 | **NGAP** (TS 38.413) | NG Setup, InitialUEMessage, DL/UL NAS Transport, Initial Context Setup, PDU Session Resource Setup | ✅ in-process · 🔭 real-RAN (T10) |
 | **NGAP transport** | Native Linux kernel SCTP (`pkg/sctp/sctp_linux.go`, no CGO/pion); TCP fallback on non-Linux for dev | ✅ in-process · 🔭 real-RAN (T10) |
-| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · 🔭 real-RAN (blocked at SMC integrity, candidate fix PR #28) |
+| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · 🔭 real-RAN (SMC integrity fixed on PR #28; blocked at Registration Accept delivery) |
 | **NAS-5G SM** (TS 24.501) | UL NAS Transport carrying 5GSM PDU Session Establishment | ✅ in-process · 🔭 real-RAN |
 | **5G-AKA** (TS 33.501) | Full AKA: AUSF/UDM vector generation, RES* verify, K_AUSF/K_SEAF/K_AMF chain | ✅ in-process |
 | **Key derivation** (TS 33.501 Annex A) | K_AMF (A.7), K_NASint/K_NASenc (A.8), K_gNB (A.9). **K_AMF P0 = bare IMSI** (fixed; see Findings) | ✅ in-process |
@@ -63,7 +63,8 @@ with the spec reference and the fix.
 | Date | Finding | Spec | Resolution |
 |---|---|---|---|
 | 2026-06-04 | UERANSIM rejected `DownlinkNASTransport` with an APER `transfer-syntax-error` | TS 38.413 | Fixed (UE-NGAP-ID + NAS Auth Request encoding) — merged |
-| 2026-06-05 | UERANSIM rejects the Security Mode Command (`integrity check failed`). Root cause: K_AMF derived from the SBI `imsi-<digits>` string instead of the bare IMSI | TS 33.501 A.7 | **Candidate fix PR #28** — strip the `imsi-` prefix for the K_AMF KDF input. **Pending UERANSIM confirmation on a Linux runner.** |
+| 2026-06-05 | UERANSIM rejects the Security Mode Command (`integrity check failed`). Root cause: K_AMF derived from the SBI `imsi-<digits>` string instead of the bare IMSI | TS 33.501 A.7 | **Fixed on PR #28 and validated by `ueransim-interop` on GitHub Actions cloud Linux.** UE accepts SMC and AMF receives Security Mode Complete. |
+| 2026-06-06 | After SMC Complete, AMF sends Registration Accept but UE never receives it; T3510 expires | TS 38.413 / TS 24.501 | **Open.** Next evidence target is the UERANSIM gNB log for QCore's `InitialContextSetupRequest`; likely missing or malformed gNB-required IEs compared with the in-process mock gNB. |
 
 ## How this doc is maintained
 
