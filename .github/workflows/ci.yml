@@ -32,6 +32,9 @@ jobs:
         with:
           go-version: "1.23"
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
 
@@ -52,14 +55,12 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Build HSS
-        run: go build -o bin/qcore-hss ./cmd/hss
-
-      - name: Build MME
-        run: go build -o bin/qcore-mme ./cmd/mme
-
-      - name: Build SPGW
-        run: go build -o bin/qcore-spgw ./cmd/spgw
+      - name: Build all binaries
+        run: |
+          for cmd in amf ausf dashboard hss mme nrf qcore-cli qcore-collector smf spgw udm udr upf; do
+            echo "Building $cmd..."
+            go build -o bin/qcore-$cmd ./cmd/$cmd
+          done
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
