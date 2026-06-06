@@ -11,7 +11,7 @@ import {
   Sliders,
   Check
 } from "lucide-react";
-import { useGNBConnection } from "../api/gnbConnection";
+import { useConnectionStore } from "../stores/connectionStore";
 
 interface GNBHeroScreenProps {
   onRegisterUE: () => void;
@@ -19,14 +19,12 @@ interface GNBHeroScreenProps {
 }
 
 export default function GNBHeroScreen({ onRegisterUE, onUseUeransim }: GNBHeroScreenProps) {
-  const { 
-    connection, 
-    loading, 
-    isSimulated, 
-    simulatedState, 
-    triggerSimulation, 
-    resetToLive 
-  } = useGNBConnection();
+  const connection = useConnectionStore((s) => s.connection);
+  const loading = useConnectionStore((s) => s.loading);
+  const isSimulated = useConnectionStore((s) => s.isSimulated);
+  const simulatedState = useConnectionStore((s) => s.simulatedState);
+  const triggerSimulation = useConnectionStore((s) => s.triggerSimulation);
+  const resetToLive = useConnectionStore((s) => s.resetToLive);
 
   const [copied, setCopied] = useState(false);
   const [fixingQCore, setFixingQCore] = useState(false);

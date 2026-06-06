@@ -95,8 +95,8 @@ export default function JourneyTimeline({ events, streaming, diagnostic }: Journ
       
       // Step 1: Registration Request
       if (
-        msg.includes("setup request") || 
-        msg.includes("setup response") || 
+        msg.includes("setup request") || msg.includes("setuprequest") || 
+        msg.includes("setup response") || msg.includes("setupresponse") ||
         msg.includes("registration request") || 
         msg.includes("attach request")
       ) {
@@ -117,7 +117,8 @@ export default function JourneyTimeline({ events, streaming, diagnostic }: Journ
       // Step 3: Security Mode
       if (
         msg.includes("security mode") || 
-        msg.includes("context setup")
+        msg.includes("context setup") ||
+        msg.includes("contextsetup")
       ) {
         stepStates[2].events.push(ev);
         if (ev.payload) {
@@ -130,7 +131,8 @@ export default function JourneyTimeline({ events, streaming, diagnostic }: Journ
         msg.includes("registration complete") || 
         msg.includes("attach complete") || 
         msg.includes("registration accept") || 
-        msg.includes("attach accept")
+        msg.includes("attach accept") ||
+        msg.includes("5gmm-registered")
       ) {
         stepStates[3].events.push(ev);
         if (ev.payload) {
@@ -155,7 +157,9 @@ export default function JourneyTimeline({ events, streaming, diagnostic }: Journ
         msg.includes("pdu session establishment accept") || 
         msg.includes("modify bearer complete") || 
         msg.includes("smf created pdu session") ||
-        msg.includes("upf session establishment")
+        msg.includes("upf session establishment") ||
+        msg.includes("pdu session created") ||
+        msg.includes("n4 session establishment")
       ) {
         stepStates[5].events.push(ev);
         if (ev.payload) {
