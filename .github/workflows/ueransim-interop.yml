@@ -1,0 +1,64 @@
+name: ueransim-interop
+# T10 real-RAN validation: bring up the 5G stack + a real UERANSIM gNB/UE over
+# native kernel SCTP and assert the UE registers (i.e. gets PAST the Security
+# Mode Command). GitHub-hosted ubuntu runners support SCTP + TUN + Docker
+# (verified), so this is our cloud-Linux validation for T10 / PR #28.
+on:
+  push:
+    branches: [fix/t10-kamf-supi-prefix]
+  workflow_dispatch:
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROFILES: "5g"
+      COMPOSE: "docker compose -f deployments/docker/docker-compose.yml"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load kernel modules (SCTP + TUN)
+        run: |
+          sudo modprobe sctp
+          sudo modprobe tun
+          ls -l /dev/net/tun
+          [ -e /proc/net/sctp ] && echo "SCTP ready" || (echo "no SCTP" && exit 1)
+
+      - name: Bring up 5G stack + UERANSIM (AMF in SCTP mode)
+        run: |
+          $COMPOSE up -d --build
+          echo "--- containers ---"
+          $COMPOSE ps
+
+      - name: Wait for UE registration outcome
+        id: outcome
+        run: |
+          echo "Watching the UERANSIM UE for up to ~210s..."
+          for i in $(seq 1 42); do
+            LOGS="$($COMPOSE logs ueransim-ue 2>/dev/null || true)"
+            if echo "$LOGS" | grep -qiE "Registration is successful|MM-REGISTERED|PDU Session establishment is successful"; then
+              echo "RESULT=REGISTERED — UE got past the SMC (PR #28 candidate fix WORKS)"
+              echo "$LOGS" | grep -iE "registration|MM-REGISTERED|PDU Session|security mode" | tail -20
+              exit 0
+            fi
+            if echo "$LOGS" | grep -qi "Security Mode Command integrity check failed"; then
+              echo "RESULT=SMC_INTEGRITY_FAILED — the blocker is NOT resolved by this code"
+              echo "$LOGS" | grep -iE "security mode|integrity" | tail -20
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "RESULT=INCONCLUSIVE — no registration/SMC marker within timeout (see log dump)"
+          exit 1
+
+      - name: Dump logs (always)
+        if: always()
+        run: |
+          echo "===== AMF ====="; $COMPOSE logs amf 2>&1 | tail -150 || true
+          echo "===== UERANSIM gNB ====="; $COMPOSE logs ueransim 2>&1 | tail -150 || true
+          echo "===== UERANSIM UE ====="; $COMPOSE logs ueransim-ue 2>&1 | tail -150 || true
+
+      - name: Teardown
+        if: always()
+        run: $COMPOSE down -v || true
