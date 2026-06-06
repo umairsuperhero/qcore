@@ -712,10 +712,10 @@ func getBitRate(dec *PERDecoder) (uint64, error) {
 func EncodeUESecurityCapabilities(nrEnc, nrInt, eutraEnc, eutraInt [2]byte) []byte {
 	enc := NewPEREncoder()
 	enc.PutSequenceHeader(true, 0, 1) // extensible, 1 optional (iE-Ext), absent
-	enc.PutFixedOctetString(nrEnc[:])
-	enc.PutFixedOctetString(nrInt[:])
-	enc.PutFixedOctetString(eutraEnc[:])
-	enc.PutFixedOctetString(eutraInt[:])
+	for _, algs := range [][2]byte{nrEnc, nrInt, eutraEnc, eutraInt} {
+		enc.PutBool(false) // Algorithm BIT STRING SIZE(16,...) root marker.
+		enc.PutFixedOctetString(algs[:])
+	}
 	return enc.Bytes()
 }
 
@@ -726,6 +726,15 @@ func DecodeUESecurityCapabilities(data []byte) (nrEnc, nrInt, eutraEnc, eutraInt
 		return
 	}
 	for _, dst := range []*[2]byte{&nrEnc, &nrInt, &eutraEnc, &eutraInt} {
+		var extended bool
+		extended, err = dec.GetBool()
+		if err != nil {
+			return
+		}
+		if extended {
+			err = fmt.Errorf("extended UE security capability bit strings are not supported")
+			return
+		}
 		var b []byte
 		b, err = dec.GetFixedOctetString(2)
 		if err != nil {

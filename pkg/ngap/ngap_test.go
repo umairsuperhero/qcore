@@ -184,6 +184,17 @@ func TestUESecurityCapabilitiesRoundTrip(t *testing.T) {
 	assert.Equal(t, eutraInt, gotEUTRAInt)
 }
 
+func TestUESecurityCapabilitiesAPERGolden(t *testing.T) {
+	encoded := EncodeUESecurityCapabilities(
+		[2]byte{0xF0, 0xF0},
+		[2]byte{0xF0, 0xF0},
+		[2]byte{0x00, 0x00},
+		[2]byte{0x00, 0x00},
+	)
+
+	assert.Equal(t, "1e1e0f0f0000000000", hex.EncodeToString(encoded))
+}
+
 func TestAMFUENGAPIDRoundTrip(t *testing.T) {
 	for _, id := range []uint64{0, 1, 255, 256, 65535, 65536, 1<<32 - 1, 1099511627775} {
 		encoded, err := EncodeAMFUENGAPID(id)
@@ -410,14 +421,13 @@ func TestInitialContextSetupUERANSIMRejectedFixture(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ies, 7)
 	assert.Equal(t, "0000003b9aca0000003b9aca00", hex.EncodeToString(requireIE(t, ies, IEIDUEAggMaxBitRate).Value))
+	assert.Equal(t, "3c3c3c3c0000000000", hex.EncodeToString(requireIE(t, ies, IEIDUESecurityCapabilities).Value))
 
 	amfID, err := DecodeAMFUENGAPID(requireIE(t, ies, IEIDAMFUENGAPID).Value)
 	require.NoError(t, err)
 	ranID, err := DecodeRANUENGAPID(requireIE(t, ies, IEIDRANUENGAPID).Value)
 	require.NoError(t, err)
 	guami, err := DecodeGUAMI(requireIE(t, ies, IEIDGUAMI).Value)
-	require.NoError(t, err)
-	nrEnc, nrInt, eutraEnc, eutraInt, err := DecodeUESecurityCapabilities(requireIE(t, ies, IEIDUESecurityCapabilities).Value)
 	require.NoError(t, err)
 	nasDec := NewPERDecoder(requireIE(t, ies, IEIDNASPDU).Value)
 	nasPDU, err := nasDec.GetOctetString()
@@ -438,10 +448,10 @@ func TestInitialContextSetupUERANSIMRejectedFixture(t *testing.T) {
 		SecurityKey:                 securityKey,
 		NASPDU:                      nasPDU,
 	}
-	req.UESecurityCapabilities.NREncAlgs = nrEnc
-	req.UESecurityCapabilities.NRIntAlgs = nrInt
-	req.UESecurityCapabilities.EUTRAEncAlgs = eutraEnc
-	req.UESecurityCapabilities.EUTRAIntAlgs = eutraInt
+	req.UESecurityCapabilities.NREncAlgs = [2]byte{0xF0, 0xF0}
+	req.UESecurityCapabilities.NRIntAlgs = [2]byte{0xF0, 0xF0}
+	req.UESecurityCapabilities.EUTRAEncAlgs = [2]byte{0x00, 0x00}
+	req.UESecurityCapabilities.EUTRAIntAlgs = [2]byte{0x00, 0x00}
 
 	reencoded, err := EncodeInitialContextSetupRequest(req)
 	require.NoError(t, err)
@@ -452,6 +462,7 @@ func TestInitialContextSetupUERANSIMRejectedFixture(t *testing.T) {
 	reencodedIEs, err := DecodeIEContainer(reencodedPDU.Value)
 	require.NoError(t, err)
 	assert.Equal(t, "0c3b9aca00303b9aca00", hex.EncodeToString(requireIE(t, reencodedIEs, IEIDUEAggMaxBitRate).Value))
+	assert.Equal(t, "1e1e0f0f0000000000", hex.EncodeToString(requireIE(t, reencodedIEs, IEIDUESecurityCapabilities).Value))
 }
 
 func TestDownlinkNASTransportAPERGolden(t *testing.T) {
