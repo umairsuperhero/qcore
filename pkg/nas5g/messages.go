@@ -528,10 +528,11 @@ func EncodeRegistrationAccept(msg *RegistrationAccept) []byte {
 	// 5GS registration result (LV, 1 byte value)
 	body = append(body, 0x01, msg.RegistrationResult&0x07)
 
-	// Assigned 5G-GUTI (optional, TLV, IEI=0x77)
+	// Assigned 5G-GUTI (optional, TLV-E, IEI=0x77)
 	if msg.AssignedGUTI != nil {
 		gutiBytes := Encode5GGUTI(*msg.AssignedGUTI)
-		body = append(body, 0x77, uint8(len(gutiBytes)))
+		// 5GS mobile identity is a type-6 IE, so its length is two octets.
+		body = append(body, 0x77, uint8(len(gutiBytes)>>8), uint8(len(gutiBytes)))
 		body = append(body, gutiBytes...)
 	}
 
@@ -569,22 +570,39 @@ func DecodeRegistrationAccept(data []byte) (*RegistrationAccept, error) {
 	}
 	data = data[resLen:]
 
-	// Optional TLV IEs
-	for len(data) >= 2 {
+	// Optional TLV IEs. Most local IEs are type-4 (one-octet length), but
+	// assigned 5G-GUTI / 5GS mobile identity (IEI 0x77) is type-6.
+	for len(data) > 0 {
 		iei := data[0]
-		l := int(data[1])
-		data = data[2:]
+		data = data[1:]
+		if iei == 0x77 {
+			if len(data) < 2 {
+				return nil, fmt.Errorf("nas5g: IE 0x%02X length truncated", iei)
+			}
+			l := int(data[0])<<8 | int(data[1])
+			data = data[2:]
+			if len(data) < l {
+				return nil, fmt.Errorf("nas5g: IE 0x%02X truncated", iei)
+			}
+			v := data[:l]
+			data = data[l:]
+			g, err := Decode5GGUTI(v)
+			if err == nil {
+				msg.AssignedGUTI = &g
+			}
+			continue
+		}
+		if len(data) < 1 {
+			return nil, fmt.Errorf("nas5g: IE 0x%02X length truncated", iei)
+		}
+		l := int(data[0])
+		data = data[1:]
 		if len(data) < l {
 			return nil, fmt.Errorf("nas5g: IE 0x%02X truncated", iei)
 		}
 		v := data[:l]
 		data = data[l:]
 		switch iei {
-		case 0x77:
-			g, err := Decode5GGUTI(v)
-			if err == nil {
-				msg.AssignedGUTI = &g
-			}
 		case 0x15:
 			msg.AllowedNSSAI = decodeNSSAIEntries(v)
 		case 0x54:

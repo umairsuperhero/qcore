@@ -260,6 +260,35 @@ func TestRegistrationAcceptRoundTrip(t *testing.T) {
 	assert.Equal(t, uint8(0x01), got.AllowedNSSAI[0].SST)
 }
 
+func TestRegistrationAcceptUERANSIMMobileIdentityLengthGolden(t *testing.T) {
+	guti := GUTI5G{
+		PLMN:        [3]byte{0x00, 0xF1, 0x10},
+		AMFRegionID: 0x01,
+		AMFSetID:    0x01,
+		AMFPointer:  0x00,
+		TMSI5G:      [4]byte{0x00, 0x00, 0x00, 0x01},
+	}
+	msg := &RegistrationAccept{
+		RegistrationResult: 0x01,
+		AssignedGUTI:       &guti,
+		AllowedNSSAI:       []NSSAIEntry{{SST: 0x01}},
+	}
+
+	encoded := EncodeRegistrationAccept(msg)
+	assert.Equal(t,
+		"7e0042010177000bf200f1100100400000000115020101",
+		hex.EncodeToString(encoded),
+	)
+
+	// Captured before this fix from UERANSIM run 27070827795. UERANSIM aborted
+	// with "Bad constructed NAS message" because IEI 0x77 used a one-octet
+	// length (0x0b) even though 5GS mobile identity is an IE6 two-octet length.
+	rejected, err := hex.DecodeString("7e00420101770bf200f1100100400000000115020101")
+	require.NoError(t, err)
+	_, err = Decode(rejected)
+	require.Error(t, err)
+}
+
 // --- Registration Complete --------------------------------------------------
 
 func TestRegistrationCompleteRoundTrip(t *testing.T) {

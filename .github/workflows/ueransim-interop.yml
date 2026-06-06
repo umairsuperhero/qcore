@@ -75,7 +75,7 @@ jobs:
             echo "$UE_LOGS" | grep -qi  "Security Mode Command integrity check failed" && INTEGRITY_FAILED=1
             echo "$GNB_LOGS" | grep -qiE "APER decoding failed|transfer-syntax-error" && APER_FAILED=1
             echo "$UE_LOGS" | grep -qiE "Registration is successful|MM-REGISTERED|PDU Session establishment is successful" && REGISTERED=1
-            UE_CID="$($COMPOSE ps -q ueransim-ue 2>/dev/null || true)"
+            UE_CID="$($COMPOSE ps -aq ueransim-ue 2>/dev/null || true)"
             if [ -n "$UE_CID" ]; then
               UE_STATE="$(docker inspect "$UE_CID" --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}}' 2>/dev/null || true)"
               case "$UE_STATE" in
@@ -117,8 +117,8 @@ jobs:
         run: |
           mkdir -p artifacts/ueransim
           echo "===== compose ps ====="; $COMPOSE ps -a | tee artifacts/ueransim/compose-ps.txt || true
-          UE_CID="$($COMPOSE ps -q ueransim-ue 2>/dev/null || true)"
-          GNB_CID="$($COMPOSE ps -q ueransim-gnb 2>/dev/null || true)"
+          UE_CID="$($COMPOSE ps -aq ueransim-ue 2>/dev/null || true)"
+          GNB_CID="$($COMPOSE ps -aq ueransim-gnb 2>/dev/null || true)"
           if [ -n "$UE_CID" ]; then
             docker inspect "$UE_CID" > artifacts/ueransim/ueransim-ue.inspect.json || true
             docker inspect "$UE_CID" --format '{{json .State}}' | tee artifacts/ueransim/ueransim-ue.state.json || true
