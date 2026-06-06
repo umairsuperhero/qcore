@@ -379,6 +379,81 @@ func TestRANUENGAPIDAPERGolden(t *testing.T) {
 	}
 }
 
+func TestUEAggregateMaximumBitRateAPERGolden(t *testing.T) {
+	encoded, err := EncodeUEAggregateMaximumBitRate(1000000000, 1000000000)
+	require.NoError(t, err)
+
+	// UERANSIM's generated BitRate descriptor is INTEGER (0..4000000000000,...).
+	// For APER this includes the root extension bit plus a byte-count prefix.
+	assert.Equal(t, "0c3b9aca00303b9aca00", hex.EncodeToString(encoded))
+
+	dl, ul, err := DecodeUEAggregateMaximumBitRate(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1000000000), dl)
+	assert.Equal(t, uint64(1000000000), ul)
+}
+
+func TestInitialContextSetupUERANSIMRejectedFixture(t *testing.T) {
+	// Captured by the ueransim-interop workflow on 2026-06-06 from the AMF
+	// immediately before UERANSIM reported protocol/transfer-syntax-error.
+	const rejectedHex = "000e007e000007000a00020001005500020001006e000d0000003b9aca0000003b9aca00001c00070000f110010040007700093c3c3c3c0000000000005e0020daf16094ca7e2f316ab69347a0dca70c887e76f83cde06607ed127e5f0c76e0e0026401e1d7e01ecba4c59017e00420101770bf200f1100100400000000115020101"
+
+	rawPDU, err := hex.DecodeString(rejectedHex)
+	require.NoError(t, err)
+
+	pdu, err := DecodePDU(rawPDU)
+	require.NoError(t, err)
+	assert.Equal(t, PDUInitiatingMessage, pdu.Type)
+	assert.Equal(t, ProcInitialContextSetup, pdu.ProcedureCode)
+
+	ies, err := DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	require.Len(t, ies, 7)
+	assert.Equal(t, "0000003b9aca0000003b9aca00", hex.EncodeToString(requireIE(t, ies, IEIDUEAggMaxBitRate).Value))
+
+	amfID, err := DecodeAMFUENGAPID(requireIE(t, ies, IEIDAMFUENGAPID).Value)
+	require.NoError(t, err)
+	ranID, err := DecodeRANUENGAPID(requireIE(t, ies, IEIDRANUENGAPID).Value)
+	require.NoError(t, err)
+	guami, err := DecodeGUAMI(requireIE(t, ies, IEIDGUAMI).Value)
+	require.NoError(t, err)
+	nrEnc, nrInt, eutraEnc, eutraInt, err := DecodeUESecurityCapabilities(requireIE(t, ies, IEIDUESecurityCapabilities).Value)
+	require.NoError(t, err)
+	nasDec := NewPERDecoder(requireIE(t, ies, IEIDNASPDU).Value)
+	nasPDU, err := nasDec.GetOctetString()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(1), amfID)
+	assert.Equal(t, uint64(1), ranID)
+	assert.Len(t, nasPDU, 29)
+
+	var securityKey [32]byte
+	copy(securityKey[:], requireIE(t, ies, IEIDSecurityKey).Value)
+	req := &InitialContextSetupRequest{
+		AMFUENGAPID:                 amfID,
+		RANUENGAPID:                 ranID,
+		UEAggregateMaximumBitRateDL: 1000000000,
+		UEAggregateMaximumBitRateUL: 1000000000,
+		GUAMI:                       guami,
+		SecurityKey:                 securityKey,
+		NASPDU:                      nasPDU,
+	}
+	req.UESecurityCapabilities.NREncAlgs = nrEnc
+	req.UESecurityCapabilities.NRIntAlgs = nrInt
+	req.UESecurityCapabilities.EUTRAEncAlgs = eutraEnc
+	req.UESecurityCapabilities.EUTRAIntAlgs = eutraInt
+
+	reencoded, err := EncodeInitialContextSetupRequest(req)
+	require.NoError(t, err)
+	assert.NotEqual(t, rejectedHex, hex.EncodeToString(reencoded))
+
+	reencodedPDU, err := DecodePDU(reencoded)
+	require.NoError(t, err)
+	reencodedIEs, err := DecodeIEContainer(reencodedPDU.Value)
+	require.NoError(t, err)
+	assert.Equal(t, "0c3b9aca00303b9aca00", hex.EncodeToString(requireIE(t, reencodedIEs, IEIDUEAggMaxBitRate).Value))
+}
+
 func TestDownlinkNASTransportAPERGolden(t *testing.T) {
 	rawPDU, err := EncodeDownlinkNASTransport(&DownlinkNASTransport{
 		AMFUENGAPID: 1,
@@ -391,6 +466,17 @@ func TestDownlinkNASTransportAPERGolden(t *testing.T) {
 		"00044019000003000a0002000100550002002a00260006057e0056aabb",
 		hex.EncodeToString(rawPDU),
 	)
+}
+
+func requireIE(t *testing.T, ies []ProtocolIE, id ProtocolIEID) ProtocolIE {
+	t.Helper()
+	for _, ie := range ies {
+		if ie.ID == id {
+			return ie
+		}
+	}
+	t.Fatalf("missing IE %d", id)
+	return ProtocolIE{}
 }
 
 func TestUplinkNASTransportRoundTrip(t *testing.T) {
