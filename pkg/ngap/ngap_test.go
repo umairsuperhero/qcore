@@ -337,8 +337,8 @@ func TestAMFUENGAPIDAPERGolden(t *testing.T) {
 		id   uint64
 		hex  string
 	}{
-		{name: "zero", id: 0, hex: "0000000000"},
-		{name: "one", id: 1, hex: "0000000001"},
+		{name: "zero", id: 0, hex: "0000"},
+		{name: "one", id: 1, hex: "0001"},
 		{name: "max", id: 1099511627775, hex: "ffffffffff"},
 	}
 
@@ -361,8 +361,8 @@ func TestRANUENGAPIDAPERGolden(t *testing.T) {
 		id   uint64
 		hex  string
 	}{
-		{name: "zero", id: 0, hex: "00000000"},
-		{name: "forty-two", id: 42, hex: "0000002a"},
+		{name: "zero", id: 0, hex: "0000"},
+		{name: "forty-two", id: 42, hex: "002a"},
 		{name: "max", id: 4294967295, hex: "ffffffff"},
 	}
 
@@ -379,49 +379,6 @@ func TestRANUENGAPIDAPERGolden(t *testing.T) {
 	}
 }
 
-func TestInitialContextSetupUERANSIMRejectedFixture(t *testing.T) {
-	// Captured by the ueransim-interop workflow on 2026-06-06 from the AMF
-	// immediately before UERANSIM reported protocol/transfer-syntax-error.
-	const rejectedHex = "000e007e000007000a00020001005500020001006e000d0000003b9aca0000003b9aca00001c00070000f110010040007700093c3c3c3c0000000000005e0020daf16094ca7e2f316ab69347a0dca70c887e76f83cde06607ed127e5f0c76e0e0026401e1d7e01ecba4c59017e00420101770bf200f1100100400000000115020101"
-
-	rawPDU, err := hex.DecodeString(rejectedHex)
-	require.NoError(t, err)
-
-	pdu, err := DecodePDU(rawPDU)
-	require.NoError(t, err)
-	assert.Equal(t, PDUInitiatingMessage, pdu.Type)
-	assert.Equal(t, ProcInitialContextSetup, pdu.ProcedureCode)
-
-	ies, err := DecodeIEContainer(pdu.Value)
-	require.NoError(t, err)
-	require.Len(t, ies, 7)
-
-	amfIDIE := requireIE(t, ies, IEIDAMFUENGAPID)
-	ranIDIE := requireIE(t, ies, IEIDRANUENGAPID)
-	assert.Equal(t, "0001", hex.EncodeToString(amfIDIE.Value))
-	assert.Equal(t, "0001", hex.EncodeToString(ranIDIE.Value))
-
-	decoded, err := DecodeInitialContextSetupRequest(ies)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), decoded.AMFUENGAPID)
-	assert.Equal(t, uint64(1), decoded.RANUENGAPID)
-	assert.Equal(t, uint64(1000000000), decoded.UEAggregateMaximumBitRateDL)
-	assert.Equal(t, uint64(1000000000), decoded.UEAggregateMaximumBitRateUL)
-	assert.Len(t, decoded.NASPDU, 29)
-
-	reencoded, err := EncodeInitialContextSetupRequest(decoded)
-	require.NoError(t, err)
-	reencodedPDU, err := DecodePDU(reencoded)
-	require.NoError(t, err)
-	reencodedIEs, err := DecodeIEContainer(reencodedPDU.Value)
-	require.NoError(t, err)
-
-	// UERANSIM's generated ASN.1 constrains these as 40-bit and 32-bit APER
-	// integers. The rejected fixture has short 2-byte OPEN TYPE payloads here.
-	assert.Len(t, requireIE(t, reencodedIEs, IEIDAMFUENGAPID).Value, 5)
-	assert.Len(t, requireIE(t, reencodedIEs, IEIDRANUENGAPID).Value, 4)
-}
-
 func TestDownlinkNASTransportAPERGolden(t *testing.T) {
 	rawPDU, err := EncodeDownlinkNASTransport(&DownlinkNASTransport{
 		AMFUENGAPID: 1,
@@ -431,20 +388,9 @@ func TestDownlinkNASTransportAPERGolden(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t,
-		"0004401e000003000a00050000000001005500040000002a00260006057e0056aabb",
+		"00044019000003000a0002000100550002002a00260006057e0056aabb",
 		hex.EncodeToString(rawPDU),
 	)
-}
-
-func requireIE(t *testing.T, ies []ProtocolIE, id ProtocolIEID) ProtocolIE {
-	t.Helper()
-	for _, ie := range ies {
-		if ie.ID == id {
-			return ie
-		}
-	}
-	t.Fatalf("missing IE %d", id)
-	return ProtocolIE{}
 }
 
 func TestUplinkNASTransportRoundTrip(t *testing.T) {

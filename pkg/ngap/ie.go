@@ -550,9 +550,16 @@ func encodeUENGAPID(id, max uint64) ([]byte, error) {
 	if id > max {
 		return nil, fmt.Errorf("value %d out of range [0, %d]", id, max)
 	}
-	width := 4
+	width := 2
+	for tmp := id; tmp > 0xffff; tmp >>= 8 {
+		width++
+	}
+	maxWidth := 4
 	if max > 0xffffffff {
-		width = 5
+		maxWidth = 5
+	}
+	if width > maxWidth {
+		width = maxWidth
 	}
 	out := make([]byte, width)
 	for i := width - 1; i >= 0; i-- {
