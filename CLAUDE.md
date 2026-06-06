@@ -16,7 +16,7 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-01)
+## Current baseline (2026-06-05)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -35,12 +35,22 @@ registration, verified by `TestC1_RegistrationEventTrace` (PR #25) — are also 
 The dashboard experience layer (gNB-connection hero screen / Gate 1, and the animated
 live signaling-trace view) has shipped.
 
+**Status update (2026-06-05 integration sweep):** The dashboard live trace is now
+**un-mocked** — it runs on the real `/api/events/stream` SSE feed and calls the real
+diagnostic engine on live failures (Lane 1; build migrated esbuild→Vite). **B2 (offline
+embedded SLM) code is merged** — `pkg/ai` local provider + `make up-ai` llama.cpp sidecar
+(catalog still runs first); only live model-serve validation (real GGUF pull / air-gapped)
+remains. Lanes 1–4 + the T10 progress branch are integrated to main; full Go
+build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
+
 **The remaining critical-path streams are independent — run in parallel:**
   - **C2 (T8) → C3 (T9) → T10:** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view), then
-    **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline.
-  - **B2 — embedded offline SLM:** ship a local model so the AI explains failures with
-    no cloud and no key (charter §9.3 / D5). The long pole of the AI moat; independent.
+    **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline. **T10 is now
+    partially reproduced** (a real UERANSIM replay reaches AUSF confirmation) **but
+    blocked at Security Mode Command integrity** — see `docs/ueransim-compat.md`.
+  - **B2 — embedded offline SLM:** code merged (see status update above); only live
+    model-serve validation remains (charter §9.3 / D5).
 
 **Until T10 lands, the 5G SA track is NOT "shipped"** and may not claim real-RAN/UERANSIM
 compatibility. See `docs/audit-v1.0.md` for the living audit;

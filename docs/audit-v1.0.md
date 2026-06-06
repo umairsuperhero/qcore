@@ -2,7 +2,7 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.6 — 2026-06-04
+**Current revision:** v1.7 — 2026-06-05
 **Auditor of record this revision:** build-time evaluation (full `go build` + `go vet`
 + `go test ./...` and `go test -race ./...` in a `golang:1.23` container; dashboard
 `npm run build` + `npx tsc --noEmit`).
@@ -13,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.7 | 2026-06-05 | **Post-antigravity integration sweep.** Audited the multi-agent (antigravity + codex) output and integrated it to main: Lane 1 (live dashboard un-mocked onto the real `/api/events/stream` SSE feed + real-engine diagnostics; esbuild→Vite; collapsed dual EventSource into one zustand store), Lane 2 (CI now builds all 13 binaries + `go vet`), Lane 4 (dark-theme consistency), and the T10 progress branch (honest UERANSIM replay docs + NGAP/NAS/SCTP fixes). Fixed a `tsc --noEmit` blocker on Lane 1 (dead `hasError`). Reconciled B2 status across README/wiki/CLAUDE — B2 code is merged + unit-tested green, live model-serve still pending (the docs previously under-claimed it as "planned"). Verified on the integrated tree: full `go build` / `go vet` / `go test -race ./...` green in `golang:1.23`; dashboard `tsc --noEmit` + `vite build` green. T10 remains blocked at Security Mode Command integrity (unchanged from v1.6). |
 | v1.6 | 2026-06-04 | **Grounded T10 audit/replay.** Reproduced UERANSIM over native SCTP from clean compose. The original APER `transfer-syntax-error` at `DownlinkNASTransport` is fixed by UE-NGAP-ID and NAS Authentication Request encoding corrections; UERANSIM now reaches Authentication Response and AUSF confirmation. T10 remains **blocked**, not shipped: current external blocker is UERANSIM rejecting the Security Mode Command with `Security Mode Command integrity check failed`. Full Go build/vet/test, race, and dashboard build/tsc are green. |
 | v1.5 | 2026-06-01 | **C1 5G telemetry landed (T7).** AUSF, UDM, SMF, UPF now emit journey-correlated Phase-A events at every key signaling step (auth request/vector/result, auth-data generation, PDU session, PFCP association/session). A 5G registration produces one correlated trace spanning AMF→AUSF→UDM with a shared `journey_id`, verified by `TestC1_RegistrationEventTrace`. Event schema documented in `docs/phase-a-event-model.md`. Full suite green. **Next: C2 (5G simulator UX) / B2 (offline SLM).** |
 | v1.4 | 2026-06-01 | **B1 catalog depth landed + dashboard experience layer.** Diagnostic catalog deepened to 13 typed rules spanning the ≥9 §9.1 cause categories, 4G + 5G (PR #24). Dashboard gNB-connection hero screen (Gate 1 "is your gNB connected?", dark-first, latch-flip animation) and live signaling-trace view shipped. SBI `Server.Serve`/`Shutdown` data race fixed (was failing `go test -race`). Full suite green under `-race`. **Next gates: C1 (5G telemetry) on the 5G-leading path; B2 (offline SLM) on the AI path.** |

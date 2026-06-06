@@ -74,7 +74,7 @@ jobs:
   # test` under sudo preserving PATH so the tool-cache Go binary is
   # reachable. This is the scaffolding the 5G-SA pivot (see
   # docs/rfc/0001-5g-sba-pivot.md) depends on for UERANSIM and NGAP
-  # integration once native SCTP lands.
+  # integration now that native SCTP has landed.
   linux-integration:
     runs-on: ubuntu-latest
     needs: test
@@ -99,14 +99,17 @@ jobs:
             -run 'TestTUNEgress_' \
             ./pkg/spgw/
 
-      # UERANSIM-driven smoke is intentionally not wired yet: the QCore MME
-      # currently uses a length-prefixed TCP fallback instead of native SCTP,
-      # so a real UERANSIM gNB cannot attach. Once pion/sctp is wired in,
-      # this step should: install UERANSIM, point it at qcore-mme bound on
-      # 127.0.0.1:36412/sctp, run a scripted attach, and assert the UE
-      # reaches REGISTERED in the /api/v1/ues endpoint. Tracking this as
-      # a TODO in docs/rfc/0001-5g-sba-pivot.md Phase 0.
-      - name: UERANSIM smoke (placeholder — blocked on native SCTP)
+      # UERANSIM-driven smoke is intentionally not wired into CI yet. Native SCTP
+      # has landed (pkg/sctp/sctp_linux.go — raw Linux syscalls via
+      # golang.org/x/sys/unix, no CGO, no pion), so the transport is no longer the
+      # blocker. A manual UERANSIM replay against the AMF (NGAP on 38412,
+      # QCORE_AMF_SCTP_MODE=sctp) now reaches Authentication Response / AUSF
+      # confirmation and is currently blocked at Security Mode Command integrity
+      # verification (see docs/ueransim-compat.md). Wiring it into CI also needs a
+      # Linux runner with kernel SCTP + /dev/net/tun. Tracked as T10 in
+      # docs/v1-gap-closure-plan.md.
+      - name: UERANSIM smoke (placeholder — T10 blocked at SMC integrity)
         run: |
-          echo "SKIPPED: UERANSIM smoke is blocked on native SCTP (pion/sctp)."
-          echo "See docs/rfc/0001-5g-sba-pivot.md Phase 0."
+          echo "SKIPPED: UERANSIM 5G smoke is not wired into CI (T10)."
+          echo "Native SCTP landed; replay reaches AUSF confirm, blocked at SMC integrity."
+          echo "See docs/ueransim-compat.md and docs/v1-gap-closure-plan.md (T10)."
