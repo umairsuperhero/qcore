@@ -1,15 +1,17 @@
 # UERANSIM Compatibility (5G SA)
 
-**Status: UERANSIM initial registration + AMF-to-SMF handoff pass; T10 is not shipped.**
+**Status: UERANSIM registration + PDU session establishment (control plane) pass;
+data-plane/ping is the remaining T10 gate — not shipped.**
 
 As of 2026-06-07, QCore has been replayed against UERANSIM v3.2.8 in Docker
-Compose over native SCTP on GitHub Actions cloud Linux. The replay now reaches
-full initial registration and forwards the UE's PDU Session Establishment Request
-to SMF, which returns `201 Created` for Create SM Context.
+Compose over native SCTP on GitHub Actions cloud Linux. The replay now completes
+the **5G control plane end-to-end**: full initial registration, then the UE's PDU
+Session Establishment Request → SMF `201 Created` → a protected DL NAS Transport
+carrying a PDU Session Establishment Accept → UERANSIM logging `PDU Session
+establishment is successful PSI[1]` (the UE stays running, no crash).
 
-This is a real milestone, but it is not a full T10 ship claim. QCore has not yet
-delivered a PDU Session Establishment Accept back to UERANSIM, and no external
-UERANSIM PDU-session completion or data-plane ping is proven.
+This is a real milestone, but it is not a full T10 ship claim: **no external
+data-plane ping through UPF is proven yet** (the CI UPF still uses DummyEgress).
 
 ## Verified In Replay
 
@@ -32,29 +34,39 @@ UERANSIM PDU-session completion or data-plane ping is proven.
   `amf: Registration Complete — UE fully registered`.
 - UERANSIM sends a PDU Session Establishment Request.
 - AMF decodes the protected UL NAS Transport and forwards Create SM Context to SMF.
-- SMF allocates `10.45.0.1` and returns HTTP `201` on
+- SMF allocates the UE IPv4 and returns HTTP `201` on
   `/nsmf-pdusession/v1/sm-contexts`.
+- AMF sends a protected DL NAS Transport carrying a PDU Session Establishment Accept.
+- UERANSIM UE logs `PDU Session Establishment Accept received` and
+  `PDU Session establishment is successful PSI[1]` (UE stays running, no crash).
+
+## Confirmed: PDU Session Establishment Accept (control plane)
+
+After SMF returns `201`, the AMF now relays a 5GSM PDU Session Establishment
+Accept to the UE over a protected DL NAS Transport (`pkg/amf/nas.go`;
+`nas5g.EncodePDUSessionEstablishmentAccept` + `nas5g.EncodeDLNASTransport`). The
+Accept carries the mandatory IEs UERANSIM requires — Selected PDU session type +
+SSC mode, Authorized QoS rules (default match-all rule), Session-AMBR — plus the
+PDU address IE with the SMF-assigned IPv4. Bytes pinned by
+`TestEncodePDUSessionEstablishmentAcceptGolden`.
+
+Confirmed by GitHub Actions run `27108387027`:
+
+```text
+amf: sent PDU Session Establishment Accept
+PDU Session Establishment Accept received
+PDU Session establishment is successful PSI[1]
+```
 
 ## Current T10 Gap
 
-The next missing external step is the network response to the UE's PDU Session
-Establishment Request. Current AMF behavior creates the SMF context and stops; it
-does not yet send a protected DL NAS Transport carrying a PDU Session
-Establishment Accept back to UERANSIM.
+The 5G **control plane** now completes end-to-end against real UERANSIM, through
+PDU session establishment. The remaining gate is the **user/data plane**: an
+actual packet (e.g. ping) from the UE through the GTP-U tunnel and UPF to a peer,
+proven on a Linux/TUN-capable runtime (the CI UPF still uses `DummyEgress`).
 
-```text
-Registration accept received
-UE switches to state [MM-REGISTERED/NORMAL-SERVICE]
-Initial Registration is successful
-Sending PDU Session Establishment Request
-amf: UL NAS Transport — forwarding PDU session to SMF
-amf: SMF created PDU session
-POST /nsmf-pdusession/v1/sm-contexts status=201
-```
-
-Do not claim "UERANSIM compatible", "5G shipped", completed PDU session, or
-data-plane success until UERANSIM logs PDU-session establishment and a Linux
-TUN-capable run proves traffic through UPF.
+Do not claim "UERANSIM compatible", "5G shipped", or data-plane success until a
+Linux TUN-capable run proves traffic through UPF.
 
 ## Confirmed Fix: Registration Accept 5G-GUTI IE6
 
