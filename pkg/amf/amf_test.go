@@ -1110,3 +1110,69 @@ func TestRegistration_DistinguishUnknownVsMAC(t *testing.T) {
 	_ = hex.EncodeToString(nil)
 	_ = ident.EncodePLMN("001", "01")
 }
+
+// --- PDU Session Accept: DL NAS count + security header (audit pt 4) ---------
+
+// captureAssoc is a minimal sctp.Association stub that records writes, so we can
+// drive sendPDUSessionEstablishmentAccept without a live SCTP connection.
+type captureAssoc struct{ writes [][]byte }
+
+func (c *captureAssoc) Read() ([]byte, uint16, error) { return nil, 0, nil }
+func (c *captureAssoc) Write(d []byte, _ uint16) error {
+	c.writes = append(c.writes, append([]byte(nil), d...))
+	return nil
+}
+func (c *captureAssoc) Close() error         { return nil }
+func (c *captureAssoc) RemoteAddr() net.Addr { return nil }
+func (c *captureAssoc) LocalAddr() net.Addr  { return nil }
+
+// TestSendPDUSessionAccept_DLCountAndSecurityHeader pins the post-SMC downlink
+// behavior for the PDU Session Establishment Accept. With NEA0 (null ciphering)
+// negotiated, the network uses integrity-only protection — security header 0x01,
+// NOT integrity+ciphered (0x02). UERANSIM accepts 0x01 with NEA0 (validated
+// end-to-end by ueransim-interop run 27108387027: "PDU Session establishment is
+// successful"), so 0x02 is not required. The DL NAS count is used for the SN
+// octet and must advance by one after the message.
+func TestSendPDUSessionAccept_DLCountAndSecurityHeader(t *testing.T) {
+	s := &Service{} // cfg.TraceNGAPHex defaults false → traceNGAP is a no-op
+	cap := &captureAssoc{}
+	gnb := &gNBSession{conn: cap, amf: s, log: logger.New("error", "text")}
+
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = 0x11
+	}
+	ue := &UEContext{
+		AMFUENGAPID: 1,
+		RANUENGAPID: 1,
+		gNB:         gnb,
+		KNASint:     kNASint,
+		DLCount:     2, // post-registration: SMC used count 0, Registration Accept used 1
+	}
+
+	require.NoError(t, s.sendPDUSessionEstablishmentAccept(ue, 5, 1, [4]byte{10, 45, 0, 2}))
+
+	assert.Equal(t, uint32(3), ue.DLCount, "DL NAS count advances by one after the Accept")
+	require.Len(t, cap.writes, 1, "exactly one DownlinkNASTransport sent")
+
+	pdu, err := ngap.DecodePDU(cap.writes[0])
+	require.NoError(t, err)
+	ies, err := ngap.DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	dl, err := ngap.DecodeDownlinkNASTransport(ies)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(dl.NASPDU), 8)
+	assert.Equal(t, uint8(0x7E), dl.NASPDU[0], "5GMM EPD")
+	assert.Equal(t, uint8(0x01), dl.NASPDU[1], "integrity-only (NEA0): 0x01, not 0x02 (ciphered)")
+	assert.Equal(t, uint8(2), dl.NASPDU[6], "SN octet = DL NAS count used (2), before increment")
+}
+
+// TestSendPDUSessionAccept_RejectsWithoutKey guards the precondition: the AMF must
+// never emit an unprotected PDU Session Accept if the NAS security context is absent.
+func TestSendPDUSessionAccept_RejectsWithoutKey(t *testing.T) {
+	s := &Service{}
+	gnb := &gNBSession{conn: &captureAssoc{}, amf: s, log: logger.New("error", "text")}
+	ue := &UEContext{gNB: gnb, KNASint: nil, DLCount: 2}
+	require.Error(t, s.sendPDUSessionEstablishmentAccept(ue, 5, 1, [4]byte{10, 45, 0, 2}),
+		"must refuse to send without a NAS integrity key")
+}
