@@ -752,16 +752,16 @@ type ULNASTransportPayload struct {
 func EncodeULNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
 	b := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeULNASTransport})
 
-	// Payload container type (1 byte): upper nibble = N1 SM (0x1), lower = spare
-	b = append(b, 0x11)
+	// Payload container type (IE1): IEI is 0, value lives in the low nibble.
+	b = append(b, 0x01)
 
 	// Payload container length (2 bytes big-endian) + container
 	clen := len(n1SmContainer)
 	b = append(b, uint8(clen>>8), uint8(clen))
 	b = append(b, n1SmContainer...)
 
-	// Optional IE: PDU Session ID (IEI = 0x12, length = 1, value = pduSessionID)
-	b = append(b, 0x12, 0x01, pduSessionID)
+	// Optional IE: PDU Session ID is an IE3 (IEI + one-octet value).
+	b = append(b, 0x12, pduSessionID)
 	return b
 }
 
@@ -772,8 +772,8 @@ func DecodeULNASTransport(body []byte) (*ULNASTransportPayload, error) {
 	if len(body) < 4 {
 		return nil, fmt.Errorf("nas5g: UL NAS Transport body too short: %d", len(body))
 	}
-	// Payload container type (1 byte, upper nibble)
-	containerType := (body[0] >> 4) & 0x0F
+	// Payload container type (IE1): IEI is 0, value lives in the low nibble.
+	containerType := body[0] & 0x0F
 	if containerType != 0x01 { // 0x01 = N1 SM info
 		return nil, fmt.Errorf("nas5g: unexpected payload container type 0x%02X", containerType)
 	}
@@ -785,23 +785,24 @@ func DecodeULNASTransport(body []byte) (*ULNASTransportPayload, error) {
 	payload := &ULNASTransportPayload{
 		PayloadContainer: body[3 : 3+clen],
 	}
-	// Scan optional TLV IEs after the container.
+	// Scan optional IEs after the container. We only need PDU Session ID for the
+	// AMF→SMF request; leave the rest as skipped payload.
 	pos := 3 + clen
 	for pos < len(body) {
 		iei := body[pos]
 		pos++
 		switch iei {
-		case 0x12: // PDU Session ID
-			if pos >= len(body) {
-				break
-			}
-			ieLen := int(body[pos])
-			pos++
-			if ieLen >= 1 && pos < len(body) {
+		case 0x12: // PDU Session ID, IE3
+			if pos < len(body) {
 				payload.PDUSessionID = body[pos]
+				pos++
 			}
-			pos += ieLen
 		default:
+			// Optional half-octet IEIs are encoded as IEI in the high nibble and
+			// value in the low nibble, with no following length.
+			if iei>>4 == 0x08 {
+				continue
+			}
 			// Unknown IE — try to skip (1-byte length follows for most IEs)
 			if pos < len(body) {
 				pos += int(body[pos]) + 1

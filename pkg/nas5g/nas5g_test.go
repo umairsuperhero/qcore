@@ -300,6 +300,24 @@ func TestRegistrationCompleteRoundTrip(t *testing.T) {
 	assert.Equal(t, MsgTypeRegistrationComplete, msg.Header.MessageType)
 }
 
+// --- UL NAS Transport -------------------------------------------------------
+
+func TestULNASTransportUERANSIMFixture(t *testing.T) {
+	// Captured after successful UERANSIM registration in run 27073020885.
+	// Body shape: payload container type IE1 = 0x01, payload container IE4,
+	// PDU session ID IE3 = 0x12 0x01, then additional optional IEs.
+	raw, err := hex.DecodeString("7e00670100152e0101c1ffff91a12801007b000780000a00000d00120181220401000001250908696e7465726e6574")
+	require.NoError(t, err)
+	msg, err := Decode(raw)
+	require.NoError(t, err)
+	require.Equal(t, MsgTypeULNASTransport, msg.Header.MessageType)
+
+	ul, err := DecodeULNASTransport(raw[3:])
+	require.NoError(t, err)
+	assert.Equal(t, uint8(1), ul.PDUSessionID)
+	assert.Equal(t, "2e0101c1", hex.EncodeToString(ul.PayloadContainer[:4]))
+}
+
 // --- TAI List ---------------------------------------------------------------
 
 func TestEncodeTAIList(t *testing.T) {
