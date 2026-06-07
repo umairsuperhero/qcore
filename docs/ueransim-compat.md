@@ -1,13 +1,15 @@
 # UERANSIM Compatibility (5G SA)
 
-**Status: T10 is partially reproduced, not shipped.**
+**Status: UERANSIM initial registration + AMF-to-SMF handoff pass; T10 is not shipped.**
 
-As of 2026-06-06, QCore has been replayed against UERANSIM v3.2.8 in Docker Compose
-over native SCTP on GitHub Actions cloud Linux. The original `DownlinkNASTransport`
-APER `transfer-syntax-error` blocker is fixed, PR #28's K_AMF fix gets the UE past
-Security Mode Control, and the later `InitialContextSetupRequest` APER
-`transfer-syntax-error` is fixed on `codex/t10-initial-context-setup-aper`.
-External registration is still not complete.
+As of 2026-06-07, QCore has been replayed against UERANSIM v3.2.8 in Docker
+Compose over native SCTP on GitHub Actions cloud Linux. The replay now reaches
+full initial registration and forwards the UE's PDU Session Establishment Request
+to SMF, which returns `201 Created` for Create SM Context.
+
+This is a real milestone, but it is not a full T10 ship claim. QCore has not yet
+delivered a PDU Session Establishment Accept back to UERANSIM, and no external
+UERANSIM PDU-session completion or data-plane ping is proven.
 
 ## Verified In Replay
 
@@ -24,33 +26,87 @@ External registration is still not complete.
 - AMF sends InitialContextSetupRequest carrying Registration Accept.
 - UERANSIM gNB decodes the InitialContextSetupRequest and sends InitialContextSetupResponse.
 - AMF logs `amf: InitialContextSetup confirmed by gNB`.
+- UERANSIM UE logs `Registration accept received`,
+  `MM-REGISTERED/NORMAL-SERVICE`, and `Initial Registration is successful`.
+- UERANSIM sends `Registration Complete`; AMF logs
+  `amf: Registration Complete — UE fully registered`.
+- UERANSIM sends a PDU Session Establishment Request.
+- AMF decodes the protected UL NAS Transport and forwards Create SM Context to SMF.
+- SMF allocates `10.45.0.1` and returns HTTP `201` on
+  `/nsmf-pdusession/v1/sm-contexts`.
 
-## Current T10 Blocker
+## Current T10 Gap
 
-Registration does not complete after InitialContextSetupResponse. The latest replay
-shows the previous InitialContextSetup APER error is gone:
+The next missing external step is the network response to the UE's PDU Session
+Establishment Request. Current AMF behavior creates the SMF context and stops; it
+does not yet send a protected DL NAS Transport carrying a PDU Session
+Establishment Accept back to UERANSIM.
 
 ```text
-amf: InitialContextSetup confirmed by gNB
-[ngap] [debug] Initial Context Setup Request received
+Registration accept received
+UE switches to state [MM-REGISTERED/NORMAL-SERVICE]
+Initial Registration is successful
+Sending PDU Session Establishment Request
+amf: UL NAS Transport — forwarding PDU session to SMF
+amf: SMF created PDU session
+POST /nsmf-pdusession/v1/sm-contexts status=201
 ```
 
-However, the UE process exits and the gNB reports the radio link loss before a completed
-registration, PDU session, or data-plane proof:
+Do not claim "UERANSIM compatible", "5G shipped", completed PDU session, or
+data-plane success until UERANSIM logs PDU-session establishment and a Linux
+TUN-capable run proves traffic through UPF.
+
+## Confirmed Fix: Registration Accept 5G-GUTI IE6
+
+The post-InitialContextSetup UE abort was caused by QCore encoding Assigned
+5G-GUTI IEI `0x77` in Registration Accept with a one-byte length. UERANSIM's
+`RegistrationAccept::onBuild` uses IE6/TLV-E semantics for `mobileIdentity`, so
+the length must be two bytes.
+
+Bad captured plain NAS:
 
 ```text
-docker-ueransim-ue-1 Exited (139)
-[rls] [debug] UE[1] signal lost
+7e00420101770bf200f1100100400000000115020101
 ```
 
-Current working hypothesis: the next T10 blocker is post-InitialContextSetup UE-side
-failure, not an NGAP APER transfer-syntax failure. The next replay should capture the
-UERANSIM UE crash context and the final NAS/NGAP messages around
-InitialContextSetupResponse before changing QCore again.
+Fixed plain NAS:
 
-Do not claim "UERANSIM compatible", "5G shipped", UE-consumed Registration Accept,
-completed registration, PDU session, or data-plane success until this blocker is
-resolved and replay evidence exists.
+```text
+7e0042010177000bf200f1100100400000000115020101
+```
+
+Pinned by `TestRegistrationAcceptUERANSIMMobileIdentityLengthGolden`.
+
+## Confirmed Fix: Protected UL NAS Transport Routing And IE Shapes
+
+Once registration completed, UERANSIM sent a protected UL NAS Transport carrying
+the 5GSM PDU Session Establishment Request:
+
+```text
+7e00670100152e0101c1ffff91a12801007b000780000a00000d00120181220401000001250908696e7465726e6574
+```
+
+Two issues were fixed:
+
+- AMF now routes the decrypted/plain NAS payload into `handleULNASTransport`
+  instead of re-decoding the original protected NAS wrapper.
+- `DecodeULNASTransport` now accepts UERANSIM's IE shapes: payload container
+  type in the low nibble, PDU Session ID as IE3 (`0x12 value`), and request type
+  as IE1.
+
+Pinned by `TestULNASTransportUERANSIMFixture`.
+
+## Confirmed Fix: Compose SMF URL
+
+The AMF static SMF fallback was `http://localhost:8002`, which is wrong inside
+the AMF container. The 5G compose profile now sets:
+
+```text
+QCORE_AMF_SMF_URL=http://smf:8002
+```
+
+Confirmed by GitHub Actions run `27080274240`: AMF logs static fallback
+`http://smf:8002`, forwards the PDU session request, and SMF returns `201`.
 
 ## Confirmed Fix: InitialContextSetup APER
 
@@ -80,9 +136,9 @@ TestInitialContextSetupUERANSIMRejectedFixture
 ```
 
 Confirmed by GitHub Actions run `27057637533`: UERANSIM logs `Initial Context Setup
-Request received`, and QCore logs `amf: InitialContextSetup confirmed by gNB`. The
-run still ends with `ueransim-ue` exit 139 / UE signal lost, so this resolves only the
-InitialContextSetup APER blocker.
+Request received`, and QCore logs `amf: InitialContextSetup confirmed by gNB`. A later
+run (`27080274240`) confirms the downstream Registration Accept and Registration
+Complete path is now working too.
 
 ## Confirmed Fix: K_AMF Bare-IMSI Input
 
@@ -109,7 +165,9 @@ Selected integrity[2] ciphering[0]
 amf: SMC Complete — sending Registration Accept
 ```
 
-This resolves the SMC-integrity blocker. It does **not** complete T10.
+This resolves the SMC-integrity blocker. It did not complete T10 by itself; later
+Registration Accept and UL NAS Transport fixes now carry the external replay through
+initial registration and SMF handoff.
 
 ## Replay Command
 
@@ -123,5 +181,6 @@ docker compose -f deployments/docker/docker-compose.yml --profile 5g up --build
 - The compose UE config is aligned with QCore's seeded demo subscriber.
 - The dev reset seeds the demo SQN at `000000000020`, because UERANSIM starts with
   `SQN-MS=000000000000` and rejects a network SQN whose sequence part is not ahead.
-- On macOS Docker, UPF falls back to dummy egress because `/dev/net/tun` is unavailable;
-  full PDU/data-plane validation needs a Linux host or privileged TUN-capable runtime.
+- On macOS Docker, UPF falls back to dummy egress because `/dev/net/tun` is unavailable.
+  The current GitHub replay also shows UPF using `DummyEgress`; full data-plane
+  validation needs a Linux host/runtime where UPF itself receives `/dev/net/tun`.

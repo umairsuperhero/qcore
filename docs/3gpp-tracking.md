@@ -2,7 +2,7 @@
 
 > Living reference. Maintained on the quarterly interop check-in cadence (see bottom)
 > and updated whenever a real-RAN interop finding lands.
-> Last updated: 2026-06-06
+> Last updated: 2026-06-07
 
 ## Principle: relevance, not parity
 
@@ -27,10 +27,10 @@ This is not a claim of Release completeness.
 
 | Interface / Spec | Implemented surface | Status |
 |---|---|---|
-| **NGAP** (TS 38.413) | NG Setup, InitialUEMessage, DL/UL NAS Transport, Initial Context Setup, PDU Session Resource Setup | ✅ in-process · 🔭 real-RAN (T10) |
-| **NGAP transport** | Native Linux kernel SCTP (`pkg/sctp/sctp_linux.go`, no CGO/pion); TCP fallback on non-Linux for dev | ✅ in-process · 🔭 real-RAN (T10) |
-| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · 🔭 real-RAN (SMC integrity fixed on PR #28; blocked at Registration Accept delivery) |
-| **NAS-5G SM** (TS 24.501) | UL NAS Transport carrying 5GSM PDU Session Establishment | ✅ in-process · 🔭 real-RAN |
+| **NGAP** (TS 38.413) | NG Setup, InitialUEMessage, DL/UL NAS Transport, Initial Context Setup, PDU Session Resource Setup | ✅ in-process · 🔭 real-RAN registration path validated |
+| **NGAP transport** | Native Linux kernel SCTP (`pkg/sctp/sctp_linux.go`, no CGO/pion); TCP fallback on non-Linux for dev | ✅ in-process · 🔭 real-RAN registration path validated |
+| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · 🔭 real-RAN initial registration validated |
+| **NAS-5G SM** (TS 24.501) | UL NAS Transport carrying 5GSM PDU Session Establishment. DL NAS Transport carrying PDU Session Establishment Accept is not yet implemented. | ✅ UL path real-RAN validated · 🔭 DL accept pending |
 | **5G-AKA** (TS 33.501) | Full AKA: AUSF/UDM vector generation, RES* verify, K_AUSF/K_SEAF/K_AMF chain | ✅ in-process |
 | **Key derivation** (TS 33.501 Annex A) | K_AMF (A.7), K_NASint/K_NASenc (A.8), K_gNB (A.9). **K_AMF P0 = bare IMSI** (fixed; see Findings) | ✅ in-process |
 | **NAS security algorithms** | 128-NIA2 (AES-CMAC) integrity; NEA0 (null) ciphering | ✅ in-process |
@@ -64,7 +64,10 @@ with the spec reference and the fix.
 |---|---|---|---|
 | 2026-06-04 | UERANSIM rejected `DownlinkNASTransport` with an APER `transfer-syntax-error` | TS 38.413 | Fixed (UE-NGAP-ID + NAS Auth Request encoding) — merged |
 | 2026-06-05 | UERANSIM rejects the Security Mode Command (`integrity check failed`). Root cause: K_AMF derived from the SBI `imsi-<digits>` string instead of the bare IMSI | TS 33.501 A.7 | **Fixed on PR #28 and validated by `ueransim-interop` on GitHub Actions cloud Linux.** UE accepts SMC and AMF receives Security Mode Complete. |
-| 2026-06-06 | After SMC Complete, AMF sends Registration Accept but UE never receives it; T3510 expires. The UERANSIM gNB reports APER `transfer-syntax-error` on QCore's `InitialContextSetupRequest`. | TS 38.413 / TS 24.501 | **Open.** Added mandatory `UEAggregateMaximumBitRate` as a standards-correct candidate/prerequisite, but the latest replay still fails APER decode. Next step is byte-level comparison of QCore's `InitialContextSetupRequest` against a known-good UERANSIM/free5GC/open5GS corpus. |
+| 2026-06-06 | After SMC Complete, AMF sends Registration Accept but UE never receives it; T3510 expires. The UERANSIM gNB reports APER `transfer-syntax-error` on QCore's `InitialContextSetupRequest`. | TS 38.413 / TS 24.501 | **Fixed.** `UEAggregateMaximumBitRate` and `UESecurityCapabilities` APER encoding corrected and validated by UERANSIM replay run `27057637533`. |
+| 2026-06-07 | UERANSIM aborted after InitialContextSetup because Registration Accept encoded Assigned 5G-GUTI IEI `0x77` with a one-byte length instead of IE6/TLV-E two-byte length. | TS 24.501 | **Fixed.** `TestRegistrationAcceptUERANSIMMobileIdentityLengthGolden` pins the bad and fixed fixtures; replay run `27080274240` reaches Registration Complete. |
+| 2026-06-07 | After registration, AMF initially failed to parse UERANSIM's protected UL NAS Transport and then used `localhost:8002` as SMF fallback inside Docker. | TS 24.501 / TS 29.502 | **Fixed.** AMF routes decrypted NAS to UL transport handling, accepts UERANSIM IE1/IE3 shapes, and compose sets `QCORE_AMF_SMF_URL=http://smf:8002`. Replay run `27080274240` shows AMF forwarding the PDU request and SMF returning `201`. |
+| 2026-06-07 | QCore creates the SMF context but does not send PDU Session Establishment Accept back to UERANSIM; no external PDU-session completion or ping is proven. | TS 24.501 / TS 38.413 / TS 29.502 | **Open.** Next work: encode protected DL NAS Transport with 5GSM PDU Session Establishment Accept, replay UERANSIM, then validate UPF data-plane on a Linux/TUN-capable runtime. |
 
 ## How this doc is maintained
 

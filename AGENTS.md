@@ -16,7 +16,7 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-06)
+## Current baseline (2026-06-07)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -44,18 +44,18 @@ binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to mai
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
-  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED after
-    InitialContextSetup.** A real UERANSIM replay over native SCTP now reaches NGSetup →
-    InitialUEMessage → Authentication Request → Authentication Response → AUSF
-    confirmation → Security Mode Complete → InitialContextSetupRequest accepted by the
-    gNB → InitialContextSetupResponse received by the AMF. The earlier
-    `DownlinkNASTransport` APER `transfer-syntax-error`, SMC-integrity, and
-    `InitialContextSetupRequest` APER blockers are fixed; PR #28 validates the
-    K_AMF/bare-IMSI fix, and `codex/t10-initial-context-setup-aper` validates the APER
-    fixes against real UERANSIM on cloud Linux. The current blocker is that
-    `ueransim-ue` exits 139 after InitialContextSetup and the gNB reports UE signal lost;
-    no successful Registration Accept, PDU session, or data-plane claim exists yet.
-    Evidence + exact blocker: `docs/ueransim-compat.md`.
+  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED at
+    PDU Session Establishment Accept / data-plane proof.** A real UERANSIM replay over
+    native SCTP now reaches NGSetup → InitialUEMessage → Authentication
+    Request/Response → AUSF confirmation → Security Mode Complete →
+    InitialContextSetupResponse → Registration Complete → AMF→SMF Create SM Context
+    (`201`). The earlier `DownlinkNASTransport` APER `transfer-syntax-error`,
+    SMC-integrity, `InitialContextSetupRequest` APER, Registration Accept IE-length,
+    protected UL NAS routing, UL NAS Transport IE-shape, and compose SMF URL blockers
+    are fixed and validated against real UERANSIM on cloud Linux. The current gap is
+    that QCore has not yet sent a PDU Session Establishment Accept back to UERANSIM, and
+    no external PDU-session completion or data-plane ping claim exists yet. Evidence +
+    exact gap: `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve

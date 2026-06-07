@@ -16,7 +16,7 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-06)
+## Current baseline (2026-06-07)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -44,12 +44,15 @@ remains. Lanes 1–4 + the T10 progress branch are integrated to main; full Go
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
-  - **C2 (T8) → C3 (T9) → T10:** 5G simulator UX (error injection on the real-SUCI 5G
-    sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view), then
-    **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline. **T10 is now
-    partially reproduced** (a real UERANSIM replay reaches Security Mode Complete) **but
-    blocked at Registration Accept delivery / likely InitialContextSetupRequest** — see
-    `docs/ueransim-compat.md`.
+  - **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline. **T10 is now
+    partially reproduced**: a real UERANSIM replay over native SCTP reaches
+    Registration Complete and AMF→SMF Create SM Context (`201`) on GitHub Actions cloud
+    Linux. The prior DownlinkNASTransport APER, SMC-integrity, InitialContextSetup APER,
+    Registration Accept IE-length, protected UL NAS routing, UL NAS Transport IE-shape,
+    and compose SMF URL blockers are fixed. The current gap is PDU Session Establishment
+    Accept delivery plus external data-plane/ping proof; see `docs/ueransim-compat.md`.
+  - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
+    sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update above); only live
     model-serve validation remains (charter §9.3 / D5).
 

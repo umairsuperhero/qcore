@@ -1,9 +1,8 @@
 name: ueransim-interop
 # T10 real-RAN validation: bring up the 5G stack + a real UERANSIM gNB/UE over
 # native kernel SCTP. This gate currently asserts the known-good path through
-# Security Mode Complete and InitialContextSetupResponse, then preserves evidence
-# for the current post-InitialContextSetup UE exit blocker. Full registration,
-# PDU session, and data-plane validation remain later T10 gates.
+# full initial registration and AMF-to-SMF Create SM Context. PDU Session Accept
+# delivery and data-plane validation remain later T10 gates.
 on:
   push:
     branches: [main, "codex/**", "fix/**"]
@@ -42,22 +41,27 @@ jobs:
           echo "--- containers ---"; $COMPOSE ps
           if [ "$ok" != 1 ]; then echo "::error::stack failed to come up after retries"; exit 1; fi
 
-      - name: Validate — UE must reach InitialContextSetup
+      - name: Validate — UE must register and AMF must reach SMF
         id: outcome
         run: |
           # Current bounded claim:
           #   PASS  = UE reaches the SMC, accepts NIA2/NEA0, AMF receives
           #           Security Mode Complete, gNB decodes InitialContextSetup,
-          #           and AMF receives InitialContextSetupResponse.
+          #           AMF receives InitialContextSetupResponse, UERANSIM reports
+          #           initial registration success, and AMF gets a 201 from SMF
+          #           for Create SM Context.
           #   FAIL  = SMC integrity regression, NGAP APER transfer-syntax
-          #           regression, or failure to reach InitialContextSetupResponse.
-          # Full registration/PDU/data-plane is a separate T10 milestone.
-          echo "Watching UERANSIM through InitialContextSetup (up to ~180s)..."
+          #           regression, registration regression, or failure to reach SMF.
+          # PDU Session Accept delivery and data-plane/ping are separate T10 gates.
+          echo "Watching UERANSIM through registration + SMF handoff (up to ~180s)..."
           REACHED_SMC=0
           SELECTED_ALGS=0
           SMC_COMPLETE=0
           ICS_GNB=0
           ICS_CONFIRMED=0
+          PDU_REQUEST=0
+          SMF_HANDOFF=0
+          SMF_CREATED=0
           INTEGRITY_FAILED=0
           APER_FAILED=0
           REGISTERED=0
@@ -67,14 +71,19 @@ jobs:
             UE_LOGS="$($COMPOSE logs ueransim-ue 2>/dev/null || true)"
             AMF_LOGS="$($COMPOSE logs amf 2>/dev/null || true)"
             GNB_LOGS="$($COMPOSE logs ueransim-gnb 2>/dev/null || true)"
+            SMF_LOGS="$($COMPOSE logs smf 2>/dev/null || true)"
             echo "$UE_LOGS" | grep -qiE "Security Mode Command received" && REACHED_SMC=1
             echo "$UE_LOGS" | grep -qiE "Selected integrity\\[2\\] ciphering\\[0\\]" && SELECTED_ALGS=1
             echo "$AMF_LOGS" | grep -qiE 'SMC Complete.*Registration Accept|"fields.msg":94' && SMC_COMPLETE=1
             echo "$GNB_LOGS" | grep -qiE "Initial Context Setup Request received" && ICS_GNB=1
             echo "$AMF_LOGS" | grep -qiE "InitialContextSetup confirmed by gNB" && ICS_CONFIRMED=1
+            echo "$UE_LOGS" | grep -qiE "Sending PDU Session Establishment Request" && PDU_REQUEST=1
+            echo "$AMF_LOGS" | grep -qiE "UL NAS Transport.*forwarding PDU session to SMF" && SMF_HANDOFF=1
+            echo "$AMF_LOGS" | grep -qiE "SMF created PDU session" && SMF_CREATED=1
+            echo "$SMF_LOGS" | grep -qiE "POST.*nsmf-pdusession/v1/sm-contexts.*status=201" && SMF_CREATED=1
             echo "$UE_LOGS" | grep -qi  "Security Mode Command integrity check failed" && INTEGRITY_FAILED=1
             echo "$GNB_LOGS" | grep -qiE "APER decoding failed|transfer-syntax-error" && APER_FAILED=1
-            echo "$UE_LOGS" | grep -qiE "Registration is successful|MM-REGISTERED|PDU Session establishment is successful" && REGISTERED=1
+            echo "$UE_LOGS" | grep -qiE "Initial Registration is successful|MM-REGISTERED" && REGISTERED=1
             UE_CID="$($COMPOSE ps -aq ueransim-ue 2>/dev/null || true)"
             if [ -n "$UE_CID" ]; then
               UE_STATE="$(docker inspect "$UE_CID" --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}}' 2>/dev/null || true)"
@@ -82,12 +91,12 @@ jobs:
                 *"status=exited"*) UE_EXIT_CODE="$(echo "$UE_STATE" | sed -n 's/.*exit=\([0-9][0-9]*\).*/\1/p')" ;;
               esac
             fi
-            if [ "$INTEGRITY_FAILED" = 1 ] || [ "$APER_FAILED" = 1 ] || [ "$REGISTERED" = 1 ]; then break; fi
+            if [ "$INTEGRITY_FAILED" = 1 ] || [ "$APER_FAILED" = 1 ]; then break; fi
+            if [ "$REGISTERED" = 1 ] && [ "$PDU_REQUEST" = 1 ] && [ "$SMF_CREATED" = 1 ]; then break; fi
             if [ "$ICS_CONFIRMED" = 1 ] && [ -n "$UE_EXIT_CODE" ] && [ "$i" -ge 6 ]; then break; fi
-            if [ "$ICS_CONFIRMED" = 1 ] && [ "$i" -ge 12 ]; then break; fi
             sleep 5
           done
-          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED registered=$REGISTERED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
+          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED registered=$REGISTERED pdu_request=$PDU_REQUEST smf_handoff=$SMF_HANDOFF smf_created=$SMF_CREATED integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
           if [ "$INTEGRITY_FAILED" = 1 ]; then
             echo "::error::REGRESSION — UERANSIM rejected the SMC for integrity"
             exit 1
@@ -104,13 +113,15 @@ jobs:
             echo "::error::InitialContextSetup was not confirmed by UERANSIM gNB — see artifacts"
             exit 1
           fi
-          if [ "$REGISTERED" = 1 ]; then
-            echo "::notice::FULL REGISTRATION — T10 end-to-end works against real UERANSIM."
-          elif [ "$UE_EXIT_CODE" = 139 ]; then
-            echo "::notice::Current T10 blocker reproduced — UERANSIM UE exited 139 after InitialContextSetup."
-          else
-            echo "::notice::InitialContextSetup passed, but full registration is not complete. UE state: ${UE_STATE:-unknown}"
+          if [ "$REGISTERED" != 1 ]; then
+            echo "::error::UE did not complete initial registration — see artifacts"
+            exit 1
           fi
+          if [ "$PDU_REQUEST" != 1 ] || [ "$SMF_HANDOFF" != 1 ] || [ "$SMF_CREATED" != 1 ]; then
+            echo "::error::Registration passed, but AMF-to-SMF PDU-session handoff did not complete"
+            exit 1
+          fi
+          echo "::notice::REGISTRATION + SMF HANDOFF — UERANSIM initial registration works and SMF returned 201. PDU Session Accept + data-plane remain separate gates."
 
       - name: Capture logs and crash evidence (always)
         if: always()
@@ -137,7 +148,7 @@ jobs:
           $COMPOSE logs --no-color ueransim-ue 2>&1 | tee artifacts/ueransim/ueransim-ue.log | tail -240 || true
           {
             echo "===== key lines ====="
-            grep -RInE "reached_smc=|InitialContextSetup confirmed|Initial Context Setup Request received|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
+            grep -RInE "reached_smc=|InitialContextSetup confirmed|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|Failed to create Linux TUN|DummyEgress|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
           } | tee artifacts/ueransim/key-lines.txt
 
       - name: Upload T10 evidence artifact
