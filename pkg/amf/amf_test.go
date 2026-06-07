@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"sync"
 	"testing"
@@ -244,6 +246,14 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	ausfURL := startAUSFandUDM(t, sub)
 	log := logger.New("info", "text")
 
+	// Fake SMF: returns 201 with an allocated UE IPv4 for Create SM Context.
+	smfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"pduSessionId":5,"upCnxState":"ACTIVATED","ueIpv4Addr":"10.45.0.2"}`))
+	}))
+	defer smfSrv.Close()
+
 	// ── Start AMF ──
 	plmn := ngap.PLMNFromMCCMNC("001", "01")
 	amfPort := pickPort(t)
@@ -258,6 +268,7 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
 		},
 		ServingNetworkName: snName,
+		SMFURL:             smfSrv.URL,
 	}
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := NewService(cfg, ausfCli, log)
@@ -354,7 +365,32 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	require.Equal(t, uint8(0x01), regAcceptRaw[1], "expected SecHdr=0x01 (integrity-protected)")
 	t.Log("Registration Accept received in InitialContextSetup")
 
-	t.Log("✓ Full 5G registration flow complete")
+	// Step 8: UE sends a UL NAS Transport carrying a PDU Session Establishment
+	// Request; the AMF forwards to the (fake) SMF which returns 201.
+	const pduSessionID = uint8(5)
+	const pti = uint8(1)
+	pduReq := nas5g.EncodePDUSessionEstablishmentRequest(pduSessionID, pti)
+	ulNAS := nas5g.EncodeULNASTransport(pduSessionID, pduReq)
+	gNB.sendUplinkNAS(t, amfID, ranID, ulNAS)
+
+	// Step 9: SMF 201 must cause a protected DL NAS Transport carrying a 5GSM
+	// PDU Session Establishment Accept to be sent back to the UE.
+	_, pduAcceptRaw := gNB.recvDownlinkNAS(t)
+	require.GreaterOrEqual(t, len(pduAcceptRaw), 8)
+	require.Equal(t, uint8(0x7E), pduAcceptRaw[0], "5GMM EPD")
+	require.Equal(t, uint8(0x01), pduAcceptRaw[1], "protected (integrity) DL NAS Transport")
+
+	// Strip the 7-byte 5G NAS security header (EPD+SecHdr+MAC4+SN) → inner DL NAS Transport.
+	inner := pduAcceptRaw[7:]
+	require.Equal(t, uint8(0x68), inner[2], "DL NAS Transport message type")
+	clen := int(inner[4])<<8 | int(inner[5])
+	require.GreaterOrEqual(t, len(inner), 6+clen)
+	n1 := inner[6 : 6+clen]
+	assert.Equal(t, uint8(0x2E), n1[0], "inner N1 SM is 5GSM")
+	assert.Equal(t, uint8(0xC2), n1[3], "PDU Session Establishment Accept")
+	t.Log("PDU Session Establishment Accept received over protected DL NAS Transport")
+
+	t.Log("✓ Full 5G registration + PDU session accept flow complete")
 }
 
 // TestAMF_UnprovisionedIMSI verifies that when the AUSF cannot find a

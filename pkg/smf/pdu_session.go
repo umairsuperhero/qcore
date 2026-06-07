@@ -33,6 +33,10 @@ type SMContextCreatedData struct {
 	UpCnxState      string           `json:"upCnxState,omitempty"` // ACTIVATED or DEACTIVATED
 	N1SmMsg         *RefToBinaryData `json:"n1SmMsg,omitempty"`
 	N2SmInfo        *RefToBinaryData `json:"n2SmInfo,omitempty"`
+	// UeIpv4Addr is the IPv4 address allocated to the UE for this session.
+	// QCore (simplified) returns it here so the AMF can place it in the PDU
+	// address IE of the PDU Session Establishment Accept it relays to the UE.
+	UeIpv4Addr      string           `json:"ueIpv4Addr,omitempty"`
 }
 
 type SNssai struct {
@@ -126,6 +130,7 @@ func (s *Service) postSMContexts(w http.ResponseWriter, r *http.Request) {
 	resp := SMContextCreatedData{
 		PduSessionID: req.PduSessionID,
 		UpCnxState:   "ACTIVATED",
+		UeIpv4Addr:   ueIP.String(),
 	}
 
 	// 3. Return 201 Created

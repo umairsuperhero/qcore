@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -526,6 +527,45 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 				Success:      true,
 			},
 		})
+
+		// Relay a PDU Session Establishment Accept to the UE over a protected
+		// DL NAS Transport. The SMF returns the allocated UE IPv4 in the 201;
+		// the PTI is echoed from the UE's Establishment Request (5GSM octet 3).
+		var created struct {
+			UeIpv4Addr string `json:"ueIpv4Addr"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&created)
+		var ueIPv4 [4]byte
+		if ip := net.ParseIP(created.UeIpv4Addr); ip != nil {
+			if v4 := ip.To4(); v4 != nil {
+				copy(ueIPv4[:], v4)
+			}
+		}
+		var pti uint8
+		if len(ul.PayloadContainer) >= 3 {
+			pti = ul.PayloadContainer[2]
+		}
+		if err := s.sendPDUSessionEstablishmentAccept(ue, ul.PDUSessionID, pti, ueIPv4); err != nil {
+			s.log.WithError(err).Warn("amf: failed to send PDU Session Establishment Accept")
+		} else {
+			s.log.WithField("supi", ue.SUPI).
+				WithField("pdu_session_id", ul.PDUSessionID).
+				Info("amf: sent PDU Session Establishment Accept")
+			s.emitter.Emit(events.Event{
+				JourneyID: ue.JourneyID,
+				NF:        "amf",
+				Category:  events.SignalingTx,
+				Severity:  events.SeverityInfo,
+				Protocol:  "nas5g",
+				Message:   "PDU Session Establishment Accept sent",
+				Payload: events.PDUSessionResultPayload{
+					SUPI:         ue.SUPI,
+					PDUSessionID: ul.PDUSessionID,
+					DNN:          "internet",
+					Success:      true,
+				},
+			})
+		}
 	} else {
 		// Classify the SMF failure cause for the diagnostic layer.
 		smfCause := diag.CauseSMFReject
@@ -554,6 +594,24 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 		})
 	}
 	return nil
+}
+
+// sendPDUSessionEstablishmentAccept builds a 5GSM PDU Session Establishment
+// Accept (TS 24.501 §8.3.2), wraps it in a DL NAS Transport (§8.2.11), integrity-
+// protects it with the UE's established NAS security context and the next DL NAS
+// count, and sends it to the gNB over the existing DownlinkNASTransport path.
+func (s *Service) sendPDUSessionEstablishmentAccept(ue *UEContext, pduSessionID, pti uint8, ueIPv4 [4]byte) error {
+	if len(ue.KNASint) != 16 {
+		return fmt.Errorf("amf: no NAS integrity key; cannot protect PDU Session Accept")
+	}
+	accept := nas5g.EncodePDUSessionEstablishmentAccept(pduSessionID, pti, ueIPv4)
+	dlNAS := nas5g.EncodeDLNASTransport(pduSessionID, accept)
+	protected, err := WrapNAS5G(ue.KNASint, ue.DLCount, SecHdrIntegrityProtected, dlNAS)
+	if err != nil {
+		return fmt.Errorf("amf: protect DL NAS Transport: %w", err)
+	}
+	ue.DLCount++
+	return ue.gNB.sendDownlinkNAS(ue, protected)
 }
 
 // --- helpers ----------------------------------------------------------------

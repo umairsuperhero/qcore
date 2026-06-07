@@ -65,6 +65,8 @@ jobs:
           INTEGRITY_FAILED=0
           APER_FAILED=0
           REGISTERED=0
+          PDU_ACCEPT=0
+          PDU_SESSION=0
           UE_EXIT_CODE=""
           UE_STATE=""
           for i in $(seq 1 36); do
@@ -84,6 +86,8 @@ jobs:
             echo "$UE_LOGS" | grep -qi  "Security Mode Command integrity check failed" && INTEGRITY_FAILED=1
             echo "$GNB_LOGS" | grep -qiE "APER decoding failed|transfer-syntax-error" && APER_FAILED=1
             echo "$UE_LOGS" | grep -qiE "Initial Registration is successful|MM-REGISTERED" && REGISTERED=1
+            echo "$UE_LOGS" | grep -qiE "PDU Session Establishment Accept" && PDU_ACCEPT=1
+            echo "$UE_LOGS" | grep -qiE "PDU Session establishment is successful|Connection setup for PDU session|uesimtun" && PDU_SESSION=1
             UE_CID="$($COMPOSE ps -aq ueransim-ue 2>/dev/null || true)"
             if [ -n "$UE_CID" ]; then
               UE_STATE="$(docker inspect "$UE_CID" --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}}' 2>/dev/null || true)"
@@ -92,11 +96,15 @@ jobs:
               esac
             fi
             if [ "$INTEGRITY_FAILED" = 1 ] || [ "$APER_FAILED" = 1 ]; then break; fi
-            if [ "$REGISTERED" = 1 ] && [ "$PDU_REQUEST" = 1 ] && [ "$SMF_CREATED" = 1 ]; then break; fi
+            if [ "$PDU_SESSION" = 1 ]; then break; fi
+            # After registration + SMF 201, keep watching for the PDU Session
+            # Establishment Accept outcome: UE session success, or a UE crash on
+            # the NAS we now send. Don't break the instant SMF returns 201.
+            if [ "$REGISTERED" = 1 ] && [ "$SMF_CREATED" = 1 ] && { [ -n "$UE_EXIT_CODE" ] || [ "$i" -ge 20 ]; }; then break; fi
             if [ "$ICS_CONFIRMED" = 1 ] && [ -n "$UE_EXIT_CODE" ] && [ "$i" -ge 6 ]; then break; fi
             sleep 5
           done
-          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED registered=$REGISTERED pdu_request=$PDU_REQUEST smf_handoff=$SMF_HANDOFF smf_created=$SMF_CREATED integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
+          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED registered=$REGISTERED pdu_request=$PDU_REQUEST smf_handoff=$SMF_HANDOFF smf_created=$SMF_CREATED pdu_accept=$PDU_ACCEPT pdu_session=$PDU_SESSION integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
           if [ "$INTEGRITY_FAILED" = 1 ]; then
             echo "::error::REGRESSION — UERANSIM rejected the SMC for integrity"
             exit 1
@@ -121,7 +129,16 @@ jobs:
             echo "::error::Registration passed, but AMF-to-SMF PDU-session handoff did not complete"
             exit 1
           fi
-          echo "::notice::REGISTRATION + SMF HANDOFF — UERANSIM initial registration works and SMF returned 201. PDU Session Accept + data-plane remain separate gates."
+          if [ "$PDU_SESSION" = 1 ]; then
+            echo "::notice::PDU SESSION ESTABLISHED — UERANSIM completed PDU session establishment over QCore's protected DL NAS Transport. Data-plane/ping remains the final T10 gate."
+          elif [ -n "$UE_EXIT_CODE" ] && [ "$UE_EXIT_CODE" != "0" ]; then
+            echo "::error::NEXT BLOCKER — UERANSIM UE exited (code $UE_EXIT_CODE) after the PDU Session Establishment Accept (pdu_accept=$PDU_ACCEPT). Registration + SMF still pass; the PDU Accept content is the new blocker — see UE logs/artifacts."
+            exit 1
+          elif [ "$PDU_ACCEPT" = 1 ]; then
+            echo "::notice::PDU ACCEPT RECEIVED — UERANSIM parsed the PDU Session Establishment Accept but has not yet reported session establishment. Next blocker is post-accept (see UE logs)."
+          else
+            echo "::notice::REGISTRATION + SMF HANDOFF pass and the AMF sent a PDU Session Establishment Accept; UERANSIM has not logged receiving/establishing it yet (next blocker; UE did not crash). Data-plane remains a separate gate."
+          fi
 
       - name: Capture logs and crash evidence (always)
         if: always()

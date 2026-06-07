@@ -329,3 +329,43 @@ func TestEncodeTAIList(t *testing.T) {
 	assert.Equal(t, plmn[:], enc[1:4])
 	assert.Equal(t, tacs[0][:], enc[4:7])
 }
+
+// --- PDU Session Establishment Accept / DL NAS Transport --------------------
+
+// TestEncodePDUSessionEstablishmentAcceptGolden pins the exact 5GSM Accept bytes
+// a real UE (UERANSIM) parses — its NAS-SM decoder is strict and crashes on a
+// malformed mandatory IE, so the QoS-rules / Session-AMBR shape must not drift.
+func TestEncodePDUSessionEstablishmentAcceptGolden(t *testing.T) {
+	got := EncodePDUSessionEstablishmentAccept(0x05, 0x01, [4]byte{10, 45, 0, 2})
+	// 2E,psi,pti,C2 | sel-type/ssc(11) | QoS rules LV-E(00 09 …) |
+	// Session-AMBR LV(06 …) | PDU address TLV(29 05 01 + IPv4).
+	want := "2e0501c211000901000631310101ff01060603e80603e82905010a2d0002"
+	assert.Equal(t, want, hex.EncodeToString(got))
+
+	assert.Equal(t, uint8(0x2E), got[0], "5GSM EPD")
+	assert.Equal(t, uint8(0xC2), got[3], "PDU Session Establishment Accept message type")
+	assert.Equal(t, uint8(0x11), got[4], "selected PDU session type IPv4 + SSC mode 1")
+	assert.True(t, bytes.Contains(got, []byte{0x29, 0x05, 0x01, 10, 45, 0, 2}),
+		"PDU address IE carries the assigned UE IPv4")
+}
+
+// TestEncodePDUSessionEstablishmentAcceptNoIP omits the PDU address IE when no
+// IPv4 was allocated (zero value).
+func TestEncodePDUSessionEstablishmentAcceptNoIP(t *testing.T) {
+	got := EncodePDUSessionEstablishmentAccept(0x05, 0x01, [4]byte{})
+	assert.False(t, bytes.Contains(got, []byte{0x29}), "no PDU address IE without an IP")
+	assert.Equal(t, uint8(0xC2), got[3])
+}
+
+// TestEncodeDLNASTransportShape checks the 5GMM DL NAS Transport wrapper carries
+// the N1 SM container with an LV-E length and the PDU session ID IE.
+func TestEncodeDLNASTransportShape(t *testing.T) {
+	n1 := []byte{0x2E, 0x05, 0x01, 0xC2} // stand-in 5GSM container
+	got := EncodeDLNASTransport(0x05, n1)
+
+	assert.Equal(t, []byte{0x7E, 0x00, 0x68}, got[:3], "5GMM DL NAS Transport header")
+	assert.Equal(t, uint8(0x01), got[3], "payload container type = N1 SM info")
+	assert.Equal(t, []byte{0x00, uint8(len(n1))}, got[4:6], "payload container LV-E length")
+	assert.Equal(t, n1, got[6:6+len(n1)], "embedded N1 SM container")
+	assert.Equal(t, []byte{0x12, 0x05}, got[len(got)-2:], "trailing PDU session ID IE")
+}

@@ -731,11 +731,51 @@ func EncodePDUSessionEstablishmentRequest(pduSessionID, pti uint8) []byte {
 	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentRequest)}
 }
 
-// EncodePDUSessionEstablishmentAccept encodes a minimal 5GSM PDU Session
-// Establishment Accept (TS 24.501 §8.3.2). Only the mandatory header is
-// encoded; the AMF would normally also include QoS, UE IP, etc.
-func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8) []byte {
-	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentAccept)}
+// EncodePDUSessionEstablishmentAccept encodes a 5GSM PDU Session Establishment
+// Accept (TS 24.501 §8.3.2) for a default IPv4, SSC-mode-1 session. It carries
+// the mandatory IEs a real UE (UERANSIM) requires — Selected PDU session type +
+// SSC mode, Authorized QoS rules (one default match-all rule), and Session-AMBR —
+// plus the optional PDU address IE conveying the SMF-assigned UE IPv4.
+//
+// ueIPv4 is the address the SMF allocated; pass the zero value to omit the PDU
+// address IE. Bytes are pinned by TestEncodePDUSessionEstablishmentAcceptGolden.
+func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8, ueIPv4 [4]byte) []byte {
+	b := []byte{
+		uint8(EPD5GSM),                              // Extended protocol discriminator (0x2E)
+		pduSessionID,                                // PDU session ID
+		pti,                                         // Procedure transaction identity
+		uint8(MsgTypePDUSessionEstablishmentAccept), // Message type (0xC2)
+		0x11,                                        // Selected PDU session type IPv4(1) | Selected SSC mode 1 (<<4)
+	}
+
+	// Authorized QoS rules (IE 9.11.4.13, LV-E): one default QoS rule —
+	// identifier 1, "create new QoS rule", DQR=1, one bidirectional match-all
+	// packet filter, precedence 255, QFI 1. This is the free5GC default shape
+	// that UERANSIM accepts.
+	qosRule := []byte{
+		0x01,       // QoS rule identifier = 1
+		0x00, 0x06, // Length of QoS rule = 6
+		0x31, // rule op=CreateNewQoSRule(001) | DQR=1 | number of packet filters=1
+		0x31, // packet filter: direction=bidirectional(11) | identifier=1
+		0x01, // packet filter contents length = 1
+		0x01, // match-all packet filter component (type 0x01, no value)
+		0xFF, // QoS rule precedence = 255
+		0x01, // QoS flow identifier (QFI) = 1
+	}
+	b = append(b, 0x00, uint8(len(qosRule))) // Authorized QoS rules length (2 octets, LV-E)
+	b = append(b, qosRule...)
+
+	// Session-AMBR (IE 9.11.4.14, LV): unit = 1 Mbps (0x06), DL = UL = 1000 (~1 Gbps).
+	sessionAMBR := []byte{0x06, 0x03, 0xE8, 0x06, 0x03, 0xE8}
+	b = append(b, uint8(len(sessionAMBR)))
+	b = append(b, sessionAMBR...)
+
+	// PDU address (IE 9.11.4.10, TLV, IEI 0x29), IPv4.
+	if ueIPv4 != ([4]byte{}) {
+		b = append(b, 0x29, 0x05, 0x01) // IEI, length=5, PDU session type=IPv4(1)
+		b = append(b, ueIPv4[:]...)
+	}
+	return b
 }
 
 // ULNASTransportPayload holds decoded fields from a UL NAS Transport message.
@@ -761,6 +801,29 @@ func EncodeULNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
 	b = append(b, n1SmContainer...)
 
 	// Optional IE: PDU Session ID is an IE3 (IEI + one-octet value).
+	b = append(b, 0x12, pduSessionID)
+	return b
+}
+
+// EncodeDLNASTransport encodes an unprotected 5GMM DL NAS Transport message
+// (TS 24.501 §8.2.11) carrying an N1 SM (5GSM) container down to the UE — the
+// mirror of EncodeULNASTransport. The caller integrity-protects the result via
+// the NAS security context before handing it to NGAP DownlinkNASTransport.
+//
+// Mandatory IEs encoded: payload container type (N1 SM, 0x01), payload
+// container (LV-E: 2-octet length + the 5GSM bytes), PDU session ID (IE3).
+func EncodeDLNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
+	b := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeDLNASTransport})
+
+	// Payload container type (IE1): IEI is 0, value (N1 SM = 1) in the low nibble.
+	b = append(b, 0x01)
+
+	// Payload container (LV-E): 2-byte big-endian length + container.
+	clen := len(n1SmContainer)
+	b = append(b, uint8(clen>>8), uint8(clen))
+	b = append(b, n1SmContainer...)
+
+	// PDU Session ID (IE3: IEI 0x12 + one-octet value).
 	b = append(b, 0x12, pduSessionID)
 	return b
 }
