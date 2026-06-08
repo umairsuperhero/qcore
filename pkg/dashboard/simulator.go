@@ -41,26 +41,28 @@ type SimulatorStatus struct {
 // Inject calls (one attach at a time) and updates SimulatorStatus from the
 // background runner so the dashboard can poll it.
 type SimulatorController struct {
-	template simulator.Options
-	emitter  events.Emitter
-	log      logger.Logger
+	template4G simulator.Options
+	template5G simulator.Options
+	emitter    events.Emitter
+	log        logger.Logger
 
 	mu     sync.Mutex
 	status SimulatorStatus
 }
 
-// NewSimulatorController binds the controller to a pre-built Options
-// template (MME addr, PLMN, TAC, demo subscriber credentials). The
-// dashboard binary builds the template from config and passes it in.
-func NewSimulatorController(template simulator.Options, emitter events.Emitter, log logger.Logger) *SimulatorController {
+// NewSimulatorController binds the controller to pre-built 4G and 5G
+// templates. The dashboard binary builds the templates from config and
+// passes them in.
+func NewSimulatorController(template4G, template5G simulator.Options, emitter events.Emitter, log logger.Logger) *SimulatorController {
 	if emitter == nil {
 		emitter = &events.NoopEmitter{}
 	}
 	return &SimulatorController{
-		template: template,
-		emitter:  emitter,
-		log:      log.WithField("component", "simulator"),
-		status:   SimulatorStatus{State: SimulatorIdle},
+		template4G: template4G,
+		template5G: template5G,
+		emitter:    emitter,
+		log:        log.WithField("component", "simulator"),
+		status:     SimulatorStatus{State: SimulatorIdle},
 	}
 }
 
@@ -101,7 +103,19 @@ func (c *SimulatorController) Stop() {
 	c.status = SimulatorStatus{State: SimulatorIdle}
 }
 
+func (c *SimulatorController) templateForMode(mode string) simulator.Options {
+	if mode == "5g" {
+		return c.template5G
+	}
+	return c.template4G
+}
+
 func (c *SimulatorController) run(mode, scenario string, customDef *simulator.ScenarioDefinition) {
+	selectedMode := mode
+	if selectedMode == "" {
+		selectedMode = "4g"
+	}
+
 	c.mu.Lock()
 	if c.status.State == SimulatorRunning {
 		c.mu.Unlock()
@@ -115,16 +129,14 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 	c.status = SimulatorStatus{
 		State:        SimulatorRunning,
 		LastScenario: scenarioName,
-		Mode:         mode,
+		Mode:         selectedMode,
 		StartedAt:    &now,
 	}
 	c.mu.Unlock()
 
 	go func() {
-		opts := c.template
-		if mode != "" {
-			opts.Mode = mode
-		}
+		opts := c.templateForMode(selectedMode)
+		opts.Mode = selectedMode
 		opts.Scenario = scenario
 
 		if customDef != nil {
@@ -134,6 +146,11 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 				c.status.State = SimulatorFailed
 				c.status.LastError = err.Error()
 				return
+			}
+			if opts.Mode != "" {
+				c.mu.Lock()
+				c.status.Mode = opts.Mode
+				c.mu.Unlock()
 			}
 		}
 

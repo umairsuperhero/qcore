@@ -32,7 +32,8 @@ if echo "$changed" | grep -qE '\.go$'; then
   echo "== go changed: gofmt + targeted package tests in golang:1.23 =="
   go_files="$(echo "$changed" | grep -E '\.go$' || true)"
   if [ -n "$go_files" ]; then
-    not_formatted="$(docker run --rm -v "$PWD":/src -w /src golang:1.23 sh -c "gofmt -l $go_files" | tr '\n' ' ')"
+    go_files_space="$(echo "$go_files" | tr '\n' ' ')"
+    not_formatted="$(docker run --rm -v "$PWD":/src -w /src golang:1.23 sh -c "gofmt -l $go_files_space" | tr '\n' ' ')"
     if [ -n "$not_formatted" ]; then
       echo "Go files need gofmt: $not_formatted"
       exit 1

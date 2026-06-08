@@ -51,7 +51,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | **Interop hardening (I1–I4 / D-1…D-4)** | D-1 PLMN codec (`pkg/ident`) · D-2 NRF register/discover · D-3 real SUCI + genuine unprovisioned-IMSI reject · D-4 N11 AMF→SMF (E2E no longer fakes the SMF call). All merged to main. | ✅ Complete |
 | Dashboard experience layer | gNB-connection hero screen (Gate 1) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
-| 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Error injection on the real-SUCI 5G sim; protocol selector, 5G sim controls, UDR view. | 🔭 Next |
+| 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Error injection on the real-SUCI 5G sim; protocol selector, 5G sim controls, UDR view. The first C2 slice is in progress: separate 4G/5G simulator targets, real simulator status, and 5G scenario buttons in the Health view. | ◑ In progress |
 | UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup + Registration Complete + PDU session + NGAP PDU Session Resource Setup + PFCP remote tunnel update + UPF real TUN/NAT + UE ping over `uesimtun0`. Evidence: `ueransim-interop` run `27115478758`. | ✅ Shipped for bundled profile |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
 
@@ -189,7 +189,7 @@ I1–I4 are recorded in `docs/audit-v1.0.md` §4 (D-1…D-4).
 
 ### Then: T8–T10 (T7 and T10 done)
 T7: ✅ Phase A event instrumentation for 5G NFs (C1) — done; Phase C can now reason over 5G traces.
-T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI).
+T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI). First slice in progress: dashboard-controlled 5G simulator starts now target AMF NGAP, and the Health view exposes real simulator status plus 5G-compatible error-injection buttons.
 T9: Dashboard 5G mode (protocol selector, 5G sim buttons, UDR subscriber view).
 T10: ✅ UERANSIM compatibility verification (real gNB+UE in sidecar) — shipped for the bundled Docker/cloud-Linux profile as of GitHub Actions run `27115478758`; UE ping over `uesimtun0` succeeds through UPF.
 

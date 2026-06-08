@@ -28,14 +28,15 @@ import (
 // Options drives one attach attempt. Defaults give a successful happy-path
 // attach against the seeded demo subscriber.
 type Options struct {
-	Mode     string  // "4g" or "5g", defaults to "4g"
-	MMEAddr  string  // host:port for the MME/AMF SCTP listener
-	PLMN     [3]byte // packed PLMN (e.g. {0x00, 0xF1, 0x10} = "00101")
-	TAC      uint16
-	IMSI     string // 15 digits
-	Ki       string // 32 hex chars
-	OPc      string // 32 hex chars
-	Scenario string // empty for happy path, or "wrong_ki" / "wrong_plmn" / "unprovisioned_imsi" / "wrong_mme_address"
+	Mode          string  // "4g" or "5g", defaults to "4g"
+	MMEAddr       string  // host:port for the MME/AMF signaling listener
+	TransportMode string  // "tcp" for dev fallback, "sctp" for native SCTP
+	PLMN          [3]byte // packed PLMN (e.g. {0x00, 0xF1, 0x10} = "00101")
+	TAC           uint16
+	IMSI          string // 15 digits
+	Ki            string // 32 hex chars
+	OPc           string // 32 hex chars
+	Scenario      string // empty for happy path, or "wrong_ki" / "wrong_plmn" / "unprovisioned_imsi" / "wrong_mme_address"
 }
 
 // Result is what the controller exposes to the dashboard after Run completes.
@@ -163,12 +164,16 @@ func (c *Client) attach(ctx context.Context) (string, error) {
 func (c *Client) connect(addr string) error {
 	deadline := time.Now().Add(3 * time.Second)
 	var lastErr error
+	transport := sctp.Mode(c.opts.TransportMode)
+	if transport == "" {
+		transport = sctp.ModeTCP
+	}
 	for time.Now().Before(deadline) {
-		assoc, err := sctp.Dial(sctp.ModeTCP, addr)
+		assoc, err := sctp.Dial(transport, addr)
 		if err == nil {
 			c.assoc = assoc
 			c.emit(events.StateTransition, events.SeverityInfo, "sctp",
-				"Connected to MME at "+addr, nil)
+				fmt.Sprintf("Connected to core signaling endpoint at %s (%s)", addr, transport), nil)
 			return nil
 		}
 		lastErr = err
@@ -226,7 +231,7 @@ func (c *Client) initialUE() error {
 		0x71,                    // KSI=7 | attach type=1 (EPS attach)
 		uint8(len(encodedIMSI)), // mobile identity LV length
 	}, encodedIMSI...)
-	nasBody = append(nasBody, 0x02, 0xE0, 0xE0)                          // UE network capability LV
+	nasBody = append(nasBody, 0x02, 0xE0, 0xE0)                         // UE network capability LV
 	nasBody = append(nasBody, 0x00, 0x05, 0xD0, 0x11, 0x27, 0x1D, 0x31) // ESM container LV-E (PDN Connectivity)
 
 	msg := &s1ap.InitialUEMessage{
