@@ -204,7 +204,7 @@ export default function GNBHeroScreen({ onRegisterUE, onUseUeransim }: GNBHeroSc
                   <div className="space-y-3 bg-darkbg-950/70 p-5 rounded-2xl border border-darkbg-800 font-mono text-sm">
                     {/* AMF Address */}
                     <div className="flex items-center justify-between group border-b border-darkbg-800/40 pb-2">
-                      <span className="text-slate-400">AMF (SCTP)</span>
+                      <span className="text-slate-400">AMF NGAP (SCTP)</span>
                       <div className="flex items-center gap-2">
                         <span className="text-white font-semibold">{connection.amfAddress}</span>
                         <button 

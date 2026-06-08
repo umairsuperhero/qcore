@@ -2,9 +2,9 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.13 — 2026-06-08
-**Auditor of record this revision:** focused C2/T8 simulator UX slice on
-`codex/c2-5g-simulator-ux`; local `make verify-fast`.
+**Current revision:** v1.14 — 2026-06-08
+**Auditor of record this revision:** focused C3/T9 RAN-connect slice on
+`codex/c3-dashboard-5g-mode`; local `make verify-fast`.
 
 ---
 
@@ -12,6 +12,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.14 | 2026-06-08 | **C3/T9 dashboard 5G mode started; not yet shipped as a full milestone.** `/api/ran-config` now exposes first-class AMF/NGAP connection values (`amf_address`, `amf_ngap_port`, `amf_plmn`, `amf_tac`, `serving_network_name`) alongside the legacy 4G MME/S1AP values. The dashboard hero now derives its gNB endpoint from AMF/NGAP fields instead of MME/S1AP fields, and the API provides a UERANSIM gNB snippet keyed from the AMF configuration. Verification performed this revision: `make verify-fast` passed, including Docker Go targeted tests for `pkg/dashboard`, dashboard `tsc --noEmit`, and `vite build`. |
 | v1.13 | 2026-06-08 | **C2/T8 simulator UX started; not yet shipped as a full milestone.** The dashboard now has separate 4G and 5G simulator templates, so 5G starts target the configured AMF NGAP endpoint instead of accidentally reusing the 4G MME S1AP listener. The built-in simulator accepts configured transport mode (`tcp` dev fallback or native `sctp`), Docker/dashboard config exposes `dashboard.amf_ngap_addr`, and the Health view renders real simulator mode/status/failure-step/journey data plus scenario buttons for wrong Ki, wrong PLMN, unknown IMSI, and timeout. The prior modal no longer claims to launch UERANSIM or force a simulated success after backend failure. Verification performed this revision: `make verify-fast` passed, including Docker Go targeted tests for `pkg/config`, `pkg/dashboard`, `pkg/simulator`, plus dashboard `tsc --noEmit` and `vite build`. |
 | v1.12 | 2026-06-08 | **T10 shipped for the bundled UERANSIM Docker/cloud-Linux profile.** The final data-plane gate is green: QCore now sends NGAP `PDUSessionResourceSetupRequest`, decodes the gNB's `PDUSessionResourceSetupResponse`, forwards the gNB N3 tunnel to SMF, performs PFCP Session Modification into UPF, configures real TUN/NAT in the UPF container, and proves `ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE. GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`; CI run `27115479708` is green. Scope is explicit: this validates the bundled UERANSIM v3.2.8 Docker profile on Linux/TUN, not a broad conformance matrix. |
 | v1.11 | 2026-06-08 | **T10 now reaches external UERANSIM PDU session establishment; T10 still not shipped.** The AMF now relays a protected DL NAS Transport carrying a 5GSM PDU Session Establishment Accept after SMF returns `201`. The Accept includes the mandatory UERANSIM-visible IEs (Selected PDU session type + SSC mode, Authorized QoS rules, Session-AMBR, and PDU address) and is pinned by NAS golden/unit tests plus the AMF DL-count/security-header test. GitHub Actions run `27108387027` proves UERANSIM logs `PDU Session Establishment Accept received` and `PDU Session establishment is successful PSI[1]`; latest PR checks are green (`ueransim-interop` run `27108723209`, CI run `27108724052`). Current gap: no external UE→UPF→peer packet or ping is proven; the final T10 gate is data-plane validation with NGAP PDU Session Resource Setup, PFCP remote tunnel update, and UPF real TUN/NAT. |

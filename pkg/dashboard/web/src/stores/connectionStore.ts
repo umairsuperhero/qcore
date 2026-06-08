@@ -59,6 +59,21 @@ let timerRef: number | null = null;
 
 const genId = () => Math.random().toString(36).substring(2, 9);
 
+function endpointAddress(address: string, port: number, fallbackPort: number) {
+  const host =
+    address.startsWith("<") || address === "0.0.0.0"
+      ? window.location.hostname || "192.168.1.50"
+      : address;
+  return `${host}:${port || fallbackPort}`;
+}
+
+function formatPlmn(plmn: string) {
+  if (plmn.length >= 5) {
+    return `${plmn.slice(0, 3)} / ${plmn.slice(3)}`;
+  }
+  return plmn;
+}
+
 export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   loading: true,
   config: null,
@@ -85,17 +100,8 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   fetchConfig: async () => {
     try {
       const cfg = await api.ranConfig();
-      const host =
-        cfg.mme_address.startsWith("<") || cfg.mme_address === "0.0.0.0"
-          ? window.location.hostname || "192.168.1.50"
-          : cfg.mme_address;
-      const port = cfg.mme_s1ap_port || 38412;
-      const amfAddr = `${host}:${port}`;
-
-      let formattedPlmn = cfg.plmn;
-      if (cfg.plmn.length >= 5) {
-        formattedPlmn = `${cfg.plmn.slice(0, 3)} / ${cfg.plmn.slice(3)}`;
-      }
+      const amfAddr = endpointAddress(cfg.amf_address || cfg.mme_address, cfg.amf_ngap_port, 38412);
+      const formattedPlmn = formatPlmn(cfg.amf_plmn || cfg.plmn);
 
       set((state) => {
         if (state.isSimulated) return { config: cfg, loading: false };
@@ -106,7 +112,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             ...state.connection,
             amfAddress: amfAddr,
             configuredPlmn: formattedPlmn,
-            configuredTac: String(cfg.tac),
+            configuredTac: String(cfg.amf_tac || cfg.tac),
           },
         };
       });
@@ -233,18 +239,16 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     // Update connection with simulated values
     const { config } = get();
     const defaultAmf = config
-      ? `${config.mme_address.startsWith("<") || config.mme_address === "0.0.0.0" ? "192.168.1.50" : config.mme_address}:${config.mme_s1ap_port || 38412}`
+      ? endpointAddress(config.amf_address || config.mme_address, config.amf_ngap_port, 38412)
       : "192.168.1.50:38412";
     
-    const defaultPlmn = config ? config.plmn : "00101";
-    let formattedPlmn = defaultPlmn;
-    if (defaultPlmn.length >= 5) {
-      formattedPlmn = `${defaultPlmn.slice(0, 3)} / ${defaultPlmn.slice(3)}`;
-    }
+    const defaultPlmn = config ? config.amf_plmn || config.plmn : "00101";
+    const formattedPlmn = formatPlmn(defaultPlmn);
+    const defaultTac = config ? String(config.amf_tac || config.tac) : "1";
 
     if (state === "waiting") {
       set((s) => ({
-        connection: { ...s.connection, state: "waiting", amfAddress: defaultAmf, configuredPlmn: formattedPlmn, configuredTac: config ? String(config.tac) : "1" },
+        connection: { ...s.connection, state: "waiting", amfAddress: defaultAmf, configuredPlmn: formattedPlmn, configuredTac: defaultTac },
       }));
     } else if (state === "connected") {
       set((s) => ({
@@ -253,7 +257,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
           state: "connected",
           amfAddress: defaultAmf,
           configuredPlmn: formattedPlmn,
-          configuredTac: config ? String(config.tac) : "1",
+          configuredTac: defaultTac,
           gnbName: "Nokia AirScale",
           negotiatedPlmn: "001/01",
           negotiatedTac: "1",
@@ -267,7 +271,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
           state: "failed",
           amfAddress: defaultAmf,
           configuredPlmn: formattedPlmn,
-          configuredTac: config ? String(config.tac) : "1",
+          configuredTac: defaultTac,
           failReason: "NG Setup rejected",
           sentPlmn: "310/260",
           fixGnb: "set MCC=001, MNC=01",
@@ -282,24 +286,15 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     // Re-evaluate config into connection
     const { config } = get();
     if (config) {
-      const host =
-        config.mme_address.startsWith("<") || config.mme_address === "0.0.0.0"
-          ? window.location.hostname || "192.168.1.50"
-          : config.mme_address;
-      const port = config.mme_s1ap_port || 38412;
-      const amfAddr = `${host}:${port}`;
-
-      let formattedPlmn = config.plmn;
-      if (config.plmn.length >= 5) {
-        formattedPlmn = `${config.plmn.slice(0, 3)} / ${config.plmn.slice(3)}`;
-      }
+      const amfAddr = endpointAddress(config.amf_address || config.mme_address, config.amf_ngap_port, 38412);
+      const formattedPlmn = formatPlmn(config.amf_plmn || config.plmn);
       set((state) => ({
         connection: {
           ...state.connection,
           state: "waiting", // Reset to waiting on live reconnect
           amfAddress: amfAddr,
           configuredPlmn: formattedPlmn,
-          configuredTac: String(config.tac),
+          configuredTac: String(config.amf_tac || config.tac),
         },
       }));
     }
