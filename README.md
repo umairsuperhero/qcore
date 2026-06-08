@@ -4,7 +4,7 @@
 
 **The open-source 4G/5G core network that's actually easy to use.**
 
-> Updated: 2026-06-07
+> Updated: 2026-06-08
 
 QCore is a development and test environment for cellular networks — **not** a 5G core competing on protocol features. Primary user: the RAN/device developer who needs a core to test against. QCore wins on experience: fast start, deep observability, and AI that explains failures.
 
@@ -19,7 +19,7 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | 4G EPC | HSS (subscriber management + Milenage), MME (S1AP/NAS attach, auth, security mode), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured event schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
-| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening and 5G Phase-A telemetry are complete. **T10/UERANSIM is partially reproduced, not shipped:** native SCTP, NGSetup, InitialUEMessage, Authentication Request/Response, AUSF confirmation, Security Mode Control, InitialContextSetup, Registration Accept/Complete, and AMF→SMF Create SM Context now work against real UERANSIM on cloud Linux. Current external gap: QCore has not yet sent a PDU Session Establishment Accept to UERANSIM, and no external PDU/data-plane proof exists. Plan: `docs/v1-gap-closure-plan.md`; evidence: `docs/ueransim-compat.md`. | 🔭 In progress |
+| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening and 5G Phase-A telemetry are complete. **T10/UERANSIM is partially reproduced, not shipped:** native SCTP, NGSetup, InitialUEMessage, Authentication Request/Response, AUSF confirmation, Security Mode Control, InitialContextSetup, Registration Accept/Complete, AMF→SMF Create SM Context, protected PDU Session Establishment Accept, and UERANSIM PDU session establishment now work against real UERANSIM on cloud Linux. Current external gap: no UE→UPF→peer data-plane packet or ping is proven. Plan: `docs/v1-gap-closure-plan.md`; evidence: `docs/ueransim-compat.md`. | 🔭 In progress |
 | Phase C — Diagnostic AI | Symptom→cause catalog deepened to 13 typed rules across ≥9 cause categories (4G + 5G); AI Level 1 (explain) + Level 2 (root-cause + fix); optional cloud (Gemini) escalation. **Offline embedded SLM (B2): code merged + unit-tested green** (`pkg/ai` local provider, `make up-ai` llama.cpp sidecar with a baked Qwen2.5-1.5B GGUF; catalog still runs first, the SLM only handles misses over the same grounded prompt). Live model-serve validation (real GGUF pull / air-gapped render) not yet run. | 🔭 In progress |
 | Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. **Now runs on real `/api/events/stream` data (un-mocked); live failures are decoded by the real diagnostic engine. Build migrated esbuild→Vite.** | ✅ Shipped |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 In progress |
@@ -40,11 +40,12 @@ pass an in-process E2E test over native SCTP; the diagnostic catalog and the off
 
 **The path to v1 (two parallel tracks):**
 1. **5G-leading headline — real-RAN validation (T10).** Get a real UERANSIM gNB/UE to
-   register and run a PDU session through QCore. *Current gate:* PDU Session
-   Establishment Accept + data-plane proof. The prior DownlinkNASTransport APER,
-   SMC-integrity, InitialContextSetup APER, Registration Accept, UL NAS Transport, and
-   AMF→SMF URL blockers are validated fixed against real UERANSIM on cloud Linux. Until
-   PDU session + ping passes, the 5G track is **not** "shipped" and we don't claim full
+   register and pass data through QCore. *Current gate:* data-plane proof: NGAP PDU
+   Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and a UE ping.
+   The prior DownlinkNASTransport APER, SMC-integrity, InitialContextSetup APER,
+   Registration Accept, UL NAS Transport, AMF→SMF URL, and PDU Session Establishment
+   Accept blockers are validated fixed against real UERANSIM on cloud Linux. Until
+   ping passes through UPF, the 5G track is **not** "shipped" and we don't claim full
    UERANSIM compatibility. Then: 5G simulator UX (C2/T8) and dashboard 5G mode (C3/T9).
 2. **The AI moat.** Catalog (shipped) + offline SLM (code merged); next is live
    model-serve validation, then deeper root-cause diagnosis.

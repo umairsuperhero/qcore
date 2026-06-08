@@ -277,9 +277,10 @@ QCore in **native SCTP** mode — the charter's "real RAN, < 15 min TTFC" path.
 **Approach.** Run on a **Linux host** (Docker Desktop on macOS does not reliably provide
 `/dev/net/tun` + kernel SCTP). Set `amf.sctp_mode: sctp`. Validate registration + PDU
 session + uplink.
-**Current evidence.** As of 2026-06-07, GitHub Actions run `27080274240` proves real
-UERANSIM initial registration plus AMF→SMF Create SM Context (`201`). The remaining T10
-gap is PDU Session Establishment Accept delivery and external data-plane/ping proof.
+**Current evidence.** As of 2026-06-08, GitHub Actions runs `27108387027` and
+`27108723209` prove real UERANSIM initial registration plus AMF→SMF Create SM Context
+(`201`), protected PDU Session Establishment Accept delivery, and UERANSIM PDU session
+establishment success. The remaining T10 gap is external data-plane/ping proof.
 **Acceptance.** Documented run where UERANSIM registers a UE and pings out through the
 UPF; any interop mismatch fixed (this is where A1/A2/A4 correctness is proven for real).
 **Verify.** `make up-5g` on Linux; UERANSIM logs show Registration Accept + PDU session;

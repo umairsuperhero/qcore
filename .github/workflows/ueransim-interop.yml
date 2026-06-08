@@ -1,8 +1,8 @@
 name: ueransim-interop
 # T10 real-RAN validation: bring up the 5G stack + a real UERANSIM gNB/UE over
 # native kernel SCTP. This gate currently asserts the known-good path through
-# full initial registration and AMF-to-SMF Create SM Context. PDU Session Accept
-# delivery and data-plane validation remain later T10 gates.
+# full initial registration, AMF-to-SMF Create SM Context, and UERANSIM PDU
+# session establishment. Data-plane validation remains the later T10 gate.
 on:
   push:
     branches: [main, "codex/**", "fix/**"]
@@ -41,7 +41,7 @@ jobs:
           echo "--- containers ---"; $COMPOSE ps
           if [ "$ok" != 1 ]; then echo "::error::stack failed to come up after retries"; exit 1; fi
 
-      - name: Validate — UE must register and AMF must reach SMF
+      - name: Validate — UE must register and establish a PDU session
         id: outcome
         run: |
           # Current bounded claim:
@@ -49,11 +49,13 @@ jobs:
           #           Security Mode Complete, gNB decodes InitialContextSetup,
           #           AMF receives InitialContextSetupResponse, UERANSIM reports
           #           initial registration success, and AMF gets a 201 from SMF
-          #           for Create SM Context.
+          #           for Create SM Context, then UERANSIM reports PDU session
+          #           establishment success.
           #   FAIL  = SMC integrity regression, NGAP APER transfer-syntax
-          #           regression, registration regression, or failure to reach SMF.
-          # PDU Session Accept delivery and data-plane/ping are separate T10 gates.
-          echo "Watching UERANSIM through registration + SMF handoff (up to ~180s)..."
+          #           regression, registration regression, failure to reach SMF,
+          #           or failure to establish the PDU session.
+          # Data-plane/ping is the next separate T10 gate.
+          echo "Watching UERANSIM through PDU session establishment (up to ~180s)..."
           REACHED_SMC=0
           SELECTED_ALGS=0
           SMC_COMPLETE=0
@@ -135,9 +137,11 @@ jobs:
             echo "::error::NEXT BLOCKER — UERANSIM UE exited (code $UE_EXIT_CODE) after the PDU Session Establishment Accept (pdu_accept=$PDU_ACCEPT). Registration + SMF still pass; the PDU Accept content is the new blocker — see UE logs/artifacts."
             exit 1
           elif [ "$PDU_ACCEPT" = 1 ]; then
-            echo "::notice::PDU ACCEPT RECEIVED — UERANSIM parsed the PDU Session Establishment Accept but has not yet reported session establishment. Next blocker is post-accept (see UE logs)."
+            echo "::error::PDU ACCEPT RECEIVED BUT SESSION NOT ESTABLISHED — UERANSIM parsed the PDU Session Establishment Accept but has not reported session establishment."
+            exit 1
           else
-            echo "::notice::REGISTRATION + SMF HANDOFF pass and the AMF sent a PDU Session Establishment Accept; UERANSIM has not logged receiving/establishing it yet (next blocker; UE did not crash). Data-plane remains a separate gate."
+            echo "::error::PDU SESSION NOT ESTABLISHED — registration + SMF handoff passed, but UERANSIM did not log PDU Session Establishment Accept/session success."
+            exit 1
           fi
 
       - name: Capture logs and crash evidence (always)
@@ -165,7 +169,7 @@ jobs:
           $COMPOSE logs --no-color ueransim-ue 2>&1 | tee artifacts/ueransim/ueransim-ue.log | tail -240 || true
           {
             echo "===== key lines ====="
-            grep -RInE "reached_smc=|InitialContextSetup confirmed|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|Failed to create Linux TUN|DummyEgress|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
+            grep -RInE "reached_smc=|pdu_accept=|pdu_session=|InitialContextSetup confirmed|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|PDU Session Establishment Accept|PDU Session establishment is successful|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|uesimtun|Failed to create Linux TUN|DummyEgress|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
           } | tee artifacts/ueransim/key-lines.txt
 
       - name: Upload T10 evidence artifact

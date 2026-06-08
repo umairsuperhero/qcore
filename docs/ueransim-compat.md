@@ -3,7 +3,7 @@
 **Status: UERANSIM registration + PDU session establishment (control plane) pass;
 data-plane/ping is the remaining T10 gate — not shipped.**
 
-As of 2026-06-07, QCore has been replayed against UERANSIM v3.2.8 in Docker
+As of 2026-06-08, QCore has been replayed against UERANSIM v3.2.8 in Docker
 Compose over native SCTP on GitHub Actions cloud Linux. The replay now completes
 the **5G control plane end-to-end**: full initial registration, then the UE's PDU
 Session Establishment Request → SMF `201 Created` → a protected DL NAS Transport
@@ -178,8 +178,8 @@ amf: SMC Complete — sending Registration Accept
 ```
 
 This resolves the SMC-integrity blocker. It did not complete T10 by itself; later
-Registration Accept and UL NAS Transport fixes now carry the external replay through
-initial registration and SMF handoff.
+Registration Accept, UL NAS Transport, SMF handoff, and PDU Session Establishment Accept
+fixes now carry the external replay through PDU session establishment.
 
 ## Replay Command
 

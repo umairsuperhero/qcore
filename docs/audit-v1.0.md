@@ -2,10 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.10 — 2026-06-07
+**Current revision:** v1.11 — 2026-06-08
 **Auditor of record this revision:** focused T10 replay on
-`codex/t10-post-ics-ue-exit` plus GitHub Actions `ueransim-interop` replay run
-`27080274240`.
+`codex/t10-post-ics-ue-exit` plus GitHub Actions `ueransim-interop` replay runs
+`27108387027` and `27108723209`.
 
 ---
 
@@ -13,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.11 | 2026-06-08 | **T10 now reaches external UERANSIM PDU session establishment; T10 still not shipped.** The AMF now relays a protected DL NAS Transport carrying a 5GSM PDU Session Establishment Accept after SMF returns `201`. The Accept includes the mandatory UERANSIM-visible IEs (Selected PDU session type + SSC mode, Authorized QoS rules, Session-AMBR, and PDU address) and is pinned by NAS golden/unit tests plus the AMF DL-count/security-header test. GitHub Actions run `27108387027` proves UERANSIM logs `PDU Session Establishment Accept received` and `PDU Session establishment is successful PSI[1]`; latest PR checks are green (`ueransim-interop` run `27108723209`, CI run `27108724052`). Current gap: no external UE→UPF→peer packet or ping is proven; the final T10 gate is data-plane validation with NGAP PDU Session Resource Setup, PFCP remote tunnel update, and UPF real TUN/NAT. |
 | v1.10 | 2026-06-07 | **T10 now reaches external UERANSIM initial registration and AMF→SMF handoff; T10 still not shipped.** The post-InitialContextSetup UE abort was fixed by encoding Registration Accept Assigned 5G-GUTI IEI `0x77` as IE6/TLV-E with a two-byte length. The later UL NAS Transport blocker was fixed by routing decrypted protected NAS into `handleULNASTransport` and decoding UERANSIM's low-nibble payload container type plus IE1/IE3 optional fields. Compose now sets `QCORE_AMF_SMF_URL=http://smf:8002`, so AMF no longer falls back to container-local `localhost:8002`. GitHub Actions run `27080274240` proves UERANSIM logs `Initial Registration is successful`, AMF logs `Registration Complete — UE fully registered`, UERANSIM sends PDU Session Establishment Request, AMF forwards it, and SMF returns `201` on Create SM Context. Current gap: QCore has not yet sent PDU Session Establishment Accept back to UERANSIM, and no external PDU-session completion or data-plane ping is proven. |
 | v1.9 | 2026-06-06 | **T10 InitialContextSetup APER blocker resolved on `codex/t10-initial-context-setup-aper`, T10 still blocked.** A traced UERANSIM replay captured the rejected InitialContextSetupRequest hex, then the branch fixed two narrow APER bugs: NGAP `BitRate` extensible constrained integer encoding for `UEAggregateMaximumBitRate`, and extension markers for the UE security-capability algorithm BIT STRINGs. The fixes are pinned by external-corpus/golden tests (`TestUEAggregateMaximumBitRateAPERGolden`, `TestUESecurityCapabilitiesAPERGolden`, `TestInitialContextSetupUERANSIMRejectedFixture`). GitHub Actions run `27057637533` confirms UERANSIM logs `Initial Context Setup Request received` and QCore logs `amf: InitialContextSetup confirmed by gNB`. Full registration is still not complete; current external blocker is post-InitialContextSetup UE failure (`ueransim-ue` exit 139 / gNB UE signal lost), with no PDU-session or data-plane claim. |
 | v1.8 | 2026-06-06 | **T10 SMC-integrity blocker resolved on PR #28, T10 still blocked.** The K_AMF derivation path now strips the SBI `imsi-` prefix and feeds bare IMSI digits into the TS 33.501 A.7 K_AMF KDF input. The GitHub Actions `ueransim-interop` job validated this against real UERANSIM on cloud Linux: UE reaches Security Mode Command, selects integrity[2]/ciphering[0], does not log `Security Mode Command integrity check failed`, and AMF receives Security Mode Complete. Full registration is still not complete; current external blocker is Registration Accept delivery after SMC Complete. The gNB log now confirms APER `transfer-syntax-error` on QCore's `InitialContextSetupRequest`; adding mandatory `UEAggregateMaximumBitRate` is standards-correct but not sufficient by itself. |
@@ -70,7 +71,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | 4G EPC (HSS/MME/SPGW) | ✅ Shipped | `pkg/mme` E2E attach + user-plane tests pass |
 | Phase A event model | ✅ Shipped (4G + 5G) | 4G NFs fully instrumented; 5G NFs instrumented via C1/T7 — one correlated trace per registration (`TestC1_RegistrationEventTrace`) |
 | Phase B golden path / dashboard / simulator | ✅ Shipped | builds; frontend type-checks; simulator tests pass |
-| 5G SA control plane | ✅ Works in in-process E2E; T10 PDU/data-plane pending | `pkg/amf` integration test green; UERANSIM reaches Registration Complete on cloud Linux (`27080274240`) |
+| 5G SA control plane | ✅ Works in in-process E2E; T10 data-plane pending | `pkg/amf` integration test green; UERANSIM reaches PDU session establishment on cloud Linux (`27108387027`, `27108723209`) |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
@@ -156,10 +157,12 @@ traces. **T10 is now partially reproduced but still not shipped:** UERANSIM acce
 NGSetup, InitialUEMessage, Authentication Request, Authentication Response, AUSF
 confirmation, Security Mode Control, InitialContextSetupRequest, Registration Accept,
 and Registration Complete; it then sends PDU Session Establishment Request, which AMF
-forwards to SMF and SMF accepts with `201`. Remaining T10 work: send PDU Session
-Establishment Accept back to UERANSIM and prove data-plane/ping on a TUN-capable Linux
-runtime. Remaining to v1: finish T10, T8/T9 (5G simulator UX, dashboard 5G mode), plus
-B2 live model-serve validation on the AI path.
+forwards to SMF; SMF accepts with `201`; AMF sends a protected PDU Session
+Establishment Accept; and UERANSIM reports PDU session establishment success. Remaining
+T10 work: prove UE→UPF→peer data-plane/ping on a TUN-capable Linux runtime, likely via
+NGAP PDU Session Resource Setup, PFCP remote tunnel update, and UPF real TUN/NAT.
+Remaining to v1: finish T10, T8/T9 (5G simulator UX, dashboard 5G mode), plus B2 live
+model-serve validation on the AI path.
 
 ## 6. Deferred (unchanged from charter §11)
 

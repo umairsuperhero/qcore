@@ -45,16 +45,18 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
   - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED at
-    PDU Session Establishment Accept / data-plane proof.** A real UERANSIM replay over
+    data-plane proof.** A real UERANSIM replay over
     native SCTP now reaches NGSetup → InitialUEMessage → Authentication
     Request/Response → AUSF confirmation → Security Mode Complete →
     InitialContextSetupResponse → Registration Complete → AMF→SMF Create SM Context
-    (`201`). The earlier `DownlinkNASTransport` APER `transfer-syntax-error`,
+    (`201`) → protected PDU Session Establishment Accept → UERANSIM PDU session
+    establishment success. The earlier `DownlinkNASTransport` APER `transfer-syntax-error`,
     SMC-integrity, `InitialContextSetupRequest` APER, Registration Accept IE-length,
-    protected UL NAS routing, UL NAS Transport IE-shape, and compose SMF URL blockers
-    are fixed and validated against real UERANSIM on cloud Linux. The current gap is
-    that QCore has not yet sent a PDU Session Establishment Accept back to UERANSIM, and
-    no external PDU-session completion or data-plane ping claim exists yet. Evidence +
+    protected UL NAS routing, UL NAS Transport IE-shape, compose SMF URL, and PDU
+    Session Establishment Accept blockers are fixed and validated against real UERANSIM
+    on cloud Linux. The current gap is that no external UE→UPF→peer packet or ping claim
+    exists yet; next work is NGAP PDU Session Resource Setup, PFCP remote tunnel update,
+    and UPF real TUN/NAT validation. Evidence +
     exact gap: `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).

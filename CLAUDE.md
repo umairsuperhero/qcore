@@ -46,11 +46,12 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 **The remaining critical-path streams are independent — run in parallel:**
   - **T10 (UERANSIM real-RAN validation)** — the 5G-leading headline. **T10 is now
     partially reproduced**: a real UERANSIM replay over native SCTP reaches
-    Registration Complete and AMF→SMF Create SM Context (`201`) on GitHub Actions cloud
-    Linux. The prior DownlinkNASTransport APER, SMC-integrity, InitialContextSetup APER,
+    Registration Complete, AMF→SMF Create SM Context (`201`), protected PDU Session
+    Establishment Accept, and UERANSIM PDU session establishment success on GitHub
+    Actions cloud Linux. The prior DownlinkNASTransport APER, SMC-integrity, InitialContextSetup APER,
     Registration Accept IE-length, protected UL NAS routing, UL NAS Transport IE-shape,
-    and compose SMF URL blockers are fixed. The current gap is PDU Session Establishment
-    Accept delivery plus external data-plane/ping proof; see `docs/ueransim-compat.md`.
+    compose SMF URL, and PDU Session Establishment Accept blockers are fixed. The current
+    gap is external data-plane/ping proof; see `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update above); only live
