@@ -10,10 +10,10 @@ import (
 type UEState int
 
 const (
-	StateIdle          UEState = iota
-	StateAuthPending           // sent Auth Request, waiting for Auth Response
-	StateSecModePending        // AUSF confirmed, sent SMC, waiting for SMC Complete
-	StateRegistered            // sent Registration Accept, received Registration Complete
+	StateIdle           UEState = iota
+	StateAuthPending            // sent Auth Request, waiting for Auth Response
+	StateSecModePending         // AUSF confirmed, sent SMC, waiting for SMC Complete
+	StateRegistered             // sent Registration Accept, received Registration Complete
 )
 
 // UEContext holds all per-UE state across the NGAP + NAS flows.
@@ -33,14 +33,14 @@ type UEContext struct {
 	JourneyID string
 
 	// 5G identifiers
-	SUPI    string // filled after auth confirmation
-	SUCI    []byte // raw mobile identity bytes from Registration Request
-	GUTI    *ngap.GUAMI
+	SUPI string // filled after auth confirmation
+	SUCI []byte // raw mobile identity bytes from Registration Request
+	GUTI *ngap.GUAMI
 
 	// Authentication
-	AuthCtxURL   string // AUSF 5g-aka-confirmation URL
-	RAND         [16]byte
-	AUTN         [16]byte
+	AuthCtxURL string // AUSF 5g-aka-confirmation URL
+	RAND       [16]byte
+	AUTN       [16]byte
 
 	// Keys (filled after AUSF confirmation)
 	KAMF    []byte // 256-bit
@@ -60,6 +60,11 @@ type UEContext struct {
 
 	// Location (last known)
 	UserLocation ngap.UserLocationInformationNR
+
+	// PDU session state learned during T10 interop.
+	PDUSessionID uint8
+	SMContextRef string
+	SMFURL       string
 }
 
 func newUEContext(amfID, ranID uint64, gNB *gNBSession) *UEContext {

@@ -8,7 +8,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/upf ./cmd/upf
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates iptables
+RUN apk --no-cache add ca-certificates iproute2 iptables
 COPY --from=builder /bin/upf /bin/upf
 
 ENTRYPOINT ["/bin/upf"]

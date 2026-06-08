@@ -338,10 +338,16 @@ services:
       - "2152/udp"
     cap_add:
       - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    sysctls:
+      net.ipv4.ip_forward: "1"
     environment:
       UPF_PFCPBINDADDR: 0.0.0.0:8805
       UPF_GTPUBINDADDR: 0.0.0.0:2152
       UPF_TUNDEVICENAME: "qcore-upf"
+      UPF_TUNIPV4CIDR: "10.45.0.1/16"
+      UPF_ENABLENAT: "true"
 
   # Offline diagnostic SLM (charter §9.3 / gap-closure B2). Serves a small
   # instruct model over an OpenAI-compatible API so the Diagnostic AI explains

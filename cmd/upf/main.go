@@ -26,11 +26,13 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./upf.yaml)")
-	
+
 	viper.SetDefault("upf.pfcpBindAddr", "0.0.0.0:8805")
 	viper.SetDefault("upf.gtpuBindAddr", "0.0.0.0:2152")
 	viper.SetDefault("upf.tunDeviceName", "qcore-upf")
-	
+	viper.SetDefault("upf.tunIpv4Cidr", "10.45.0.1/16")
+	viper.SetDefault("upf.enableNat", true)
+
 	viper.AutomaticEnv()
 
 	if err := rootCmd.Execute(); err != nil {
@@ -47,6 +49,8 @@ func run() error {
 		PFCPBindAddr:  viper.GetString("upf.pfcpBindAddr"),
 		GTPUBindAddr:  viper.GetString("upf.gtpuBindAddr"),
 		TunDeviceName: viper.GetString("upf.tunDeviceName"),
+		TunIPv4CIDR:   viper.GetString("upf.tunIpv4Cidr"),
+		EnableNAT:     viper.GetBool("upf.enableNat"),
 	}
 
 	svc, err := upf.NewService(cfg, log)

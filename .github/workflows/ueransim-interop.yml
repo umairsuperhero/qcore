@@ -41,7 +41,7 @@ jobs:
           echo "--- containers ---"; $COMPOSE ps
           if [ "$ok" != 1 ]; then echo "::error::stack failed to come up after retries"; exit 1; fi
 
-      - name: Validate — UE must register and establish a PDU session
+      - name: Validate — UE must register, establish PDU session, and pass data
         id: outcome
         run: |
           # Current bounded claim:
@@ -49,13 +49,12 @@ jobs:
           #           Security Mode Complete, gNB decodes InitialContextSetup,
           #           AMF receives InitialContextSetupResponse, UERANSIM reports
           #           initial registration success, and AMF gets a 201 from SMF
-          #           for Create SM Context, then UERANSIM reports PDU session
-          #           establishment success.
+          #           for Create SM Context, UERANSIM reports PDU session
+          #           establishment success, and UE ping over uesimtun0 succeeds.
           #   FAIL  = SMC integrity regression, NGAP APER transfer-syntax
           #           regression, registration regression, failure to reach SMF,
-          #           or failure to establish the PDU session.
-          # Data-plane/ping is the next separate T10 gate.
-          echo "Watching UERANSIM through PDU session establishment (up to ~180s)..."
+          #           failure to establish the PDU session, or failure to pass data.
+          echo "Watching UERANSIM through PDU session establishment + ping (up to ~180s)..."
           REACHED_SMC=0
           SELECTED_ALGS=0
           SMC_COMPLETE=0
@@ -69,6 +68,8 @@ jobs:
           REGISTERED=0
           PDU_ACCEPT=0
           PDU_SESSION=0
+          PING_OK=0
+          PING_LOG=""
           UE_EXIT_CODE=""
           UE_STATE=""
           for i in $(seq 1 36); do
@@ -90,6 +91,10 @@ jobs:
             echo "$UE_LOGS" | grep -qiE "Initial Registration is successful|MM-REGISTERED" && REGISTERED=1
             echo "$UE_LOGS" | grep -qiE "PDU Session Establishment Accept" && PDU_ACCEPT=1
             echo "$UE_LOGS" | grep -qiE "PDU Session establishment is successful|Connection setup for PDU session|uesimtun" && PDU_SESSION=1
+            if [ "$PDU_SESSION" = 1 ] && [ "$PING_OK" != 1 ]; then
+              PING_LOG="$($COMPOSE exec -T ueransim-ue sh -c 'ip addr show uesimtun0 2>/dev/null || true; ping -c 3 -I uesimtun0 8.8.8.8 2>&1' 2>&1 || true)"
+              echo "$PING_LOG" | grep -qiE "0% packet loss|3 packets received|3 received" && PING_OK=1
+            fi
             UE_CID="$($COMPOSE ps -aq ueransim-ue 2>/dev/null || true)"
             if [ -n "$UE_CID" ]; then
               UE_STATE="$(docker inspect "$UE_CID" --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}}' 2>/dev/null || true)"
@@ -98,7 +103,7 @@ jobs:
               esac
             fi
             if [ "$INTEGRITY_FAILED" = 1 ] || [ "$APER_FAILED" = 1 ]; then break; fi
-            if [ "$PDU_SESSION" = 1 ]; then break; fi
+            if [ "$PING_OK" = 1 ]; then break; fi
             # After registration + SMF 201, keep watching for the PDU Session
             # Establishment Accept outcome: UE session success, or a UE crash on
             # the NAS we now send. Don't break the instant SMF returns 201.
@@ -106,7 +111,11 @@ jobs:
             if [ "$ICS_CONFIRMED" = 1 ] && [ -n "$UE_EXIT_CODE" ] && [ "$i" -ge 6 ]; then break; fi
             sleep 5
           done
-          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED registered=$REGISTERED pdu_request=$PDU_REQUEST smf_handoff=$SMF_HANDOFF smf_created=$SMF_CREATED pdu_accept=$PDU_ACCEPT pdu_session=$PDU_SESSION integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
+          echo "reached_smc=$REACHED_SMC selected_algs=$SELECTED_ALGS smc_complete=$SMC_COMPLETE ics_gnb=$ICS_GNB ics_confirmed=$ICS_CONFIRMED registered=$REGISTERED pdu_request=$PDU_REQUEST smf_handoff=$SMF_HANDOFF smf_created=$SMF_CREATED pdu_accept=$PDU_ACCEPT pdu_session=$PDU_SESSION ping_ok=$PING_OK integrity_failed=$INTEGRITY_FAILED aper_failed=$APER_FAILED ue_exit_code=${UE_EXIT_CODE:-unknown} ue_state=${UE_STATE:-unknown}"
+          if [ -n "$PING_LOG" ]; then
+            echo "===== UE ping attempt ====="
+            echo "$PING_LOG"
+          fi
           if [ "$INTEGRITY_FAILED" = 1 ]; then
             echo "::error::REGRESSION — UERANSIM rejected the SMC for integrity"
             exit 1
@@ -132,7 +141,12 @@ jobs:
             exit 1
           fi
           if [ "$PDU_SESSION" = 1 ]; then
-            echo "::notice::PDU SESSION ESTABLISHED — UERANSIM completed PDU session establishment over QCore's protected DL NAS Transport. Data-plane/ping remains the final T10 gate."
+            if [ "$PING_OK" = 1 ]; then
+              echo "::notice::T10 DATA PLANE PASS — UERANSIM completed PDU session establishment and ping over uesimtun0 succeeded."
+            else
+              echo "::error::PDU SESSION ESTABLISHED BUT DATA PLANE FAILED — ping over uesimtun0 did not succeed."
+              exit 1
+            fi
           elif [ -n "$UE_EXIT_CODE" ] && [ "$UE_EXIT_CODE" != "0" ]; then
             echo "::error::NEXT BLOCKER — UERANSIM UE exited (code $UE_EXIT_CODE) after the PDU Session Establishment Accept (pdu_accept=$PDU_ACCEPT). Registration + SMF still pass; the PDU Accept content is the new blocker — see UE logs/artifacts."
             exit 1
@@ -169,7 +183,7 @@ jobs:
           $COMPOSE logs --no-color ueransim-ue 2>&1 | tee artifacts/ueransim/ueransim-ue.log | tail -240 || true
           {
             echo "===== key lines ====="
-            grep -RInE "reached_smc=|pdu_accept=|pdu_session=|InitialContextSetup confirmed|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|PDU Session Establishment Accept|PDU Session establishment is successful|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|uesimtun|Failed to create Linux TUN|DummyEgress|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
+            grep -RInE "reached_smc=|pdu_accept=|pdu_session=|ping_ok=|T10 DATA PLANE PASS|PDU SESSION ESTABLISHED BUT DATA PLANE FAILED|InitialContextSetup confirmed|PDU Session Resource Setup confirmed|Updated UPF remote gNB tunnel|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|PDU Session Establishment Accept|PDU Session establishment is successful|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|uesimtun|Failed to create Linux TUN|DummyEgress|Session missing remote gNB|Received uplink GTP-U for unknown TEID|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
           } | tee artifacts/ueransim/key-lines.txt
 
       - name: Upload T10 evidence artifact

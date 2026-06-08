@@ -15,6 +15,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/events"
 	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/nas5g"
+	"github.com/qcore-project/qcore/pkg/ngap"
 )
 
 // handleNASPDU is the top-level 5G-NAS dispatcher for one UE message.
@@ -532,7 +533,10 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 		// DL NAS Transport. The SMF returns the allocated UE IPv4 in the 201;
 		// the PTI is echoed from the UE's Establishment Request (5GSM octet 3).
 		var created struct {
-			UeIpv4Addr string `json:"ueIpv4Addr"`
+			UeIpv4Addr   string `json:"ueIpv4Addr"`
+			SmContextRef string `json:"smContextRef"`
+			UpfN3Ip      string `json:"upfN3Ip"`
+			UpfN3Teid    uint32 `json:"upfN3Teid"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&created)
 		var ueIPv4 [4]byte
@@ -545,7 +549,23 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 		if len(ul.PayloadContainer) >= 3 {
 			pti = ul.PayloadContainer[2]
 		}
-		if err := s.sendPDUSessionEstablishmentAccept(ue, ul.PDUSessionID, pti, ueIPv4); err != nil {
+		protected, err := s.buildProtectedPDUSessionEstablishmentAccept(ue, ul.PDUSessionID, pti, ueIPv4)
+		if err != nil {
+			s.log.WithError(err).Warn("amf: failed to build PDU Session Establishment Accept")
+		} else if created.UpfN3Ip != "" && created.UpfN3Teid != 0 {
+			ue.PDUSessionID = ul.PDUSessionID
+			ue.SMContextRef = created.SmContextRef
+			ue.SMFURL = smfURL
+			if err := ue.gNB.sendPDUSessionResourceSetup(ue, protected, ul.PDUSessionID, created.UpfN3Ip, created.UpfN3Teid); err != nil {
+				s.log.WithError(err).Warn("amf: failed to send PDU Session Resource Setup Request")
+			} else {
+				s.log.WithField("supi", ue.SUPI).
+					WithField("pdu_session_id", ul.PDUSessionID).
+					WithField("upf_n3_ip", created.UpfN3Ip).
+					WithField("upf_n3_teid", created.UpfN3Teid).
+					Info("amf: sent PDU Session Resource Setup Request")
+			}
+		} else if err := ue.gNB.sendDownlinkNAS(ue, protected); err != nil {
 			s.log.WithError(err).Warn("amf: failed to send PDU Session Establishment Accept")
 		} else {
 			s.log.WithField("supi", ue.SUPI).
@@ -601,17 +621,71 @@ func (s *Service) handleULNASTransport(ctx context.Context, ue *UEContext, raw [
 // protects it with the UE's established NAS security context and the next DL NAS
 // count, and sends it to the gNB over the existing DownlinkNASTransport path.
 func (s *Service) sendPDUSessionEstablishmentAccept(ue *UEContext, pduSessionID, pti uint8, ueIPv4 [4]byte) error {
+	protected, err := s.buildProtectedPDUSessionEstablishmentAccept(ue, pduSessionID, pti, ueIPv4)
+	if err != nil {
+		return err
+	}
+	return ue.gNB.sendDownlinkNAS(ue, protected)
+}
+
+func (s *Service) buildProtectedPDUSessionEstablishmentAccept(ue *UEContext, pduSessionID, pti uint8, ueIPv4 [4]byte) ([]byte, error) {
 	if len(ue.KNASint) != 16 {
-		return fmt.Errorf("amf: no NAS integrity key; cannot protect PDU Session Accept")
+		return nil, fmt.Errorf("amf: no NAS integrity key; cannot protect PDU Session Accept")
 	}
 	accept := nas5g.EncodePDUSessionEstablishmentAccept(pduSessionID, pti, ueIPv4)
 	dlNAS := nas5g.EncodeDLNASTransport(pduSessionID, accept)
 	protected, err := WrapNAS5G(ue.KNASint, ue.DLCount, SecHdrIntegrityProtected, dlNAS)
 	if err != nil {
-		return fmt.Errorf("amf: protect DL NAS Transport: %w", err)
+		return nil, fmt.Errorf("amf: protect DL NAS Transport: %w", err)
 	}
 	ue.DLCount++
-	return ue.gNB.sendDownlinkNAS(ue, protected)
+	return protected, nil
+}
+
+func (s *Service) updateSMContextWithGNBTunnel(ctx context.Context, ue *UEContext, sess ngap.PDUSessionResourceSetupResponseItem) error {
+	ue.mu.Lock()
+	smfURL := ue.SMFURL
+	ue.mu.Unlock()
+	if smfURL == "" {
+		smfURL = s.cfg.SMFURL
+	}
+	if smfURL == "" {
+		return fmt.Errorf("amf: no SMF URL configured")
+	}
+	modReq := struct {
+		Supi         string `json:"supi"`
+		PduSessionID int    `json:"pduSessionId"`
+		GnbN3Ip      string `json:"gnbN3Ip"`
+		GnbN3Teid    uint32 `json:"gnbN3Teid"`
+	}{
+		Supi:         ue.SUPI,
+		PduSessionID: int(sess.PDUSessionID),
+		GnbN3Ip:      sess.GNBIP.String(),
+		GnbN3Teid:    sess.GNBTEID,
+	}
+	body, err := json.Marshal(modReq)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, smfURL+"/nsmf-pdusession/v1/sm-contexts/modify", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("SMF modify returned HTTP %d", resp.StatusCode)
+	}
+	s.log.WithField("supi", ue.SUPI).
+		WithField("pdu_session_id", sess.PDUSessionID).
+		WithField("gnb_n3_ip", sess.GNBIP.String()).
+		WithField("gnb_n3_teid", sess.GNBTEID).
+		Info("amf: SMF updated with gNB N3 tunnel")
+	return nil
 }
 
 // --- helpers ----------------------------------------------------------------

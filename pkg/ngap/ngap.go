@@ -39,20 +39,21 @@ func (t PDUType) String() string {
 type ProcedureCode uint8
 
 const (
-	ProcAMFConfigurationUpdate ProcedureCode = 0
-	ProcAMFStatusIndication    ProcedureCode = 1
-	ProcCellTrafficTrace       ProcedureCode = 2
-	ProcDeactivateTrace        ProcedureCode = 3
-	ProcDownlinkNASTransport   ProcedureCode = 4
-	ProcErrorIndication        ProcedureCode = 9
-	ProcInitialContextSetup    ProcedureCode = 14
-	ProcInitialUEMessage       ProcedureCode = 15
-	ProcNGReset                ProcedureCode = 20
-	ProcNGSetup                ProcedureCode = 21
-	ProcPaging                 ProcedureCode = 24
-	ProcUEContextRelease       ProcedureCode = 41
-	ProcUEContextModification  ProcedureCode = 42
-	ProcUplinkNASTransport     ProcedureCode = 46
+	ProcAMFConfigurationUpdate  ProcedureCode = 0
+	ProcAMFStatusIndication     ProcedureCode = 1
+	ProcCellTrafficTrace        ProcedureCode = 2
+	ProcDeactivateTrace         ProcedureCode = 3
+	ProcDownlinkNASTransport    ProcedureCode = 4
+	ProcErrorIndication         ProcedureCode = 9
+	ProcInitialContextSetup     ProcedureCode = 14
+	ProcInitialUEMessage        ProcedureCode = 15
+	ProcNGReset                 ProcedureCode = 20
+	ProcNGSetup                 ProcedureCode = 21
+	ProcPaging                  ProcedureCode = 24
+	ProcPDUSessionResourceSetup ProcedureCode = 29
+	ProcUEContextRelease        ProcedureCode = 41
+	ProcUEContextModification   ProcedureCode = 42
+	ProcUplinkNASTransport      ProcedureCode = 46
 )
 
 func (p ProcedureCode) String() string {
@@ -67,6 +68,8 @@ func (p ProcedureCode) String() string {
 		return "UplinkNASTransport"
 	case ProcInitialContextSetup:
 		return "InitialContextSetup"
+	case ProcPDUSessionResourceSetup:
+		return "PDUSessionResourceSetup"
 	case ProcUEContextRelease:
 		return "UEContextRelease"
 	case ProcErrorIndication:
@@ -90,26 +93,33 @@ type ProtocolIEID uint16
 
 // IE IDs used in this package (verified against TS 38.413 Table 9.3.3.1-1).
 const (
-	IEIDAllowedNSSAI           ProtocolIEID = 0
-	IEIDAMFName                ProtocolIEID = 1
-	IEIDAMFUENGAPID            ProtocolIEID = 10
-	IEIDCause                  ProtocolIEID = 15
-	IEIDDefaultPagingDRX       ProtocolIEID = 21
-	IEIDGlobalRANNodeID        ProtocolIEID = 27
-	IEIDGUAMI                  ProtocolIEID = 28
-	IEIDNASPDU                 ProtocolIEID = 38
-	IEIDRelativeAMFCapacity    ProtocolIEID = 86
-	IEIDPLMNSupportList        ProtocolIEID = 80
-	IEIDRANNodeName            ProtocolIEID = 82
-	IEIDRANUENGAPID            ProtocolIEID = 85
-	IEIDRRCEstablishmentCause  ProtocolIEID = 90
-	IEIDSecurityKey            ProtocolIEID = 94
-	IEIDServedGUAMIList        ProtocolIEID = 96
-	IEIDSupportedTAList        ProtocolIEID = 102
-	IEIDTimeToWait             ProtocolIEID = 107
-	IEIDUEAggMaxBitRate        ProtocolIEID = 110
-	IEIDUESecurityCapabilities ProtocolIEID = 119
-	IEIDUserLocationInfo       ProtocolIEID = 121
+	IEIDAllowedNSSAI             ProtocolIEID = 0
+	IEIDAMFName                  ProtocolIEID = 1
+	IEIDAMFUENGAPID              ProtocolIEID = 10
+	IEIDCause                    ProtocolIEID = 15
+	IEIDDefaultPagingDRX         ProtocolIEID = 21
+	IEIDGlobalRANNodeID          ProtocolIEID = 27
+	IEIDGUAMI                    ProtocolIEID = 28
+	IEIDNASPDU                   ProtocolIEID = 38
+	IEIDPDUSessionSetupListSUReq ProtocolIEID = 74
+	IEIDPDUSessionSetupListSURes ProtocolIEID = 75
+	IEIDRelativeAMFCapacity      ProtocolIEID = 86
+	IEIDPLMNSupportList          ProtocolIEID = 80
+	IEIDRANNodeName              ProtocolIEID = 82
+	IEIDRANUENGAPID              ProtocolIEID = 85
+	IEIDRRCEstablishmentCause    ProtocolIEID = 90
+	IEIDSecurityKey              ProtocolIEID = 94
+	IEIDServedGUAMIList          ProtocolIEID = 96
+	IEIDSupportedTAList          ProtocolIEID = 102
+	IEIDTimeToWait               ProtocolIEID = 107
+	IEIDUEAggMaxBitRate          ProtocolIEID = 110
+	IEIDUESecurityCapabilities   ProtocolIEID = 119
+	IEIDUserLocationInfo         ProtocolIEID = 121
+	IEIDDLNGUUPTNLInformation    ProtocolIEID = 128
+	IEIDPDUSessionAggMaxBitRate  ProtocolIEID = 130
+	IEIDPDUSessionType           ProtocolIEID = 134
+	IEIDQosFlowSetupRequestList  ProtocolIEID = 136
+	IEIDULNGUUPTNLInformation    ProtocolIEID = 139
 )
 
 // PDU is the top-level NGAP message container.
@@ -147,8 +157,8 @@ type TAI struct {
 
 // NRCGI is an NR Cell Global Identifier.
 type NRCGI struct {
-	PLMN         PLMN
-	NRCellID     uint64 // 36-bit value
+	PLMN     PLMN
+	NRCellID uint64 // 36-bit value
 }
 
 // UserLocationInformationNR carries NR location (NR-CGI + TAI).
@@ -192,7 +202,7 @@ type SNSSAI struct {
 
 // PLMNSupportItem is one entry in the PLMNSupportList (NGSetup Response).
 type PLMNSupportItem struct {
-	PLMN   PLMN
+	PLMN    PLMN
 	SNSSAIs []SNSSAI
 }
 

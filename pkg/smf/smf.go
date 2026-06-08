@@ -3,6 +3,7 @@ package smf
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/qcore-project/qcore/pkg/events"
@@ -13,13 +14,13 @@ import (
 type Config struct {
 	// IPPoolCIDR is the subnet from which UE IPs are allocated.
 	IPPoolCIDR string
-	
+
 	// UPFPfcpAddr is the UPF's N4 endpoint (e.g. "127.0.0.1:8805")
 	UPFPfcpAddr string
-	
+
 	// LocalPfcpIP is the SMF's local IP to bind for N4
 	LocalPfcpIP string
-	
+
 	// SMFInstanceID is the UUID for NRF registration
 	SMFInstanceID string
 }
@@ -30,9 +31,21 @@ type Service struct {
 	log     logger.Logger
 	mux     *http.ServeMux
 	emitter events.Emitter
-	
+
 	ipam    *IPAM
 	pfcpCli *PFCPClient
+
+	mu       sync.Mutex
+	sessions map[string]*SessionContext
+}
+
+type SessionContext struct {
+	SUPI         string
+	PDUSessionID int
+	UEIP         string
+	UPFSEID      uint64
+	UPFTEID      uint32
+	UPFN3IP      string
 }
 
 // NewService creates an SMF service.
@@ -42,22 +55,23 @@ func NewService(cfg Config, log logger.Logger) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 2. Initialize PFCP Client
 	pfcpCli, err := NewPFCPClient(cfg.LocalPfcpIP, cfg.UPFPfcpAddr, log)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	s := &Service{
-		cfg:     cfg,
-		log:     log.WithField("nf", "smf"),
-		mux:     http.NewServeMux(),
-		emitter: &events.NoopEmitter{},
-		ipam:    ipam,
-		pfcpCli: pfcpCli,
+		cfg:      cfg,
+		log:      log.WithField("nf", "smf"),
+		mux:      http.NewServeMux(),
+		emitter:  &events.NoopEmitter{},
+		ipam:     ipam,
+		pfcpCli:  pfcpCli,
+		sessions: make(map[string]*SessionContext),
 	}
-	
+
 	s.registerRoutes()
 	return s, nil
 }
@@ -72,12 +86,13 @@ func (s *Service) Handler() http.Handler {
 
 func (s *Service) registerRoutes() {
 	s.mux.HandleFunc("POST /nsmf-pdusession/v1/sm-contexts", s.postSMContexts)
+	s.mux.HandleFunc("POST /nsmf-pdusession/v1/sm-contexts/modify", s.postSMContextModify)
 }
 
 // Start runs background tasks like UPF association.
 func (s *Service) Start(ctx context.Context) error {
 	s.log.Info("smf: starting background tasks")
-	
+
 	// Example: Try to associate with UPF in the background
 	go func() {
 		for {
@@ -91,7 +106,7 @@ func (s *Service) Start(ctx context.Context) error {
 			}
 		}
 	}()
-	
+
 	return nil
 }
 
