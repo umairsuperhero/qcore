@@ -75,6 +75,11 @@ export interface RANConfig {
   mme_s1ap_port: number;
   mme_code: number;
   mme_group_id: number;
+  amf_address: string;
+  amf_ngap_port: number;
+  amf_plmn: string;
+  amf_tac: number;
+  serving_network_name: string;
   spgw_gtpu_address: string;
   spgw_gtpu_port: number;
   ue_pool: string;

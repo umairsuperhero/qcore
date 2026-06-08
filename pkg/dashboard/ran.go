@@ -12,17 +12,22 @@ import (
 //
 // Reconciliation against an actual RAN config is Phase C.
 type RANConfig struct {
-	PLMN          string            `json:"plmn"`
-	TAC           uint16            `json:"tac"`
-	MMEAddress    string            `json:"mme_address"`
-	MMES1APPort   int               `json:"mme_s1ap_port"`
-	MMECode       uint8             `json:"mme_code"`
-	MMEGroupID    uint16            `json:"mme_group_id"`
-	SPGWGTPUAddr  string            `json:"spgw_gtpu_address"`
-	SPGWGTPUPort  int               `json:"spgw_gtpu_port"`
-	UEPool        string            `json:"ue_pool"`
-	SampleSub     SampleSubscriber  `json:"sample_subscriber"`
-	ConfigSnippet map[string]string `json:"config_snippet"`
+	PLMN               string            `json:"plmn"`
+	TAC                uint16            `json:"tac"`
+	MMEAddress         string            `json:"mme_address"`
+	MMES1APPort        int               `json:"mme_s1ap_port"`
+	MMECode            uint8             `json:"mme_code"`
+	MMEGroupID         uint16            `json:"mme_group_id"`
+	AMFAddress         string            `json:"amf_address"`
+	AMFNGAPPort        int               `json:"amf_ngap_port"`
+	AMFPLMN            string            `json:"amf_plmn"`
+	AMFTAC             uint16            `json:"amf_tac"`
+	ServingNetworkName string            `json:"serving_network_name"`
+	SPGWGTPUAddr       string            `json:"spgw_gtpu_address"`
+	SPGWGTPUPort       int               `json:"spgw_gtpu_port"`
+	UEPool             string            `json:"ue_pool"`
+	SampleSub          SampleSubscriber  `json:"sample_subscriber"`
+	ConfigSnippet      map[string]string `json:"config_snippet"`
 }
 
 // SampleSubscriber is the demo IMSI/Ki/OPc seeded by the HSS at startup.
@@ -36,18 +41,24 @@ type SampleSubscriber struct {
 
 func (s *Server) handleRANConfig(w http.ResponseWriter, r *http.Request) {
 	mme := s.cfg.MME
+	amf := s.cfg.AMF
 	spgw := s.cfg.SPGW
 
 	rc := RANConfig{
-		PLMN:         mme.PLMN,
-		TAC:          mme.TAC,
-		MMEAddress:   externalAddress(mme.BindAddress),
-		MMES1APPort:  mme.S1APPort,
-		MMECode:      mme.MMECode,
-		MMEGroupID:   mme.MMEGroupID,
-		SPGWGTPUAddr: spgw.SGWU1Addr,
-		SPGWGTPUPort: spgw.S1UPort,
-		UEPool:       spgw.UEPool,
+		PLMN:               mme.PLMN,
+		TAC:                mme.TAC,
+		MMEAddress:         externalAddress(mme.BindAddress),
+		MMES1APPort:        mme.S1APPort,
+		MMECode:            mme.MMECode,
+		MMEGroupID:         mme.MMEGroupID,
+		AMFAddress:         externalAddress(amf.BindAddress),
+		AMFNGAPPort:        amf.NGAPPort,
+		AMFPLMN:            amf.PLMN,
+		AMFTAC:             amf.TAC,
+		ServingNetworkName: amf.ServingNetworkName,
+		SPGWGTPUAddr:       spgw.SGWU1Addr,
+		SPGWGTPUPort:       spgw.S1UPort,
+		UEPool:             spgw.UEPool,
 		SampleSub: SampleSubscriber{
 			// Matches the demo subscriber seeded by cmd/hss/main.go (3GPP
 			// TS 35.208 Test Set 1 — published test vectors, not secrets).
@@ -58,8 +69,9 @@ func (s *Server) handleRANConfig(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	rc.ConfigSnippet = map[string]string{
-		"srsran_enb": srsRANENBSnippet(rc),
-		"open5gs_enb": open5gsENBSnippet(rc),
+		"srsran_enb":   srsRANENBSnippet(rc),
+		"open5gs_enb":  open5gsENBSnippet(rc),
+		"ueransim_gnb": ueransimGNBSnippet(rc),
 	}
 
 	writeJSON(w, http.StatusOK, rc)
@@ -75,7 +87,15 @@ func externalAddress(bind string) string {
 	return bind
 }
 
+func splitPLMN(plmn string) (string, string) {
+	if len(plmn) < 5 {
+		return plmn, ""
+	}
+	return plmn[:3], plmn[3:]
+}
+
 func srsRANENBSnippet(rc RANConfig) string {
+	mcc, mnc := splitPLMN(rc.PLMN)
 	return fmt.Sprintf(
 		`# srsRAN eNB: paste into enb.conf
 [enb]
@@ -90,7 +110,7 @@ sib_config = sib.conf
 rr_config  = rr.conf
 rb_config  = rb.conf
 `,
-		rc.PLMN[:3], rc.PLMN[3:],
+		mcc, mnc,
 		rc.MMEAddress,
 		"<ran-host-ip>",
 		"<ran-host-ip>",
@@ -119,5 +139,28 @@ Test SIM (3GPP TS 35.208 Test Set 1):
 		rc.SPGWGTPUAddr, rc.SPGWGTPUPort,
 		rc.UEPool,
 		rc.SampleSub.IMSI, rc.SampleSub.Ki, rc.SampleSub.OPc,
+	)
+}
+
+func ueransimGNBSnippet(rc RANConfig) string {
+	mcc, mnc := splitPLMN(rc.AMFPLMN)
+	return fmt.Sprintf(
+		`# UERANSIM gNB: mirror these values in gnb.yaml
+mcc: '%s'
+mnc: '%s'
+nci: '0x00000000001'
+idLength: 32
+tac: %d
+linkIp: <ran-host-ip>
+ngapIp: <ran-host-ip>
+gtpIp: <ran-host-ip>
+amfConfigs:
+  - address: %s
+    port: %d
+slices:
+  - sst: 1
+    sd: 000001
+`,
+		mcc, mnc, rc.AMFTAC, rc.AMFAddress, rc.AMFNGAPPort,
 	)
 }
