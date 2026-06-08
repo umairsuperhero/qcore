@@ -9,24 +9,26 @@ import (
 
 // IE Types (TS 29.244 §8.1.2)
 const (
-	IETypeCause                = 19
-	IETypeNodeID               = 60
-	IETypeRecoveryTimeStamp    = 96
-	IETypeCPFunctionFeatures   = 89
-	IETypeUPFunctionFeatures   = 43
-	IETypeFSEID                = 57
-	IETypePDRID                = 56
-	IETypeFARID                = 108
-	IETypeURRID                = 81
-	IETypeQERID                = 109
-	IETypeOuterHeaderCreation  = 84
-	IETypeNetworkInstance      = 22
-	IETypeSDFFilter            = 74
-	IETypeApplicationID        = 24
-	IETypeGateStatus           = 25
-	IETypeMBR                  = 26
-	IETypeGBR                  = 27
-	IETypeQCI                  = 28
+	IETypeCause               = 19
+	IETypeNodeID              = 60
+	IETypeRecoveryTimeStamp   = 96
+	IETypeCPFunctionFeatures  = 89
+	IETypeUPFunctionFeatures  = 43
+	IETypeFSEID               = 57
+	IETypeFTEID               = 21
+	IETypeUEIPAddress         = 93
+	IETypePDRID               = 56
+	IETypeFARID               = 108
+	IETypeURRID               = 81
+	IETypeQERID               = 109
+	IETypeOuterHeaderCreation = 84
+	IETypeNetworkInstance     = 22
+	IETypeSDFFilter           = 74
+	IETypeApplicationID       = 24
+	IETypeGateStatus          = 25
+	IETypeMBR                 = 26
+	IETypeGBR                 = 27
+	IETypeQCI                 = 28
 )
 
 // Cause values (TS 29.244 §8.2.1)
@@ -165,4 +167,42 @@ func NewUPFunctionFeatures(flags uint16) IE {
 // NewCPFunctionFeatures creates a CP Function Features IE (flags).
 func NewCPFunctionFeatures(flags uint8) IE {
 	return IE{Type: IETypeCPFunctionFeatures, Value: []byte{flags}}
+}
+
+// NewFTEID creates a minimal Fully Qualified TEID IE carrying an IPv4 N3 TEID.
+func NewFTEID(teid uint32, ip4 net.IP) IE {
+	b := make([]byte, 5, 9)
+	b[0] = 0x08 // IPv4 present
+	binary.BigEndian.PutUint32(b[1:5], teid)
+	if v4 := ip4.To4(); v4 != nil {
+		b = append(b, v4...)
+	}
+	return IE{Type: IETypeFTEID, Value: b}
+}
+
+func ParseFTEID(ie IE) (uint32, net.IP, error) {
+	if ie.Type != IETypeFTEID || len(ie.Value) < 5 {
+		return 0, nil, ErrMalformedIE
+	}
+	teid := binary.BigEndian.Uint32(ie.Value[1:5])
+	if ie.Value[0]&0x08 == 0 || len(ie.Value) < 9 {
+		return teid, nil, nil
+	}
+	return teid, net.IPv4(ie.Value[5], ie.Value[6], ie.Value[7], ie.Value[8]), nil
+}
+
+// NewUEIPAddress creates a minimal UE IP Address IE for an IPv4 PDU address.
+func NewUEIPAddress(ip4 net.IP) IE {
+	b := []byte{0x02} // IPv4 present
+	if v4 := ip4.To4(); v4 != nil {
+		b = append(b, v4...)
+	}
+	return IE{Type: IETypeUEIPAddress, Value: b}
+}
+
+func ParseUEIPAddress(ie IE) (net.IP, error) {
+	if ie.Type != IETypeUEIPAddress || len(ie.Value) < 5 || ie.Value[0]&0x02 == 0 {
+		return nil, ErrMalformedIE
+	}
+	return net.IPv4(ie.Value[1], ie.Value[2], ie.Value[3], ie.Value[4]), nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/qcore-project/qcore/pkg/diag"
@@ -48,12 +49,30 @@ func (s *gNBSession) run(ctx context.Context) {
 	}
 }
 
+func (s *gNBSession) traceNGAP(direction string, raw []byte) {
+	if !s.amf.cfg.TraceNGAPHex {
+		return
+	}
+	fields := map[string]interface{}{
+		"direction": direction,
+		"bytes":     len(raw),
+		"hex":       hex.EncodeToString(raw),
+	}
+	if pdu, err := ngap.DecodePDU(raw); err == nil {
+		fields["type"] = pdu.Type
+		fields["procedure"] = pdu.ProcedureCode.String()
+		fields["procedure_code"] = pdu.ProcedureCode
+	}
+	s.log.WithFields(fields).Info("amf: NGAP raw PDU")
+}
+
 // dispatch decodes one NGAP PDU and routes it.
 func (s *gNBSession) dispatch(ctx context.Context, raw []byte) error {
 	pdu, err := ngap.DecodePDU(raw)
 	if err != nil {
 		return fmt.Errorf("decode PDU: %w", err)
 	}
+	s.traceNGAP("rx", raw)
 	ies, err := ngap.DecodeIEContainer(pdu.Value)
 	if err != nil {
 		return fmt.Errorf("decode IEs: %w", err)
@@ -71,6 +90,9 @@ func (s *gNBSession) dispatch(ctx context.Context, raw []byte) error {
 
 	case pdu.Type == ngap.PDUSuccessfulOutcome && pdu.ProcedureCode == ngap.ProcInitialContextSetup:
 		return s.handleInitialContextSetupResponse(ies)
+
+	case pdu.Type == ngap.PDUSuccessfulOutcome && pdu.ProcedureCode == ngap.ProcPDUSessionResourceSetup:
+		return s.handlePDUSessionResourceSetupResponse(ctx, ies)
 
 	case pdu.Type == ngap.PDUInitiatingMessage && pdu.ProcedureCode == ngap.ProcUEContextRelease:
 		return s.handleUEContextReleaseRequest(ies)
@@ -312,6 +334,29 @@ func (s *gNBSession) handleInitialContextSetupResponse(ies []ngap.ProtocolIE) er
 	return nil
 }
 
+func (s *gNBSession) handlePDUSessionResourceSetupResponse(ctx context.Context, ies []ngap.ProtocolIE) error {
+	resp, err := ngap.DecodePDUSessionResourceSetupResponse(ies)
+	if err != nil {
+		return fmt.Errorf("PDUSessionResourceSetupResponse: %w", err)
+	}
+	ue, ok := s.amf.getUE(resp.AMFUENGAPID)
+	if !ok {
+		return nil
+	}
+	for _, sess := range resp.Sessions {
+		s.log.WithFields(map[string]interface{}{
+			"amf_ue_ngap_id": ue.AMFUENGAPID,
+			"pdu_session_id": sess.PDUSessionID,
+			"gnb_n3_ip":      sess.GNBIP.String(),
+			"gnb_n3_teid":    sess.GNBTEID,
+		}).Info("amf: PDU Session Resource Setup confirmed by gNB")
+		if err := s.amf.updateSMContextWithGNBTunnel(ctx, ue, sess); err != nil {
+			s.log.WithError(err).Warn("amf: failed to update SMF with gNB N3 tunnel")
+		}
+	}
+	return nil
+}
+
 // handleUEContextReleaseRequest — gNB requests UE context teardown.
 func (s *gNBSession) handleUEContextReleaseRequest(ies []ngap.ProtocolIE) error {
 	// For now: acknowledge with UEContextReleaseCommand then Complete.
@@ -362,18 +407,36 @@ func (s *gNBSession) sendInitialContextSetup(ue *UEContext, nasPDU []byte) error
 	if err != nil {
 		return err
 	}
-	if s.amf.cfg.TraceNGAPHex {
-		s.log.WithFields(map[string]interface{}{
-			"procedure":      "InitialContextSetupRequest",
-			"amf_ue_ngap_id": ue.AMFUENGAPID,
-			"ran_ue_ngap_id": ue.RANUENGAPID,
-			"bytes":          len(pdu),
-			"hex":            hex.EncodeToString(pdu),
-		}).Info("amf: NGAP raw PDU")
+	return s.send(pdu)
+}
+
+func (s *gNBSession) sendPDUSessionResourceSetup(ue *UEContext, nasPDU []byte, pduSessionID uint8, upfIP string, upfTEID uint32) error {
+	ip := net.ParseIP(upfIP).To4()
+	if ip == nil {
+		return fmt.Errorf("invalid UPF N3 IP %q", upfIP)
+	}
+	snssai := ngap.SNSSAI{SST: 1}
+	if len(ue.NSSAI) > 0 {
+		snssai = ue.NSSAI[0]
+	}
+	pdu, err := ngap.EncodePDUSessionResourceSetupRequest(&ngap.PDUSessionResourceSetupRequest{
+		AMFUENGAPID:  ue.AMFUENGAPID,
+		RANUENGAPID:  ue.RANUENGAPID,
+		NASPDU:       nasPDU,
+		PDUSessionID: pduSessionID,
+		SNSSAI:       snssai,
+		UPFTEID:      upfTEID,
+		UPFIP:        ip,
+		QFI:          1,
+		FiveQI:       9,
+	})
+	if err != nil {
+		return err
 	}
 	return s.send(pdu)
 }
 
 func (s *gNBSession) send(raw []byte) error {
+	s.traceNGAP("tx", raw)
 	return s.conn.Write(raw, 0)
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"sync"
 	"testing"
@@ -244,6 +246,14 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	ausfURL := startAUSFandUDM(t, sub)
 	log := logger.New("info", "text")
 
+	// Fake SMF: returns 201 with an allocated UE IPv4 for Create SM Context.
+	smfSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"pduSessionId":5,"upCnxState":"ACTIVATED","ueIpv4Addr":"10.45.0.2"}`))
+	}))
+	defer smfSrv.Close()
+
 	// ── Start AMF ──
 	plmn := ngap.PLMNFromMCCMNC("001", "01")
 	amfPort := pickPort(t)
@@ -258,6 +268,7 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
 		},
 		ServingNetworkName: snName,
+		SMFURL:             smfSrv.URL,
 	}
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := NewService(cfg, ausfCli, log)
@@ -354,7 +365,32 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	require.Equal(t, uint8(0x01), regAcceptRaw[1], "expected SecHdr=0x01 (integrity-protected)")
 	t.Log("Registration Accept received in InitialContextSetup")
 
-	t.Log("✓ Full 5G registration flow complete")
+	// Step 8: UE sends a UL NAS Transport carrying a PDU Session Establishment
+	// Request; the AMF forwards to the (fake) SMF which returns 201.
+	const pduSessionID = uint8(5)
+	const pti = uint8(1)
+	pduReq := nas5g.EncodePDUSessionEstablishmentRequest(pduSessionID, pti)
+	ulNAS := nas5g.EncodeULNASTransport(pduSessionID, pduReq)
+	gNB.sendUplinkNAS(t, amfID, ranID, ulNAS)
+
+	// Step 9: SMF 201 must cause a protected DL NAS Transport carrying a 5GSM
+	// PDU Session Establishment Accept to be sent back to the UE.
+	_, pduAcceptRaw := gNB.recvDownlinkNAS(t)
+	require.GreaterOrEqual(t, len(pduAcceptRaw), 8)
+	require.Equal(t, uint8(0x7E), pduAcceptRaw[0], "5GMM EPD")
+	require.Equal(t, uint8(0x01), pduAcceptRaw[1], "protected (integrity) DL NAS Transport")
+
+	// Strip the 7-byte 5G NAS security header (EPD+SecHdr+MAC4+SN) → inner DL NAS Transport.
+	inner := pduAcceptRaw[7:]
+	require.Equal(t, uint8(0x68), inner[2], "DL NAS Transport message type")
+	clen := int(inner[4])<<8 | int(inner[5])
+	require.GreaterOrEqual(t, len(inner), 6+clen)
+	n1 := inner[6 : 6+clen]
+	assert.Equal(t, uint8(0x2E), n1[0], "inner N1 SM is 5GSM")
+	assert.Equal(t, uint8(0xC2), n1[3], "PDU Session Establishment Accept")
+	t.Log("PDU Session Establishment Accept received over protected DL NAS Transport")
+
+	t.Log("✓ Full 5G registration + PDU session accept flow complete")
 }
 
 // TestAMF_UnprovisionedIMSI verifies that when the AUSF cannot find a
@@ -1073,4 +1109,70 @@ func TestRegistration_DistinguishUnknownVsMAC(t *testing.T) {
 	// Verify the hex import is used (suppress unused import warning on older Go).
 	_ = hex.EncodeToString(nil)
 	_ = ident.EncodePLMN("001", "01")
+}
+
+// --- PDU Session Accept: DL NAS count + security header (audit pt 4) ---------
+
+// captureAssoc is a minimal sctp.Association stub that records writes, so we can
+// drive sendPDUSessionEstablishmentAccept without a live SCTP connection.
+type captureAssoc struct{ writes [][]byte }
+
+func (c *captureAssoc) Read() ([]byte, uint16, error) { return nil, 0, nil }
+func (c *captureAssoc) Write(d []byte, _ uint16) error {
+	c.writes = append(c.writes, append([]byte(nil), d...))
+	return nil
+}
+func (c *captureAssoc) Close() error         { return nil }
+func (c *captureAssoc) RemoteAddr() net.Addr { return nil }
+func (c *captureAssoc) LocalAddr() net.Addr  { return nil }
+
+// TestSendPDUSessionAccept_DLCountAndSecurityHeader pins the post-SMC downlink
+// behavior for the PDU Session Establishment Accept. With NEA0 (null ciphering)
+// negotiated, the network uses integrity-only protection — security header 0x01,
+// NOT integrity+ciphered (0x02). UERANSIM accepts 0x01 with NEA0 (validated
+// end-to-end by ueransim-interop run 27108387027: "PDU Session establishment is
+// successful"), so 0x02 is not required. The DL NAS count is used for the SN
+// octet and must advance by one after the message.
+func TestSendPDUSessionAccept_DLCountAndSecurityHeader(t *testing.T) {
+	s := &Service{} // cfg.TraceNGAPHex defaults false → traceNGAP is a no-op
+	cap := &captureAssoc{}
+	gnb := &gNBSession{conn: cap, amf: s, log: logger.New("error", "text")}
+
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = 0x11
+	}
+	ue := &UEContext{
+		AMFUENGAPID: 1,
+		RANUENGAPID: 1,
+		gNB:         gnb,
+		KNASint:     kNASint,
+		DLCount:     2, // post-registration: SMC used count 0, Registration Accept used 1
+	}
+
+	require.NoError(t, s.sendPDUSessionEstablishmentAccept(ue, 5, 1, [4]byte{10, 45, 0, 2}))
+
+	assert.Equal(t, uint32(3), ue.DLCount, "DL NAS count advances by one after the Accept")
+	require.Len(t, cap.writes, 1, "exactly one DownlinkNASTransport sent")
+
+	pdu, err := ngap.DecodePDU(cap.writes[0])
+	require.NoError(t, err)
+	ies, err := ngap.DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	dl, err := ngap.DecodeDownlinkNASTransport(ies)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(dl.NASPDU), 8)
+	assert.Equal(t, uint8(0x7E), dl.NASPDU[0], "5GMM EPD")
+	assert.Equal(t, uint8(0x01), dl.NASPDU[1], "integrity-only (NEA0): 0x01, not 0x02 (ciphered)")
+	assert.Equal(t, uint8(2), dl.NASPDU[6], "SN octet = DL NAS count used (2), before increment")
+}
+
+// TestSendPDUSessionAccept_RejectsWithoutKey guards the precondition: the AMF must
+// never emit an unprotected PDU Session Accept if the NAS security context is absent.
+func TestSendPDUSessionAccept_RejectsWithoutKey(t *testing.T) {
+	s := &Service{}
+	gnb := &gNBSession{conn: &captureAssoc{}, amf: s, log: logger.New("error", "text")}
+	ue := &UEContext{gNB: gnb, KNASint: nil, DLCount: 2}
+	require.Error(t, s.sendPDUSessionEstablishmentAccept(ue, 5, 1, [4]byte{10, 45, 0, 2}),
+		"must refuse to send without a NAS integrity key")
 }

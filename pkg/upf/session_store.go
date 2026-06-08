@@ -15,11 +15,11 @@ var (
 // Session represents a UPF PFCP session (PDRs, FARs).
 type Session struct {
 	SEID uint64
-	
+
 	// Uplink (UE -> Internet)
 	LocalTEID uint32 // UPF's GTP-U N3 TEID
 	UEIP      net.IP // UE's allocated IP
-	
+
 	// Downlink (Internet -> UE)
 	RemoteTEID uint32 // gNB's GTP-U N3 TEID
 	RemoteIP   net.IP // gNB's IP
@@ -28,11 +28,11 @@ type Session struct {
 // SessionStore manages active UPF data plane sessions.
 type SessionStore struct {
 	nextTEID atomic.Uint32
-	
-	mu       sync.RWMutex
-	bySEID   map[uint64]*Session
-	byTEID   map[uint32]*Session // Maps LocalTEID -> Session
-	byUEIP   map[string]*Session // Maps UEIP string -> Session (for downlink routing)
+
+	mu     sync.RWMutex
+	bySEID map[uint64]*Session
+	byTEID map[uint32]*Session // Maps LocalTEID -> Session
+	byUEIP map[string]*Session // Maps UEIP string -> Session (for downlink routing)
 }
 
 func NewSessionStore() *SessionStore {
@@ -54,7 +54,7 @@ func (s *SessionStore) AllocateTEID() uint32 {
 func (s *SessionStore) AddSession(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.bySEID[sess.SEID] = sess
 	if sess.LocalTEID != 0 {
 		s.byTEID[sess.LocalTEID] = sess
@@ -68,7 +68,7 @@ func (s *SessionStore) AddSession(sess *Session) {
 func (s *SessionStore) GetBySEID(seid uint64) (*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	sess, ok := s.bySEID[seid]
 	if !ok {
 		return nil, ErrSessionNotFound
@@ -80,7 +80,7 @@ func (s *SessionStore) GetBySEID(seid uint64) (*Session, error) {
 func (s *SessionStore) GetByTEID(teid uint32) (*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	sess, ok := s.byTEID[teid]
 	if !ok {
 		return nil, ErrTEIDNotFound
@@ -92,7 +92,7 @@ func (s *SessionStore) GetByTEID(teid uint32) (*Session, error) {
 func (s *SessionStore) GetByUEIP(ip net.IP) (*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	sess, ok := s.byUEIP[ip.String()]
 	if !ok {
 		return nil, ErrSessionNotFound
@@ -104,12 +104,12 @@ func (s *SessionStore) GetByUEIP(ip net.IP) (*Session, error) {
 func (s *SessionStore) RemoveSession(seid uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	sess, ok := s.bySEID[seid]
 	if !ok {
 		return
 	}
-	
+
 	delete(s.bySEID, seid)
 	if sess.LocalTEID != 0 {
 		delete(s.byTEID, sess.LocalTEID)
@@ -117,4 +117,19 @@ func (s *SessionStore) RemoveSession(seid uint64) {
 	if sess.UEIP != nil {
 		delete(s.byUEIP, sess.UEIP.String())
 	}
+}
+
+// UpdateRemoteTunnel records the gNB-side N3 tunnel returned by NGAP resource
+// setup. Downlink packets for the UE can only be encapsulated after this lands.
+func (s *SessionStore) UpdateRemoteTunnel(seid uint64, remoteTEID uint32, remoteIP net.IP) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sess, ok := s.bySEID[seid]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	sess.RemoteTEID = remoteTEID
+	sess.RemoteIP = remoteIP
+	return nil
 }

@@ -12,26 +12,37 @@ import (
 func NewFSEID(seid uint64, ip4 net.IP, ip6 net.IP) IE {
 	var b []byte
 	flags := byte(0)
-	
+
 	if ip4 != nil {
 		flags |= 0x02
 	}
 	if ip6 != nil {
 		flags |= 0x01
 	}
-	
+
 	b = make([]byte, 9) // 1 (flags) + 8 (seid)
 	b[0] = flags
 	binary.BigEndian.PutUint64(b[1:9], seid)
-	
+
 	if ip4 != nil {
 		b = append(b, ip4.To4()...)
 	}
 	if ip6 != nil {
 		b = append(b, ip6.To16()...)
 	}
-	
+
 	return IE{Type: IETypeFSEID, Value: b}
+}
+
+func ParseFSEID(ie IE) (uint64, net.IP, error) {
+	if ie.Type != IETypeFSEID || len(ie.Value) < 9 {
+		return 0, nil, ErrMalformedIE
+	}
+	seid := binary.BigEndian.Uint64(ie.Value[1:9])
+	if ie.Value[0]&0x02 == 0 || len(ie.Value) < 13 {
+		return seid, nil, nil
+	}
+	return seid, net.IPv4(ie.Value[9], ie.Value[10], ie.Value[11], ie.Value[12]), nil
 }
 
 // --- Session Message Builders ---
@@ -41,7 +52,7 @@ func NewFSEID(seid uint64, ip4 net.IP, ip6 net.IP) IE {
 func NewSessionEstablishmentRequest(seq uint32, nodeID IE, fseid IE, additionalIEs ...IE) *Message {
 	ies := []IE{nodeID, fseid}
 	ies = append(ies, additionalIEs...)
-	
+
 	return &Message{
 		Header: Header{
 			Version:        1,
@@ -62,7 +73,7 @@ func NewSessionEstablishmentResponse(seq uint32, seid uint64, nodeID IE, cause I
 		ies = append(ies, upFSEID)
 	}
 	ies = append(ies, additionalIEs...)
-	
+
 	return &Message{
 		Header: Header{
 			Version:        1,
@@ -93,7 +104,7 @@ func NewSessionModificationRequest(seq uint32, seid uint64, additionalIEs ...IE)
 func NewSessionModificationResponse(seq uint32, seid uint64, cause IE, additionalIEs ...IE) *Message {
 	ies := []IE{cause}
 	ies = append(ies, additionalIEs...)
-	
+
 	return &Message{
 		Header: Header{
 			Version:        1,

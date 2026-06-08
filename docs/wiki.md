@@ -2,7 +2,7 @@
 
 > Living reference. Refreshed at the end of each build session, on every milestone,
 > and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
-> Last updated: 2026-06-06
+> Last updated: 2026-06-08
 >
 > **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/v1-gap-closure-plan.md` (executable plan to reach v1 — tracks A–E, sequenced, per-task acceptance criteria)
 
@@ -44,24 +44,23 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 4G EPC | HSS, MME (S1AP, NAS, Milenage, KASME), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. 4G and 5G NFs instrumented (5G via C1/T7). | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in simulator with error-injection scenarios. | ✅ Shipped |
-| 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test. UERANSIM T10 now reaches InitialContextSetupResponse; PR #28 validates the SMC-integrity fix, and `codex/t10-initial-context-setup-aper` validates the InitialContextSetup APER fix against real UERANSIM on cloud Linux. | ✅ Works in E2E / 🔭 T10 blocked |
-| 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel). | ✅ Builds + E2E |
+| 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test and the bundled UERANSIM Docker/cloud-Linux T10 replay. | ✅ Shipped for bundled UERANSIM profile |
+| 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel), and validated by UERANSIM UE ping over `uesimtun0` through UPF. | ✅ Shipped for bundled UERANSIM profile |
 | Phase C — Diagnostic AI (catalog) | `pkg/ai/catalog.go`: 13 typed symptom→cause rules across ≥9 cause categories (4G + 5G) + optional Gemini escalation; wired to the dashboard diagnose endpoint. | ✅ Shipped (catalog) |
 | Phase C — Diagnostic AI (offline SLM) | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF); catalog runs first, SLM handles misses over the same grounded prompt. Code merged + unit-tested green; live model-serve (real GGUF pull / air-gapped) not yet validated. | ✅ Code merged / 🔭 live-serve pending |
 | **Interop hardening (I1–I4 / D-1…D-4)** | D-1 PLMN codec (`pkg/ident`) · D-2 NRF register/discover · D-3 real SUCI + genuine unprovisioned-IMSI reject · D-4 N11 AMF→SMF (E2E no longer fakes the SMF call). All merged to main. | ✅ Complete |
 | Dashboard experience layer | gNB-connection hero screen (Gate 1) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
 | 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Error injection on the real-SUCI 5G sim; protocol selector, 5G sim controls, UDR view. | 🔭 Next |
-| UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup now reproduced with UERANSIM. Current blocker: `ueransim-ue` exits 139 after InitialContextSetup and the gNB reports UE signal lost; no completed registration/PDU/data-plane claim yet. | 🔭 Blocked after InitialContextSetup |
+| UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup + Registration Complete + PDU session + NGAP PDU Session Resource Setup + PFCP remote tunnel update + UPF real TUN/NAT + UE ping over `uesimtun0`. Evidence: `ueransim-interop` run `27115478758`. | ✅ Shipped for bundled profile |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
 
-> **Verification note:** as of 2026-06-04 every package compiles, `go vet` is clean,
+> **Verification note:** as of 2026-06-08 every package compiles, `go vet` is clean,
 > `go test ./...` and `go test -race ./...` pass (verified in `golang:1.23`), and the
 > dashboard front-end builds and type-checks with `npm run build` + `tsc --noEmit`.
-> "Works in E2E" /
-> "Builds + E2E" mean the automated test passes — **not** that a real external gNB/UE has
-> been validated. Interop hardening (I1–I4) is now complete; the remaining real-RAN gate
-> is **T10 (UERANSIM)**, which depends on C1 (5G telemetry).
+> T10 is validated for the bundled UERANSIM Docker/cloud-Linux profile by GitHub Actions
+> run `27115478758`. Broader RAN/device compatibility still needs target-specific replay
+> evidence before being claimed.
 
 ---
 
@@ -87,7 +86,7 @@ All NFs emit structured events to:
 +------------+              +------------+
 ```
 
-### 5G SA (target — in progress)
+### 5G SA (bounded UERANSIM profile shipped; product UX still in progress)
 
 ```
 gNB ──N2 NGAP──▶ AMF ──SBI──▶ AUSF ──SBI──▶ UDM ──SBI──▶ UDR
@@ -131,7 +130,7 @@ Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisio
 | `pkg/gtp` | GTP-U v1 codec. Shared by SPGW (4G) and future UPF (5G). |
 | `pkg/simulator` | Built-in S1AP/NAS simulator with error-injection scenarios (wrong Ki, wrong PLMN, unprovisioned IMSI, wrong MME address). |
 
-### 5G NFs (build + E2E green; 5G telemetry T7/C1 still pending)
+### 5G NFs (build + E2E green; bundled UERANSIM T10 profile validated)
 
 | Package | State | What it does |
 |---------|-------|-------------|
@@ -163,9 +162,10 @@ Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisio
 
 ## 5. 5G SA Track
 
-Critical path **T1 → T7 is landed in code and green in the in-process E2E test, and the
-Interop-Hardening track (I1–I4 / D-1…D-4) is complete.** What remains for a *credible,
-real-RAN-ready* 5G core is **T8/T9 (C2/C3) → T10 (UERANSIM)**. Long-term decisions behind
+Critical path **T1 → T7 is landed in code and green in the in-process E2E test, the
+Interop-Hardening track (I1–I4 / D-1…D-4) is complete, and T10 is green for the bundled
+UERANSIM Docker/cloud-Linux profile.** What remains for a credible v1 product experience
+is **T8/T9 (C2/C3)**: 5G simulator UX and dashboard 5G mode. Long-term decisions behind
 I1–I4 are recorded in `docs/audit-v1.0.md` §4 (D-1…D-4).
 
 | Step | What | State |
@@ -187,11 +187,11 @@ I1–I4 are recorded in `docs/audit-v1.0.md` §4 (D-1…D-4).
 | I3 | **D-2** NRF register/discover + Phase-A discovery events; static fallback retained | ✅ Done |
 | I4 | **D-4** N11 AMF→SMF; dropped the test's direct-SMF shortcut | ✅ Done |
 
-### Then: T8–T10 (T7 done)
+### Then: T8–T10 (T7 and T10 done)
 T7: ✅ Phase A event instrumentation for 5G NFs (C1) — done; Phase C can now reason over 5G traces.
 T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI).
 T9: Dashboard 5G mode (protocol selector, 5G sim buttons, UDR subscriber view).
-T10: UERANSIM compatibility verification (real gNB+UE in sidecar) — partially reproduced as of 2026-06-06; SMC integrity is validated fixed on PR #28, InitialContextSetup APER is validated fixed on `codex/t10-initial-context-setup-aper`, and the current blocker is a post-InitialContextSetup UE exit 139 / gNB UE signal lost.
+T10: ✅ UERANSIM compatibility verification (real gNB+UE in sidecar) — shipped for the bundled Docker/cloud-Linux profile as of GitHub Actions run `27115478758`; UE ping over `uesimtun0` succeeds through UPF.
 
 ---
 

@@ -528,10 +528,11 @@ func EncodeRegistrationAccept(msg *RegistrationAccept) []byte {
 	// 5GS registration result (LV, 1 byte value)
 	body = append(body, 0x01, msg.RegistrationResult&0x07)
 
-	// Assigned 5G-GUTI (optional, TLV, IEI=0x77)
+	// Assigned 5G-GUTI (optional, TLV-E, IEI=0x77)
 	if msg.AssignedGUTI != nil {
 		gutiBytes := Encode5GGUTI(*msg.AssignedGUTI)
-		body = append(body, 0x77, uint8(len(gutiBytes)))
+		// 5GS mobile identity is a type-6 IE, so its length is two octets.
+		body = append(body, 0x77, uint8(len(gutiBytes)>>8), uint8(len(gutiBytes)))
 		body = append(body, gutiBytes...)
 	}
 
@@ -569,22 +570,39 @@ func DecodeRegistrationAccept(data []byte) (*RegistrationAccept, error) {
 	}
 	data = data[resLen:]
 
-	// Optional TLV IEs
-	for len(data) >= 2 {
+	// Optional TLV IEs. Most local IEs are type-4 (one-octet length), but
+	// assigned 5G-GUTI / 5GS mobile identity (IEI 0x77) is type-6.
+	for len(data) > 0 {
 		iei := data[0]
-		l := int(data[1])
-		data = data[2:]
+		data = data[1:]
+		if iei == 0x77 {
+			if len(data) < 2 {
+				return nil, fmt.Errorf("nas5g: IE 0x%02X length truncated", iei)
+			}
+			l := int(data[0])<<8 | int(data[1])
+			data = data[2:]
+			if len(data) < l {
+				return nil, fmt.Errorf("nas5g: IE 0x%02X truncated", iei)
+			}
+			v := data[:l]
+			data = data[l:]
+			g, err := Decode5GGUTI(v)
+			if err == nil {
+				msg.AssignedGUTI = &g
+			}
+			continue
+		}
+		if len(data) < 1 {
+			return nil, fmt.Errorf("nas5g: IE 0x%02X length truncated", iei)
+		}
+		l := int(data[0])
+		data = data[1:]
 		if len(data) < l {
 			return nil, fmt.Errorf("nas5g: IE 0x%02X truncated", iei)
 		}
 		v := data[:l]
 		data = data[l:]
 		switch iei {
-		case 0x77:
-			g, err := Decode5GGUTI(v)
-			if err == nil {
-				msg.AssignedGUTI = &g
-			}
 		case 0x15:
 			msg.AllowedNSSAI = decodeNSSAIEntries(v)
 		case 0x54:
@@ -713,11 +731,51 @@ func EncodePDUSessionEstablishmentRequest(pduSessionID, pti uint8) []byte {
 	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentRequest)}
 }
 
-// EncodePDUSessionEstablishmentAccept encodes a minimal 5GSM PDU Session
-// Establishment Accept (TS 24.501 §8.3.2). Only the mandatory header is
-// encoded; the AMF would normally also include QoS, UE IP, etc.
-func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8) []byte {
-	return []byte{uint8(EPD5GSM), pduSessionID, pti, uint8(MsgTypePDUSessionEstablishmentAccept)}
+// EncodePDUSessionEstablishmentAccept encodes a 5GSM PDU Session Establishment
+// Accept (TS 24.501 §8.3.2) for a default IPv4, SSC-mode-1 session. It carries
+// the mandatory IEs a real UE (UERANSIM) requires — Selected PDU session type +
+// SSC mode, Authorized QoS rules (one default match-all rule), and Session-AMBR —
+// plus the optional PDU address IE conveying the SMF-assigned UE IPv4.
+//
+// ueIPv4 is the address the SMF allocated; pass the zero value to omit the PDU
+// address IE. Bytes are pinned by TestEncodePDUSessionEstablishmentAcceptGolden.
+func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8, ueIPv4 [4]byte) []byte {
+	b := []byte{
+		uint8(EPD5GSM),                              // Extended protocol discriminator (0x2E)
+		pduSessionID,                                // PDU session ID
+		pti,                                         // Procedure transaction identity
+		uint8(MsgTypePDUSessionEstablishmentAccept), // Message type (0xC2)
+		0x11,                                        // Selected PDU session type IPv4(1) | Selected SSC mode 1 (<<4)
+	}
+
+	// Authorized QoS rules (IE 9.11.4.13, LV-E): one default QoS rule —
+	// identifier 1, "create new QoS rule", DQR=1, one bidirectional match-all
+	// packet filter, precedence 255, QFI 1. This is the free5GC default shape
+	// that UERANSIM accepts.
+	qosRule := []byte{
+		0x01,       // QoS rule identifier = 1
+		0x00, 0x06, // Length of QoS rule = 6
+		0x31, // rule op=CreateNewQoSRule(001) | DQR=1 | number of packet filters=1
+		0x31, // packet filter: direction=bidirectional(11) | identifier=1
+		0x01, // packet filter contents length = 1
+		0x01, // match-all packet filter component (type 0x01, no value)
+		0xFF, // QoS rule precedence = 255
+		0x01, // QoS flow identifier (QFI) = 1
+	}
+	b = append(b, 0x00, uint8(len(qosRule))) // Authorized QoS rules length (2 octets, LV-E)
+	b = append(b, qosRule...)
+
+	// Session-AMBR (IE 9.11.4.14, LV): unit = 1 Mbps (0x06), DL = UL = 1000 (~1 Gbps).
+	sessionAMBR := []byte{0x06, 0x03, 0xE8, 0x06, 0x03, 0xE8}
+	b = append(b, uint8(len(sessionAMBR)))
+	b = append(b, sessionAMBR...)
+
+	// PDU address (IE 9.11.4.10, TLV, IEI 0x29), IPv4.
+	if ueIPv4 != ([4]byte{}) {
+		b = append(b, 0x29, 0x05, 0x01) // IEI, length=5, PDU session type=IPv4(1)
+		b = append(b, ueIPv4[:]...)
+	}
+	return b
 }
 
 // ULNASTransportPayload holds decoded fields from a UL NAS Transport message.
@@ -734,16 +792,39 @@ type ULNASTransportPayload struct {
 func EncodeULNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
 	b := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeULNASTransport})
 
-	// Payload container type (1 byte): upper nibble = N1 SM (0x1), lower = spare
-	b = append(b, 0x11)
+	// Payload container type (IE1): IEI is 0, value lives in the low nibble.
+	b = append(b, 0x01)
 
 	// Payload container length (2 bytes big-endian) + container
 	clen := len(n1SmContainer)
 	b = append(b, uint8(clen>>8), uint8(clen))
 	b = append(b, n1SmContainer...)
 
-	// Optional IE: PDU Session ID (IEI = 0x12, length = 1, value = pduSessionID)
-	b = append(b, 0x12, 0x01, pduSessionID)
+	// Optional IE: PDU Session ID is an IE3 (IEI + one-octet value).
+	b = append(b, 0x12, pduSessionID)
+	return b
+}
+
+// EncodeDLNASTransport encodes an unprotected 5GMM DL NAS Transport message
+// (TS 24.501 §8.2.11) carrying an N1 SM (5GSM) container down to the UE — the
+// mirror of EncodeULNASTransport. The caller integrity-protects the result via
+// the NAS security context before handing it to NGAP DownlinkNASTransport.
+//
+// Mandatory IEs encoded: payload container type (N1 SM, 0x01), payload
+// container (LV-E: 2-octet length + the 5GSM bytes), PDU session ID (IE3).
+func EncodeDLNASTransport(pduSessionID uint8, n1SmContainer []byte) []byte {
+	b := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeDLNASTransport})
+
+	// Payload container type (IE1): IEI is 0, value (N1 SM = 1) in the low nibble.
+	b = append(b, 0x01)
+
+	// Payload container (LV-E): 2-byte big-endian length + container.
+	clen := len(n1SmContainer)
+	b = append(b, uint8(clen>>8), uint8(clen))
+	b = append(b, n1SmContainer...)
+
+	// PDU Session ID (IE3: IEI 0x12 + one-octet value).
+	b = append(b, 0x12, pduSessionID)
 	return b
 }
 
@@ -754,8 +835,8 @@ func DecodeULNASTransport(body []byte) (*ULNASTransportPayload, error) {
 	if len(body) < 4 {
 		return nil, fmt.Errorf("nas5g: UL NAS Transport body too short: %d", len(body))
 	}
-	// Payload container type (1 byte, upper nibble)
-	containerType := (body[0] >> 4) & 0x0F
+	// Payload container type (IE1): IEI is 0, value lives in the low nibble.
+	containerType := body[0] & 0x0F
 	if containerType != 0x01 { // 0x01 = N1 SM info
 		return nil, fmt.Errorf("nas5g: unexpected payload container type 0x%02X", containerType)
 	}
@@ -767,23 +848,24 @@ func DecodeULNASTransport(body []byte) (*ULNASTransportPayload, error) {
 	payload := &ULNASTransportPayload{
 		PayloadContainer: body[3 : 3+clen],
 	}
-	// Scan optional TLV IEs after the container.
+	// Scan optional IEs after the container. We only need PDU Session ID for the
+	// AMF→SMF request; leave the rest as skipped payload.
 	pos := 3 + clen
 	for pos < len(body) {
 		iei := body[pos]
 		pos++
 		switch iei {
-		case 0x12: // PDU Session ID
-			if pos >= len(body) {
-				break
-			}
-			ieLen := int(body[pos])
-			pos++
-			if ieLen >= 1 && pos < len(body) {
+		case 0x12: // PDU Session ID, IE3
+			if pos < len(body) {
 				payload.PDUSessionID = body[pos]
+				pos++
 			}
-			pos += ieLen
 		default:
+			// Optional half-octet IEIs are encoded as IEI in the high nibble and
+			// value in the low nibble, with no following length.
+			if iei>>4 == 0x08 {
+				continue
+			}
 			// Unknown IE — try to skip (1-byte length follows for most IEs)
 			if pos < len(body) {
 				pos += int(body[pos]) + 1

@@ -3,6 +3,7 @@ package ngap
 import (
 	"bytes"
 	"encoding/hex"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +17,89 @@ var plmn001_01 = PLMNFromMCCMNC("001", "01")
 var testTAI = TAI{
 	PLMN: plmn001_01,
 	TAC:  [3]byte{0x00, 0x00, 0x01},
+}
+
+func TestPDUSessionResourceSetupRequestRoundTrip(t *testing.T) {
+	req := &PDUSessionResourceSetupRequest{
+		AMFUENGAPID:  0x010203,
+		RANUENGAPID:  0x040506,
+		NASPDU:       []byte{0x7e, 0x01, 0xaa, 0xbb},
+		PDUSessionID: 5,
+		SNSSAI:       SNSSAI{SST: 1, SD: []byte{0x01, 0x02, 0x03}},
+		UPFTEID:      1001,
+		UPFIP:        net.IPv4(172, 18, 0, 9),
+		QFI:          1,
+		FiveQI:       9,
+	}
+
+	rawPDU, err := EncodePDUSessionResourceSetupRequest(req)
+	require.NoError(t, err)
+	pdu, err := DecodePDU(rawPDU)
+	require.NoError(t, err)
+	require.Equal(t, PDUInitiatingMessage, pdu.Type)
+	require.Equal(t, ProcPDUSessionResourceSetup, pdu.ProcedureCode)
+
+	ies, err := DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	decoded, err := DecodePDUSessionResourceSetupRequest(ies)
+	require.NoError(t, err)
+	assert.Equal(t, req.AMFUENGAPID, decoded.AMFUENGAPID)
+	assert.Equal(t, req.RANUENGAPID, decoded.RANUENGAPID)
+	assert.Equal(t, req.PDUSessionID, decoded.PDUSessionID)
+	assert.Equal(t, req.NASPDU, decoded.NASPDU)
+	assert.Equal(t, req.UPFTEID, decoded.UPFTEID)
+	assert.Equal(t, req.UPFIP.To4(), decoded.UPFIP.To4())
+	assert.Equal(t, req.QFI, decoded.QFI)
+	assert.Equal(t, req.FiveQI, decoded.FiveQI)
+}
+
+func TestPDUSessionResourceSetupResponseDecodesGNBTunnel(t *testing.T) {
+	transferEnc := NewPEREncoder()
+	transferEnc.PutSequenceHeader(true, 0, 4)
+	transferEnc.PutSequenceHeader(true, 0, 1) // QosFlowPerTNLInformation
+	_ = transferEnc.PutChoiceIndex(0, 1, true)
+	writeGTPTunnel(transferEnc, net.IPv4(172, 18, 0, 14), 0x11223344)
+	_ = transferEnc.PutConstrainedInt(1, 1, 64)
+	transferEnc.PutSequenceHeader(true, 0, 1)
+	writeQosFlowIdentifier(transferEnc, 1)
+
+	listEnc := NewPEREncoder()
+	_ = listEnc.PutConstrainedInt(1, 1, 256)
+	listEnc.PutSequenceHeader(true, 0, 1)
+	_ = listEnc.PutConstrainedInt(5, 0, 255)
+	require.NoError(t, listEnc.PutOctetString(transferEnc.Bytes()))
+
+	amfIDVal, err := EncodeAMFUENGAPID(10)
+	require.NoError(t, err)
+	ranIDVal, err := EncodeRANUENGAPID(20)
+	require.NoError(t, err)
+	container, err := EncodeIEContainer([]ProtocolIE{
+		{ID: IEIDAMFUENGAPID, Criticality: CriticalityIgnore, Value: amfIDVal},
+		{ID: IEIDRANUENGAPID, Criticality: CriticalityIgnore, Value: ranIDVal},
+		{ID: IEIDPDUSessionSetupListSURes, Criticality: CriticalityIgnore, Value: listEnc.Bytes()},
+	})
+	require.NoError(t, err)
+	raw, err := EncodePDU(&PDU{
+		Type:          PDUSuccessfulOutcome,
+		ProcedureCode: ProcPDUSessionResourceSetup,
+		Criticality:   CriticalityReject,
+		Value:         container,
+	})
+	require.NoError(t, err)
+
+	pdu, err := DecodePDU(raw)
+	require.NoError(t, err)
+	ies, err := DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	resp, err := DecodePDUSessionResourceSetupResponse(ies)
+	require.NoError(t, err)
+	require.Len(t, resp.Sessions, 1)
+	assert.Equal(t, uint64(10), resp.AMFUENGAPID)
+	assert.Equal(t, uint64(20), resp.RANUENGAPID)
+	assert.Equal(t, uint8(5), resp.Sessions[0].PDUSessionID)
+	assert.Equal(t, uint32(0x11223344), resp.Sessions[0].GNBTEID)
+	assert.Equal(t, net.IPv4(172, 18, 0, 14).To4(), resp.Sessions[0].GNBIP.To4())
+
 }
 
 // testNRCGI is a representative NR-CGI.

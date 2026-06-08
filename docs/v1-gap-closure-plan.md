@@ -12,21 +12,24 @@ long-term decisions D-1…D-4) · `CLAUDE.md` (build order + cadence).
 
 ## 0. Read-me-first for the executing agent
 
-**Where things stand (verified 2026-06-01).** 4G EPC is end-to-end real. The 5G SA
-control + user plane build and pass an *in-process* E2E test over native SCTP. **Track A
+**Where things stand (verified 2026-06-08).** 4G EPC is end-to-end real. The 5G SA
+control + user plane build and pass an *in-process* E2E test over native SCTP and the
+bundled UERANSIM Docker/cloud-Linux T10 replay. **Track A
 (Interop Hardening, A1–A4 / D-1…D-4) is complete and merged** — standards-correct PLMN
 codec, real SUCI + genuine unprovisioned-IMSI reject, NRF register/discover, and N11
 AMF→SMF. **B1 (diagnostic catalog depth) is complete** (13 typed rules, 4G+5G). The
 dashboard experience layer (gNB hero screen / Gate 1, live signaling-trace) has shipped.
 Everything compiles, `go vet` is clean, `go test ./...` passes (CI green on `main`,
-including `-race`). What is **not** done is the charter's v1 bar: a credible
-**5G-SA-leading** product (D11) that interoperates with real RAN, and an **AI that is
-load-bearing and works offline** (§9.3/D5).
+including `-race`). T10 is shipped for the bounded UERANSIM profile by GitHub Actions
+run `27115478758`, which proves registration, PDU session establishment, and UE ping
+over `uesimtun0` through UPF. What is **not** done is the full v1 product experience:
+5G simulator UX/dashboard mode and an **AI that is load-bearing and works offline**
+(§9.3/D5).
 
-**C1 (5G telemetry, T7) is also complete (PR #25).** The remaining critical-path items are
-independent — run in parallel: **C2 (5G simulator UX) → C3 (dashboard 5G mode) → T10
-(UERANSIM)** for the 5G headline, and **B2 (offline embedded SLM)** for the AI moat. Start
-C2 and B2 next.
+**C1 (5G telemetry, T7) is also complete (PR #25), and T10 is complete for the bundled
+UERANSIM profile.** The remaining critical-path items are independent — run in parallel:
+**C2 (5G simulator UX) → C3 (dashboard 5G mode)** for the 5G product experience, and
+**B2 (offline embedded SLM)** for the AI moat. Start C2 and B2 next.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -277,10 +280,14 @@ QCore in **native SCTP** mode — the charter's "real RAN, < 15 min TTFC" path.
 **Approach.** Run on a **Linux host** (Docker Desktop on macOS does not reliably provide
 `/dev/net/tun` + kernel SCTP). Set `amf.sctp_mode: sctp`. Validate registration + PDU
 session + uplink.
+**Current evidence.** As of 2026-06-08, GitHub Actions run `27115478758` proves real
+UERANSIM initial registration, PDU session establishment, NGAP PDU Session Resource
+Setup, PFCP remote tunnel update, UPF real TUN/NAT, and UE ping over `uesimtun0`.
 **Acceptance.** Documented run where UERANSIM registers a UE and pings out through the
 UPF; any interop mismatch fixed (this is where A1/A2/A4 correctness is proven for real).
 **Verify.** `make up-5g` on Linux; UERANSIM logs show Registration Accept + PDU session;
-data flows.
+data flows. GitHub Actions `ueransim-interop` run `27115478758` satisfies this for the
+bundled profile.
 **Depends on.** A1, A2, A3, A4, C1.
 
 ---
@@ -323,13 +330,14 @@ Wave 2 (real 5G flow):                                                     │
 Wave 3 (5G experience):                                                    │
   C2 5G sim UX ──> C3 dashboard 5G mode                                    │
 Wave 4 (prove + adopt):                                                    │
-  D/T10 UERANSIM (needs A1,A2,A3,A4,C1)   E1 reconcile   E2 scenarios ──> E3 CI
+  D/T10 UERANSIM ✅ (bundled profile)      E1 reconcile   E2 scenarios ──> E3 CI
 ```
 
-**Critical path to the D11 "5G-leading v1":** A1 → A2 → A4 → C1 → T10.
+**Critical path to the D11 "5G-leading v1":** A1 → A2 → A4 → C1 → T10 is complete for
+the bundled UERANSIM profile. Current product critical path: C2 → C3.
 **Critical path to the §9 "AI is load-bearing & offline":** B1 → B2.
-Start **A1** and **B2** in parallel on day one (A1 is the cheapest correctness win;
-B2 is the long pole and is independent of Track A).
+Start **C2** and **B2 live model-serve validation** in parallel (B2 is independent of the
+5G UX track).
 
 ## 7. Effort summary & live status
 
@@ -344,7 +352,7 @@ B2 is the long pole and is independent of Track A).
 | C1 5G telemetry (T7) | §8 Pillar 4 | M | ✅ PR #25 — AUSF/UDM/SMF/UPF emit journey-correlated events; one trace AMF→AUSF→UDM |
 | C2 5G simulator (T8) | D10, §7 | M | ☐ |
 | C3 dashboard 5G (T9) | §7, §8 | M | ◑ Gate-1 hero screen merged (PR #20); live signaling trace in review (PR #21); design contract in `docs/ui-ux-design.md` (PR #18) |
-| D  UERANSIM (T10) | D11, §4 TTFC | M | ☐ |
+| D  UERANSIM (T10) | D11, §4 TTFC | M | ✅ bundled UERANSIM profile validated (`27115478758`) |
 | E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ☐ |
 | E2 scenario authoring | §7 Step 7 | S–M | ☐ |
 | E3 CI hooks | §7 Step 8 | M | ☐ |
@@ -354,7 +362,8 @@ B2 is the long pole and is independent of Track A).
 
 ## 8. Definition of done for v1 (maps to charter)
 
-- **D11:** a real UERANSIM gNB+UE registers and passes data against QCore (T10 green).
+- **D11:** a real UERANSIM gNB+UE registers and passes data against QCore (T10 green for
+  the bundled Docker/cloud-Linux profile).
 - **§4 TTFC:** < 5 min simulator (5G), < 15 min real-RAN lab — measured, not asserted.
 - **§4 TTRC + §9:** offline embedded SLM + catalog explain ≥90% of induced failures with
   an actionable cause; novel failures escalate to BYO frontier.

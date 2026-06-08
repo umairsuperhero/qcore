@@ -260,6 +260,35 @@ func TestRegistrationAcceptRoundTrip(t *testing.T) {
 	assert.Equal(t, uint8(0x01), got.AllowedNSSAI[0].SST)
 }
 
+func TestRegistrationAcceptUERANSIMMobileIdentityLengthGolden(t *testing.T) {
+	guti := GUTI5G{
+		PLMN:        [3]byte{0x00, 0xF1, 0x10},
+		AMFRegionID: 0x01,
+		AMFSetID:    0x01,
+		AMFPointer:  0x00,
+		TMSI5G:      [4]byte{0x00, 0x00, 0x00, 0x01},
+	}
+	msg := &RegistrationAccept{
+		RegistrationResult: 0x01,
+		AssignedGUTI:       &guti,
+		AllowedNSSAI:       []NSSAIEntry{{SST: 0x01}},
+	}
+
+	encoded := EncodeRegistrationAccept(msg)
+	assert.Equal(t,
+		"7e0042010177000bf200f1100100400000000115020101",
+		hex.EncodeToString(encoded),
+	)
+
+	// Captured before this fix from UERANSIM run 27070827795. UERANSIM aborted
+	// with "Bad constructed NAS message" because IEI 0x77 used a one-octet
+	// length (0x0b) even though 5GS mobile identity is an IE6 two-octet length.
+	rejected, err := hex.DecodeString("7e00420101770bf200f1100100400000000115020101")
+	require.NoError(t, err)
+	_, err = Decode(rejected)
+	require.Error(t, err)
+}
+
 // --- Registration Complete --------------------------------------------------
 
 func TestRegistrationCompleteRoundTrip(t *testing.T) {
@@ -269,6 +298,24 @@ func TestRegistrationCompleteRoundTrip(t *testing.T) {
 	msg, err := Decode(enc)
 	require.NoError(t, err)
 	assert.Equal(t, MsgTypeRegistrationComplete, msg.Header.MessageType)
+}
+
+// --- UL NAS Transport -------------------------------------------------------
+
+func TestULNASTransportUERANSIMFixture(t *testing.T) {
+	// Captured after successful UERANSIM registration in run 27073020885.
+	// Body shape: payload container type IE1 = 0x01, payload container IE4,
+	// PDU session ID IE3 = 0x12 0x01, then additional optional IEs.
+	raw, err := hex.DecodeString("7e00670100152e0101c1ffff91a12801007b000780000a00000d00120181220401000001250908696e7465726e6574")
+	require.NoError(t, err)
+	msg, err := Decode(raw)
+	require.NoError(t, err)
+	require.Equal(t, MsgTypeULNASTransport, msg.Header.MessageType)
+
+	ul, err := DecodeULNASTransport(raw[3:])
+	require.NoError(t, err)
+	assert.Equal(t, uint8(1), ul.PDUSessionID)
+	assert.Equal(t, "2e0101c1", hex.EncodeToString(ul.PayloadContainer[:4]))
 }
 
 // --- TAI List ---------------------------------------------------------------
@@ -281,4 +328,44 @@ func TestEncodeTAIList(t *testing.T) {
 	assert.Equal(t, uint8(0x00), enc[0])
 	assert.Equal(t, plmn[:], enc[1:4])
 	assert.Equal(t, tacs[0][:], enc[4:7])
+}
+
+// --- PDU Session Establishment Accept / DL NAS Transport --------------------
+
+// TestEncodePDUSessionEstablishmentAcceptGolden pins the exact 5GSM Accept bytes
+// a real UE (UERANSIM) parses — its NAS-SM decoder is strict and crashes on a
+// malformed mandatory IE, so the QoS-rules / Session-AMBR shape must not drift.
+func TestEncodePDUSessionEstablishmentAcceptGolden(t *testing.T) {
+	got := EncodePDUSessionEstablishmentAccept(0x05, 0x01, [4]byte{10, 45, 0, 2})
+	// 2E,psi,pti,C2 | sel-type/ssc(11) | QoS rules LV-E(00 09 …) |
+	// Session-AMBR LV(06 …) | PDU address TLV(29 05 01 + IPv4).
+	want := "2e0501c211000901000631310101ff01060603e80603e82905010a2d0002"
+	assert.Equal(t, want, hex.EncodeToString(got))
+
+	assert.Equal(t, uint8(0x2E), got[0], "5GSM EPD")
+	assert.Equal(t, uint8(0xC2), got[3], "PDU Session Establishment Accept message type")
+	assert.Equal(t, uint8(0x11), got[4], "selected PDU session type IPv4 + SSC mode 1")
+	assert.True(t, bytes.Contains(got, []byte{0x29, 0x05, 0x01, 10, 45, 0, 2}),
+		"PDU address IE carries the assigned UE IPv4")
+}
+
+// TestEncodePDUSessionEstablishmentAcceptNoIP omits the PDU address IE when no
+// IPv4 was allocated (zero value).
+func TestEncodePDUSessionEstablishmentAcceptNoIP(t *testing.T) {
+	got := EncodePDUSessionEstablishmentAccept(0x05, 0x01, [4]byte{})
+	assert.False(t, bytes.Contains(got, []byte{0x29}), "no PDU address IE without an IP")
+	assert.Equal(t, uint8(0xC2), got[3])
+}
+
+// TestEncodeDLNASTransportShape checks the 5GMM DL NAS Transport wrapper carries
+// the N1 SM container with an LV-E length and the PDU session ID IE.
+func TestEncodeDLNASTransportShape(t *testing.T) {
+	n1 := []byte{0x2E, 0x05, 0x01, 0xC2} // stand-in 5GSM container
+	got := EncodeDLNASTransport(0x05, n1)
+
+	assert.Equal(t, []byte{0x7E, 0x00, 0x68}, got[:3], "5GMM DL NAS Transport header")
+	assert.Equal(t, uint8(0x01), got[3], "payload container type = N1 SM info")
+	assert.Equal(t, []byte{0x00, uint8(len(n1))}, got[4:6], "payload container LV-E length")
+	assert.Equal(t, n1, got[6:6+len(n1)], "embedded N1 SM container")
+	assert.Equal(t, []byte{0x12, 0x05}, got[len(got)-2:], "trailing PDU session ID IE")
 }

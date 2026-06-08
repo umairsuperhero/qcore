@@ -262,6 +262,7 @@ services:
       QCORE_AMF_SERVING_NETWORK_NAME: "5G:mnc001.mcc001.3gppnetwork.org"
       QCORE_AMF_NRF_URL: http://nrf:8083
       QCORE_AMF_AUSF_URL: http://ausf:8086
+      QCORE_AMF_SMF_URL: http://smf:8002
       QCORE_AMF_AMF_INSTANCE_ID: "00000000-0000-0000-0000-000000000001"
       QCORE_AMF_TRACE_NGAP_HEX: ${QCORE_AMF_TRACE_NGAP_HEX:-false}
       QCORE_LOGGING_FORMAT: json
@@ -297,7 +298,7 @@ services:
       - "/dev/net/tun:/dev/net/tun"
     volumes:
       - ./ueransim-config/ue.yaml:/ueransim/config/ue.yaml
-    command: /bin/bash -c "sleep 5 && /ueransim/nr-ue -c /ueransim/config/ue.yaml"
+    command: /bin/bash -lc "ulimit -c unlimited; sleep 5; /ueransim/nr-ue -c /ueransim/config/ue.yaml; code=$$?; echo UERANSIM_NR_UE_EXIT_CODE=$$code; ls -l core* /ueransim/core* 2>/dev/null || true; sleep 2; exit $$code"
 
   smf:
     profiles: ["5g"]
@@ -337,10 +338,16 @@ services:
       - "2152/udp"
     cap_add:
       - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    sysctls:
+      net.ipv4.ip_forward: "1"
     environment:
       UPF_PFCPBINDADDR: 0.0.0.0:8805
       UPF_GTPUBINDADDR: 0.0.0.0:2152
       UPF_TUNDEVICENAME: "qcore-upf"
+      UPF_TUNIPV4CIDR: "10.45.0.1/16"
+      UPF_ENABLENAT: "true"
 
   # Offline diagnostic SLM (charter §9.3 / gap-closure B2). Serves a small
   # instruct model over an OpenAI-compatible API so the Diagnostic AI explains

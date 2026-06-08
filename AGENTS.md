@@ -16,7 +16,33 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
-## Current baseline (2026-06-06)
+## Evidence rules — read every turn
+- Before claiming a function, type, constant, import, endpoint, workflow, or Make target
+  exists, verify it by reading the file or running `rg`. Never fabricate symbols.
+- Before adding a dependency, verify it in the relevant manifest (`go.mod`,
+  `pkg/dashboard/web/package.json`, Dockerfile, workflow, etc.) or ask first.
+- Do not claim tests, builds, CI, dashboard checks, or T10 replay passed unless you ran
+  the command in this session or cite a concrete GitHub run ID.
+- Do not claim "5G shipped", "UERANSIM compatible", or T10 status without evidence from
+  `docs/ueransim-compat.md` and a passing `ueransim-interop` run.
+- Never invent logs, stack traces, API responses, packet hex, or error messages. If you
+  did not see them, say so.
+- When you cannot verify something, say "I haven't verified this" or "I need to check
+  first." Both are better than a confident guess.
+
+## Verification protocol
+- For edits touching symbols, first read the defining file or find it with `rg`.
+- For edits touching Go, run at least `make verify-fast`; before PR/merge, run or cite
+  `make verify-full` / GitHub CI.
+- For edits touching dashboard code, run the dashboard portion of `make verify-fast`
+  (`tsc --noEmit` + Vite build).
+- For edits touching T10, NGAP, NAS-5G, PFCP, SCTP, SMF, or UPF behavior, run/cite the
+  focused package tests and the `ueransim-interop` workflow when making external
+  compatibility claims.
+- For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
+  language is caught before summary or commit.
+
+## Current baseline (2026-06-08)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -44,33 +70,31 @@ binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to mai
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The remaining critical-path streams are independent — run in parallel:**
-  - **T10 (UERANSIM real-RAN validation / LANE 5) is IN PROGRESS, BLOCKED after
-    InitialContextSetup.** A real UERANSIM replay over native SCTP now reaches NGSetup →
-    InitialUEMessage → Authentication Request → Authentication Response → AUSF
-    confirmation → Security Mode Complete → InitialContextSetupRequest accepted by the
-    gNB → InitialContextSetupResponse received by the AMF. The earlier
-    `DownlinkNASTransport` APER `transfer-syntax-error`, SMC-integrity, and
-    `InitialContextSetupRequest` APER blockers are fixed; PR #28 validates the
-    K_AMF/bare-IMSI fix, and `codex/t10-initial-context-setup-aper` validates the APER
-    fixes against real UERANSIM on cloud Linux. The current blocker is that
-    `ueransim-ue` exits 139 after InitialContextSetup and the gNB reports UE signal lost;
-    no successful Registration Accept, PDU session, or data-plane claim exists yet.
-    Evidence + exact blocker: `docs/ueransim-compat.md`.
+  - **T10 (UERANSIM real-RAN validation / LANE 5) is COMPLETE for the bundled
+    Docker/cloud-Linux profile.** A real UERANSIM replay over native SCTP reaches
+    NGSetup → InitialUEMessage → Authentication Request/Response → AUSF confirmation →
+    Security Mode Complete → InitialContextSetupResponse → Registration Complete →
+    AMF→SMF Create SM Context (`201`) → protected PDU Session Establishment Accept →
+    NGAP PDU Session Resource Setup → PFCP remote tunnel update → UPF real TUN/NAT →
+    UE ping over `uesimtun0`. GitHub Actions `ueransim-interop` run `27115478758`
+    records `T10 DATA PLANE PASS`; CI run `27115479708` is green. Evidence and scope:
+    `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve
     validation (real GGUF pull / air-gapped render) remains (charter §9.3 / D5).
 
-**Until T10 lands, the 5G SA track is NOT "shipped"** and may not claim real-RAN/UERANSIM
-compatibility. See `docs/audit-v1.0.md` for the living audit;
+**T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
+real-RAN/device compatibility still needs per-target replay evidence; do not generalize
+this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living audit;
 **re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
 **The executable v1 gap-closure plan is `docs/v1-gap-closure-plan.md`** — tracks A
 (interop hardening I1–I4 / D-1…D-4), B (catalog depth + embedded SLM), C (5G
 telemetry/sim/dashboard, T7–T9), D (UERANSIM, T10), E (reconciliation, scenarios, CI).
 It is self-contained with per-task acceptance criteria + verify commands and is the
-doc to hand an executing agent. Critical path to v1: A1→A2→A4→C1→T10 (5G-leading) and
-B1→B2 (offline AI).
+doc to hand an executing agent. Critical path now shifts to C2→C3 (5G simulator/dashboard
+experience) and B2 live model-serve validation (offline AI).
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

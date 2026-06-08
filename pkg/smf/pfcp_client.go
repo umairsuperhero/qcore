@@ -23,9 +23,9 @@ type PFCPClient struct {
 	remoteAddr *net.UDPAddr
 	conn       *net.UDPConn
 	log        logger.Logger
-	
+
 	seq atomic.Uint32
-	
+
 	mu           sync.Mutex
 	transactions map[uint32]chan *pfcp.Message
 }
@@ -36,17 +36,17 @@ func NewPFCPClient(localIP, upfAddr string, log logger.Logger) (*PFCPClient, err
 	if err != nil {
 		return nil, fmt.Errorf("resolve UPF address: %w", err)
 	}
-	
+
 	local, err := net.ResolveUDPAddr("udp", localIP+":8805") // 8805 is PFCP port
 	if err != nil {
 		return nil, fmt.Errorf("resolve local PFCP address: %w", err)
 	}
-	
+
 	conn, err := net.ListenUDP("udp", local)
 	if err != nil {
 		return nil, fmt.Errorf("listen PFCP UDP: %w", err)
 	}
-	
+
 	cli := &PFCPClient{
 		localAddr:    local,
 		remoteAddr:   remote,
@@ -54,7 +54,7 @@ func NewPFCPClient(localIP, upfAddr string, log logger.Logger) (*PFCPClient, err
 		log:          log.WithField("component", "pfcp_client"),
 		transactions: make(map[uint32]chan *pfcp.Message),
 	}
-	
+
 	go cli.readLoop()
 	return cli, nil
 }
@@ -67,26 +67,26 @@ func (c *PFCPClient) readLoop() {
 			c.log.WithError(err).Error("PFCP read error")
 			return
 		}
-		
+
 		msg, err := pfcp.DecodeMessage(buf[:n])
 		if err != nil {
 			c.log.WithError(err).Warn("Failed to decode PFCP message")
 			continue
 		}
-		
+
 		c.log.WithFields(map[string]interface{}{
 			"type":   msg.Header.MessageType,
 			"seq":    msg.Header.SequenceNumber,
 			"remote": addr.String(),
 		}).Debug("Received PFCP message")
-		
+
 		c.mu.Lock()
 		ch, ok := c.transactions[msg.Header.SequenceNumber]
 		if ok {
 			delete(c.transactions, msg.Header.SequenceNumber)
 		}
 		c.mu.Unlock()
-		
+
 		if ok {
 			ch <- msg
 		} else {
@@ -100,29 +100,29 @@ func (c *PFCPClient) SendRequest(ctx context.Context, msg *pfcp.Message) (*pfcp.
 	// Assign Sequence Number
 	seq := c.seq.Add(1)
 	msg.Header.SequenceNumber = seq
-	
+
 	ch := make(chan *pfcp.Message, 1)
 	c.mu.Lock()
 	c.transactions[seq] = ch
 	c.mu.Unlock()
-	
+
 	defer func() {
 		c.mu.Lock()
 		delete(c.transactions, seq)
 		c.mu.Unlock()
 	}()
-	
+
 	b := msg.Encode()
 	_, err := c.conn.WriteToUDP(b, c.remoteAddr)
 	if err != nil {
 		return nil, fmt.Errorf("write udp: %w", err)
 	}
-	
+
 	c.log.WithFields(map[string]interface{}{
 		"type": msg.Header.MessageType,
 		"seq":  seq,
 	}).Debug("Sent PFCP message")
-	
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -131,6 +131,13 @@ func (c *PFCPClient) SendRequest(ctx context.Context, msg *pfcp.Message) (*pfcp.
 	case resp := <-ch:
 		return resp, nil
 	}
+}
+
+func (c *PFCPClient) RemoteIP() net.IP {
+	if c == nil || c.remoteAddr == nil {
+		return nil
+	}
+	return c.remoteAddr.IP
 }
 
 // Close shuts down the PFCP client.

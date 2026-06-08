@@ -99,17 +99,12 @@ jobs:
             -run 'TestTUNEgress_' \
             ./pkg/spgw/
 
-      # UERANSIM-driven smoke is intentionally not wired into CI yet. Native SCTP
-      # has landed (pkg/sctp/sctp_linux.go — raw Linux syscalls via
-      # golang.org/x/sys/unix, no CGO, no pion), so the transport is no longer the
-      # blocker. A manual UERANSIM replay against the AMF (NGAP on 38412,
-      # QCORE_AMF_SCTP_MODE=sctp) now reaches Authentication Response / AUSF
-      # confirmation and is currently blocked at Security Mode Command integrity
-      # verification (see docs/ueransim-compat.md). Wiring it into CI also needs a
-      # Linux runner with kernel SCTP + /dev/net/tun. Tracked as T10 in
-      # docs/v1-gap-closure-plan.md.
-      - name: UERANSIM smoke (placeholder — T10 blocked at SMC integrity)
+      # UERANSIM-driven smoke lives in ueransim-interop.yml because it needs the
+      # full 5G compose profile, kernel SCTP, TUN, and evidence capture. As of
+      # 2026-06-08 it validates registration, PDU session establishment, and UE
+      # ping over uesimtun0 for the bundled profile.
+      - name: UERANSIM smoke (covered by ueransim-interop.yml)
         run: |
-          echo "SKIPPED: UERANSIM 5G smoke is not wired into CI (T10)."
-          echo "Native SCTP landed; replay reaches AUSF confirm, blocked at SMC integrity."
+          echo "SKIPPED: full UERANSIM T10 smoke lives in ueransim-interop.yml."
+          echo "See ueransim-interop.yml for registration + PDU session + data-plane evidence."
           echo "See docs/ueransim-compat.md and docs/v1-gap-closure-plan.md (T10)."
