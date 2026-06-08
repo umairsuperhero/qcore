@@ -130,7 +130,7 @@ Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisio
 | `pkg/gtp` | GTP-U v1 codec. Shared by SPGW (4G) and future UPF (5G). |
 | `pkg/simulator` | Built-in S1AP/NAS simulator with error-injection scenarios (wrong Ki, wrong PLMN, unprovisioned IMSI, wrong MME address). |
 
-### 5G NFs (build + E2E green; 5G telemetry T7/C1 still pending)
+### 5G NFs (build + E2E green; bundled UERANSIM T10 profile validated)
 
 | Package | State | What it does |
 |---------|-------|-------------|

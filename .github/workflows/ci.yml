@@ -99,12 +99,12 @@ jobs:
             -run 'TestTUNEgress_' \
             ./pkg/spgw/
 
-      # UERANSIM-driven smoke now lives in ueransim-interop.yml because it needs
-      # the full 5G compose profile, kernel SCTP, and evidence capture. As of
-      # 2026-06-07 it validates external initial registration plus AMF-to-SMF
-      # Create SM Context; PDU Session Accept and data-plane/ping remain T10.
+      # UERANSIM-driven smoke lives in ueransim-interop.yml because it needs the
+      # full 5G compose profile, kernel SCTP, TUN, and evidence capture. As of
+      # 2026-06-08 it validates registration, PDU session establishment, and UE
+      # ping over uesimtun0 for the bundled profile.
       - name: UERANSIM smoke (covered by ueransim-interop.yml)
         run: |
-          echo "SKIPPED: UERANSIM 5G smoke is not wired into CI (T10)."
-          echo "See ueransim-interop.yml for external registration + SMF handoff evidence."
+          echo "SKIPPED: full UERANSIM T10 smoke lives in ueransim-interop.yml."
+          echo "See ueransim-interop.yml for registration + PDU session + data-plane evidence."
           echo "See docs/ueransim-compat.md and docs/v1-gap-closure-plan.md (T10)."

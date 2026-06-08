@@ -1,8 +1,8 @@
 name: ueransim-interop
 # T10 real-RAN validation: bring up the 5G stack + a real UERANSIM gNB/UE over
-# native kernel SCTP. This gate currently asserts the known-good path through
-# full initial registration, AMF-to-SMF Create SM Context, and UERANSIM PDU
-# session establishment. Data-plane validation remains the later T10 gate.
+# native kernel SCTP. This gate asserts the known-good bundled profile through
+# full initial registration, PDU session establishment, NGAP PDU Session Resource
+# Setup, PFCP remote tunnel update, and UE ping over uesimtun0 through UPF.
 on:
   push:
     branches: [main, "codex/**", "fix/**"]

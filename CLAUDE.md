@@ -16,6 +16,32 @@ core competing on protocol features. Primary user: the RAN/device developer who
 needs a core to test against. QCore wins on experience: fast start, deep
 observability, and AI that explains failures. UX is the product.
 
+## Evidence rules — read every turn
+- Before claiming a function, type, constant, import, endpoint, workflow, or Make target
+  exists, verify it by reading the file or running `rg`. Never fabricate symbols.
+- Before adding a dependency, verify it in the relevant manifest (`go.mod`,
+  `pkg/dashboard/web/package.json`, Dockerfile, workflow, etc.) or ask first.
+- Do not claim tests, builds, CI, dashboard checks, or T10 replay passed unless you ran
+  the command in this session or cite a concrete GitHub run ID.
+- Do not claim "5G shipped", "UERANSIM compatible", or T10 status without evidence from
+  `docs/ueransim-compat.md` and a passing `ueransim-interop` run.
+- Never invent logs, stack traces, API responses, packet hex, or error messages. If you
+  did not see them, say so.
+- When you cannot verify something, say "I haven't verified this" or "I need to check
+  first." Both are better than a confident guess.
+
+## Verification protocol
+- For edits touching symbols, first read the defining file or find it with `rg`.
+- For edits touching Go, run at least `make verify-fast`; before PR/merge, run or cite
+  `make verify-full` / GitHub CI.
+- For edits touching dashboard code, run the dashboard portion of `make verify-fast`
+  (`tsc --noEmit` + Vite build).
+- For edits touching T10, NGAP, NAS-5G, PFCP, SCTP, SMF, or UPF behavior, run/cite the
+  focused package tests and the `ueransim-interop` workflow when making external
+  compatibility claims.
+- For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
+  language is caught before summary or commit.
+
 ## Current baseline (2026-06-08)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
