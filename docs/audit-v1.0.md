@@ -2,10 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.11 — 2026-06-08
+**Current revision:** v1.12 — 2026-06-08
 **Auditor of record this revision:** focused T10 replay on
 `codex/t10-post-ics-ue-exit` plus GitHub Actions `ueransim-interop` replay runs
-`27108387027` and `27108723209`.
+`27108387027`, `27108723209`, and `27115478758`; CI run `27115479708`.
 
 ---
 
@@ -13,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.12 | 2026-06-08 | **T10 shipped for the bundled UERANSIM Docker/cloud-Linux profile.** The final data-plane gate is green: QCore now sends NGAP `PDUSessionResourceSetupRequest`, decodes the gNB's `PDUSessionResourceSetupResponse`, forwards the gNB N3 tunnel to SMF, performs PFCP Session Modification into UPF, configures real TUN/NAT in the UPF container, and proves `ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE. GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`; CI run `27115479708` is green. Scope is explicit: this validates the bundled UERANSIM v3.2.8 Docker profile on Linux/TUN, not a broad conformance matrix. |
 | v1.11 | 2026-06-08 | **T10 now reaches external UERANSIM PDU session establishment; T10 still not shipped.** The AMF now relays a protected DL NAS Transport carrying a 5GSM PDU Session Establishment Accept after SMF returns `201`. The Accept includes the mandatory UERANSIM-visible IEs (Selected PDU session type + SSC mode, Authorized QoS rules, Session-AMBR, and PDU address) and is pinned by NAS golden/unit tests plus the AMF DL-count/security-header test. GitHub Actions run `27108387027` proves UERANSIM logs `PDU Session Establishment Accept received` and `PDU Session establishment is successful PSI[1]`; latest PR checks are green (`ueransim-interop` run `27108723209`, CI run `27108724052`). Current gap: no external UE→UPF→peer packet or ping is proven; the final T10 gate is data-plane validation with NGAP PDU Session Resource Setup, PFCP remote tunnel update, and UPF real TUN/NAT. |
 | v1.10 | 2026-06-07 | **T10 now reaches external UERANSIM initial registration and AMF→SMF handoff; T10 still not shipped.** The post-InitialContextSetup UE abort was fixed by encoding Registration Accept Assigned 5G-GUTI IEI `0x77` as IE6/TLV-E with a two-byte length. The later UL NAS Transport blocker was fixed by routing decrypted protected NAS into `handleULNASTransport` and decoding UERANSIM's low-nibble payload container type plus IE1/IE3 optional fields. Compose now sets `QCORE_AMF_SMF_URL=http://smf:8002`, so AMF no longer falls back to container-local `localhost:8002`. GitHub Actions run `27080274240` proves UERANSIM logs `Initial Registration is successful`, AMF logs `Registration Complete — UE fully registered`, UERANSIM sends PDU Session Establishment Request, AMF forwards it, and SMF returns `201` on Create SM Context. Current gap: QCore has not yet sent PDU Session Establishment Accept back to UERANSIM, and no external PDU-session completion or data-plane ping is proven. |
 | v1.9 | 2026-06-06 | **T10 InitialContextSetup APER blocker resolved on `codex/t10-initial-context-setup-aper`, T10 still blocked.** A traced UERANSIM replay captured the rejected InitialContextSetupRequest hex, then the branch fixed two narrow APER bugs: NGAP `BitRate` extensible constrained integer encoding for `UEAggregateMaximumBitRate`, and extension markers for the UE security-capability algorithm BIT STRINGs. The fixes are pinned by external-corpus/golden tests (`TestUEAggregateMaximumBitRateAPERGolden`, `TestUESecurityCapabilitiesAPERGolden`, `TestInitialContextSetupUERANSIMRejectedFixture`). GitHub Actions run `27057637533` confirms UERANSIM logs `Initial Context Setup Request received` and QCore logs `amf: InitialContextSetup confirmed by gNB`. Full registration is still not complete; current external blocker is post-InitialContextSetup UE failure (`ueransim-ue` exit 139 / gNB UE signal lost), with no PDU-session or data-plane claim. |
@@ -30,9 +31,10 @@ recurring cadence (see *Audit cadence* below).
 
 ## 1. Executive summary
 
-QCore's **4G EPC is real and end-to-end verified.** The **5G SA control plane
-works end-to-end in an automated test** (AMF + AUSF + UDM + UDR + NRF + SMF + UPF,
-mock gNB, Registration → PDU Session → GTP-U tunnel) **over native SCTP**, and the
+QCore's **4G EPC is real and end-to-end verified.** The **5G SA control and user plane
+now pass both the in-process automated test** (AMF + AUSF + UDM + UDR + NRF + SMF + UPF,
+mock gNB, Registration → PDU Session → GTP-U tunnel) **and the bundled external
+UERANSIM Docker/cloud-Linux T10 replay**, and the
 **Phase C Diagnostic AI** (catalog heuristics + optional Gemini escalation) is wired
 into the dashboard. As of this revision **every package compiles, `go vet` is clean,
 and the full `go test ./...` suite passes.**
@@ -71,8 +73,8 @@ All of the following were uncommitted when found and are now fixed and green:
 | 4G EPC (HSS/MME/SPGW) | ✅ Shipped | `pkg/mme` E2E attach + user-plane tests pass |
 | Phase A event model | ✅ Shipped (4G + 5G) | 4G NFs fully instrumented; 5G NFs instrumented via C1/T7 — one correlated trace per registration (`TestC1_RegistrationEventTrace`) |
 | Phase B golden path / dashboard / simulator | ✅ Shipped | builds; frontend type-checks; simulator tests pass |
-| 5G SA control plane | ✅ Works in in-process E2E; T10 data-plane pending | `pkg/amf` integration test green; UERANSIM reaches PDU session establishment on cloud Linux (`27108387027`, `27108723209`) |
-| 5G SA user plane (SMF/UPF/PFCP) | ✅ Builds + unit-tested + in E2E | compiles; SMF/PFCP unit tests pass; exercised by the E2E test |
+| 5G SA control plane | ✅ In-process E2E + bundled UERANSIM T10 replay pass | `pkg/amf` integration test green; UERANSIM completes registration and PDU session on cloud Linux (`27115478758`) |
+| 5G SA user plane (SMF/UPF/PFCP) | ✅ In-process E2E + external data-plane ping pass | compiles; SMF/PFCP/UPF tests pass; UERANSIM UE ping over `uesimtun0` succeeds through UPF (`27115478758`) |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
 | Phase C Diagnostic AI — offline SLM (§9.3) | ✅ Code merged / 🔭 live-serve pending | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar are merged and unit-tested; real GGUF pull / air-gapped render has not yet been validated |
@@ -153,16 +155,12 @@ These were required **before** claiming T10 (UERANSIM compat) or marking the 5G 
 | I4 | D-4 N11 AMF→SMF, real E2E (drop the shortcut) | Medium | ✅ Done |
 
 T7 (5G event instrumentation, C1) is also complete, so Phase C can reason over real 5G
-traces. **T10 is now partially reproduced but still not shipped:** UERANSIM accepts
-NGSetup, InitialUEMessage, Authentication Request, Authentication Response, AUSF
-confirmation, Security Mode Control, InitialContextSetupRequest, Registration Accept,
-and Registration Complete; it then sends PDU Session Establishment Request, which AMF
-forwards to SMF; SMF accepts with `201`; AMF sends a protected PDU Session
-Establishment Accept; and UERANSIM reports PDU session establishment success. Remaining
-T10 work: prove UE→UPF→peer data-plane/ping on a TUN-capable Linux runtime, likely via
-NGAP PDU Session Resource Setup, PFCP remote tunnel update, and UPF real TUN/NAT.
-Remaining to v1: finish T10, T8/T9 (5G simulator UX, dashboard 5G mode), plus B2 live
-model-serve validation on the AI path.
+traces. **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile:** UERANSIM
+accepts NGSetup, registration, PDU Session Establishment Accept, NGAP PDU Session
+Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
+uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. Remaining to v1:
+T8/T9 (5G simulator UX, dashboard 5G mode), plus B2 live model-serve validation on the
+AI path.
 
 ## 6. Deferred (unchanged from charter §11)
 

@@ -2,7 +2,7 @@
 
 > Living reference. Maintained on the quarterly interop check-in cadence (see bottom)
 > and updated whenever a real-RAN interop finding lands.
-> Last updated: 2026-06-07
+> Last updated: 2026-06-08
 
 ## Principle: relevance, not parity
 
@@ -27,17 +27,17 @@ This is not a claim of Release completeness.
 
 | Interface / Spec | Implemented surface | Status |
 |---|---|---|
-| **NGAP** (TS 38.413) | NG Setup, InitialUEMessage, DL/UL NAS Transport, Initial Context Setup, PDU Session Resource Setup | ✅ in-process · 🔭 real-RAN registration path validated |
-| **NGAP transport** | Native Linux kernel SCTP (`pkg/sctp/sctp_linux.go`, no CGO/pion); TCP fallback on non-Linux for dev | ✅ in-process · 🔭 real-RAN registration path validated |
-| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · 🔭 real-RAN initial registration validated |
-| **NAS-5G SM** (TS 24.501) | UL NAS Transport carrying 5GSM PDU Session Establishment; DL NAS Transport carrying PDU Session Establishment Accept (QoS rules + Session-AMBR + PDU address). | ✅ real-RAN: UERANSIM completes PDU session establishment · 🔭 data-plane pending |
+| **NGAP** (TS 38.413) | NG Setup, InitialUEMessage, DL/UL NAS Transport, Initial Context Setup, PDU Session Resource Setup | ✅ in-process · ✅ bundled UERANSIM profile validated |
+| **NGAP transport** | Native Linux kernel SCTP (`pkg/sctp/sctp_linux.go`, no CGO/pion); TCP fallback on non-Linux for dev | ✅ in-process · ✅ bundled UERANSIM profile validated |
+| **NAS-5G MM** (TS 24.501) | Registration Request/Accept/Complete, Authentication Request/Response/Failure, Security Mode Command/Complete, Registration Reject | ✅ in-process · ✅ bundled UERANSIM profile validated |
+| **NAS-5G SM** (TS 24.501) | UL NAS Transport carrying 5GSM PDU Session Establishment; DL NAS Transport carrying PDU Session Establishment Accept (QoS rules + Session-AMBR + PDU address). | ✅ bundled UERANSIM profile validated |
 | **5G-AKA** (TS 33.501) | Full AKA: AUSF/UDM vector generation, RES* verify, K_AUSF/K_SEAF/K_AMF chain | ✅ in-process |
 | **Key derivation** (TS 33.501 Annex A) | K_AMF (A.7), K_NASint/K_NASenc (A.8), K_gNB (A.9). **K_AMF P0 = bare IMSI** (fixed; see Findings) | ✅ in-process |
 | **NAS security algorithms** | 128-NIA2 (AES-CMAC) integrity; NEA0 (null) ciphering | ✅ in-process |
 | **SUCI** (TS 33.501 / 23.003) | Null-scheme (protection scheme 0) decode + genuine reject of unsupported schemes | ✅ in-process · ❌ Profile A/B (ECIES) |
 | **SBI** (TS 29.5xx) | N8/N12/N13 (AUSF↔UDM↔UDR), N11 (AMF↔SMF), NRF register/discover (Nnrf) — HTTP/JSON | ✅ in-process · ➖ simplified service set |
-| **PFCP / N4** (TS 29.244) | Association Setup, Session Establishment | ✅ in-process · 🔭 real-RAN |
-| **GTP-U / N3** (TS 29.281) | Tunnel establishment + egress (Linux TUN) | ✅ in-process |
+| **PFCP / N4** (TS 29.244) | Association Setup, Session Establishment, Session Modification for gNB remote tunnel update | ✅ in-process · ✅ bundled UERANSIM profile validated |
+| **GTP-U / N3** (TS 29.281) | Tunnel establishment + egress (Linux TUN/NAT) | ✅ in-process · ✅ bundled UERANSIM profile data-plane ping |
 | **5G-GUTI re-registration** | — | ❌ Not implemented (GUTI path stubbed) |
 
 ## 4G EPC
@@ -68,7 +68,8 @@ with the spec reference and the fix.
 | 2026-06-07 | UERANSIM aborted after InitialContextSetup because Registration Accept encoded Assigned 5G-GUTI IEI `0x77` with a one-byte length instead of IE6/TLV-E two-byte length. | TS 24.501 | **Fixed.** `TestRegistrationAcceptUERANSIMMobileIdentityLengthGolden` pins the bad and fixed fixtures; replay run `27080274240` reaches Registration Complete. |
 | 2026-06-07 | After registration, AMF initially failed to parse UERANSIM's protected UL NAS Transport and then used `localhost:8002` as SMF fallback inside Docker. | TS 24.501 / TS 29.502 | **Fixed.** AMF routes decrypted NAS to UL transport handling, accepts UERANSIM IE1/IE3 shapes, and compose sets `QCORE_AMF_SMF_URL=http://smf:8002`. Replay run `27080274240` shows AMF forwarding the PDU request and SMF returning `201`. |
 | 2026-06-07 | QCore created the SMF context but did not send PDU Session Establishment Accept back to UERANSIM. | TS 24.501 §8.3.2 / §8.2.11 | **Fixed.** AMF now relays a protected DL NAS Transport carrying a spec-complete 5GSM Accept (Authorized QoS rules + Session-AMBR + PDU address). Replay run `27108387027`: UERANSIM logs `PDU Session establishment is successful PSI[1]`. Pinned by `TestEncodePDUSessionEstablishmentAcceptGolden`. |
-| 2026-06-07 | PDU session establishes (control plane), but no external data-plane packet through UPF is proven; the CI UPF uses DummyEgress. | TS 29.281 / TS 29.244 | **Open.** Next work: prove a UE→UPF→peer ping on a Linux/TUN-capable runtime (UPF needs `/dev/net/tun`). This is the final T10 gate. |
+| 2026-06-07 | PDU session establishes (control plane), but no external data-plane packet through UPF is proven; the CI UPF uses DummyEgress. | TS 29.281 / TS 29.244 | **Fixed.** UPF now runs with `/dev/net/tun`, configures TUN/NAT, and participates in PFCP remote tunnel update. |
+| 2026-06-08 | Final T10 data-plane gap: QCore needed NGAP PDU Session Resource Setup, PFCP Session Modification with the gNB N3 tunnel, and real UPF TUN/NAT before UE packets could flow. | TS 38.413 / TS 29.244 / TS 29.281 | **Fixed.** GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`; UERANSIM UE ping over `uesimtun0` succeeds through UPF. |
 
 ## How this doc is maintained
 

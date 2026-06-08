@@ -1,17 +1,20 @@
 # UERANSIM Compatibility (5G SA)
 
-**Status: UERANSIM registration + PDU session establishment (control plane) pass;
-data-plane/ping is the remaining T10 gate — not shipped.**
+**Status: UERANSIM registration + PDU session + data-plane ping pass. T10 is shipped
+for the bundled UERANSIM Docker/cloud-Linux profile.**
 
 As of 2026-06-08, QCore has been replayed against UERANSIM v3.2.8 in Docker
-Compose over native SCTP on GitHub Actions cloud Linux. The replay now completes
-the **5G control plane end-to-end**: full initial registration, then the UE's PDU
-Session Establishment Request → SMF `201 Created` → a protected DL NAS Transport
-carrying a PDU Session Establishment Accept → UERANSIM logging `PDU Session
-establishment is successful PSI[1]` (the UE stays running, no crash).
+Compose over native SCTP on GitHub Actions cloud Linux. The replay completes the 5G
+flow end-to-end for this profile: full initial registration, the UE's PDU Session
+Establishment Request, SMF `201 Created`, protected PDU Session Establishment Accept,
+NGAP PDU Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and
+`ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE container.
 
-This is a real milestone, but it is not a full T10 ship claim: **no external
-data-plane ping through UPF is proven yet** (the CI UPF still uses DummyEgress).
+Confirmed by GitHub Actions `ueransim-interop` run `27115478758`:
+
+```text
+T10 DATA PLANE PASS — UERANSIM completed PDU session establishment and ping over uesimtun0 succeeded.
+```
 
 ## Verified In Replay
 
@@ -39,6 +42,13 @@ data-plane ping through UPF is proven yet** (the CI UPF still uses DummyEgress).
 - AMF sends a protected DL NAS Transport carrying a PDU Session Establishment Accept.
 - UERANSIM UE logs `PDU Session Establishment Accept received` and
   `PDU Session establishment is successful PSI[1]` (UE stays running, no crash).
+- AMF sends NGAP `PDUSessionResourceSetupRequest` with the protected PDU Session
+  Establishment Accept.
+- UERANSIM gNB sends NGAP `PDUSessionResourceSetupResponse` with the gNB N3 tunnel.
+- AMF updates the SMF context with the gNB N3 IP/TEID.
+- SMF sends PFCP Session Modification to UPF.
+- UPF updates the remote gNB tunnel and uses a real Linux TUN/NAT egress.
+- UERANSIM UE pings through `uesimtun0`.
 
 ## Confirmed: PDU Session Establishment Accept (control plane)
 
@@ -58,15 +68,32 @@ PDU Session Establishment Accept received
 PDU Session establishment is successful PSI[1]
 ```
 
-## Current T10 Gap
+## Confirmed: N2/N3 Data Plane
 
-The 5G **control plane** now completes end-to-end against real UERANSIM, through
-PDU session establishment. The remaining gate is the **user/data plane**: an
-actual packet (e.g. ping) from the UE through the GTP-U tunnel and UPF to a peer,
-proven on a Linux/TUN-capable runtime (the CI UPF still uses `DummyEgress`).
+The final T10 blocker was that PDU session signaling completed but no external packet
+was proven through the UPF. The shipped path is:
 
-Do not claim "UERANSIM compatible", "5G shipped", or data-plane success until a
-Linux TUN-capable run proves traffic through UPF.
+- SMF returns UPF N3 IP/TEID and UE IPv4 to AMF on Create SM Context.
+- AMF sends `PDUSessionResourceSetupRequest` to the gNB, carrying the protected 5GSM
+  Accept and UPF N3 tunnel info.
+- AMF decodes `PDUSessionResourceSetupResponse`, extracts the gNB N3 IP/TEID, and calls
+  SMF's modify endpoint.
+- SMF sends PFCP Session Modification to UPF.
+- UPF stores the gNB remote tunnel, creates/configures a real `qcore-upf` TUN interface,
+  enables forwarding/NAT in the Linux container, and forwards UE traffic.
+
+Pinned by focused tests in `pkg/ngap`, `pkg/pfcp`, and `pkg/upf`, and by the GitHub
+Actions replay run `27115478758`.
+
+## Scope And Remaining Caveats
+
+This is a real T10 ship claim for the bundled UERANSIM v3.2.8 Docker profile on a
+Linux/TUN-capable runtime. It is **not** a broad 3GPP conformance matrix or a claim that
+every external gNB/UE behaves identically. Additional RAN/device targets should get their
+own replay evidence before being marked compatible.
+
+Docker Desktop on macOS is still not the validation environment for native SCTP + TUN;
+use GitHub Actions/Linux or a Linux host.
 
 ## Confirmed Fix: Registration Accept 5G-GUTI IE6
 
@@ -193,6 +220,6 @@ docker compose -f deployments/docker/docker-compose.yml --profile 5g up --build
 - The compose UE config is aligned with QCore's seeded demo subscriber.
 - The dev reset seeds the demo SQN at `000000000020`, because UERANSIM starts with
   `SQN-MS=000000000000` and rejects a network SQN whose sequence part is not ahead.
-- On macOS Docker, UPF falls back to dummy egress because `/dev/net/tun` is unavailable.
-  The current GitHub replay also shows UPF using `DummyEgress`; full data-plane
-  validation needs a Linux host/runtime where UPF itself receives `/dev/net/tun`.
+- On macOS Docker, UPF may fall back to dummy egress if `/dev/net/tun` is unavailable.
+  The GitHub replay uses a Linux runtime with `/dev/net/tun`, real TUN configuration, and
+  NAT; that is the authoritative T10 data-plane evidence.
