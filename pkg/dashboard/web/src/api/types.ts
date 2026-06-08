@@ -62,6 +62,8 @@ export interface SimulatorStatus {
   last_journey?: string;
   last_scenario?: string;
   last_error?: string;
+  failed_step?: string;
+  mode?: string;
   started_at?: string;
   ended_at?: string;
 }
@@ -91,4 +93,3 @@ export interface DiagnosticResult {
   RootCause: string;
   Fix: string;
 }
-

@@ -6,6 +6,13 @@ interface Props {
   onStartSim: () => void;
 }
 
+const SCENARIOS = [
+  { id: "wrong_ki", label: "Wrong Ki" },
+  { id: "wrong_plmn", label: "Wrong PLMN" },
+  { id: "unprovisioned_imsi", label: "Unknown IMSI" },
+  { id: "wrong_mme_address", label: "Timeout" },
+] as const;
+
 export default function HealthView({ onStartSim }: Props) {
   const [health, setHealth] = useState<CoreHealth | null>(null);
   const [sim, setSim] = useState<SimulatorStatus | null>(null);
@@ -33,7 +40,21 @@ export default function HealthView({ onStartSim }: Props) {
   const startSim = async () => {
     setBusy(true);
     try {
-      await api.simulatorStart(mode);
+      const status = await api.simulatorStart(mode);
+      setSim(status);
+      onStartSim();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const injectScenario = async (scenario: string) => {
+    setBusy(true);
+    try {
+      const status = await api.simulatorInject(mode, scenario);
+      setSim(status);
       onStartSim();
     } catch (e) {
       setErr((e as Error).message);
@@ -103,6 +124,54 @@ export default function HealthView({ onStartSim }: Props) {
         </button>
       </div>
 
+      <section className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-4">
+        <div className="card">
+          <h2 className="mb-3">Simulator scenarios</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {SCENARIOS.map((scenario) => (
+              <button
+                key={scenario.id}
+                className="btn-secondary text-sm"
+                disabled={!health.ready_for_use || busy || sim?.state === "running"}
+                onClick={() => injectScenario(scenario.id)}
+              >
+                {scenario.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between gap-3">
+            <h2>Simulator status</h2>
+            <span
+              className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
+                sim?.state === "success"
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : sim?.state === "failed"
+                    ? "bg-red-500/15 text-red-400"
+                    : sim?.state === "running"
+                      ? "bg-amber-500/15 text-amber-400"
+                      : "bg-slate-500/10 text-slate-400"
+              }`}
+            >
+              {sim?.state ?? "idle"}
+            </span>
+          </div>
+          <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <StatusRow label="Mode" value={(sim?.mode ?? mode).toUpperCase()} />
+            <StatusRow label="Scenario" value={sim?.last_scenario || "Happy path"} />
+            <StatusRow label="Failed step" value={sim?.failed_step || "None"} danger={Boolean(sim?.failed_step)} />
+            <StatusRow label="Journey" value={sim?.last_journey || "None yet"} mono />
+          </dl>
+          {sim?.last_error && (
+            <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {sim.last_error}
+            </div>
+          )}
+        </div>
+      </section>
+
       <section>
         <h2 className="mb-3">Network functions</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -111,6 +180,27 @@ export default function HealthView({ onStartSim }: Props) {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function StatusRow({
+  label,
+  value,
+  danger = false,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-slateblue-500">{label}</dt>
+      <dd className={`${mono ? "font-mono" : ""} ${danger ? "text-red-300" : "text-slate-200"} truncate`}>
+        {value}
+      </dd>
     </div>
   );
 }

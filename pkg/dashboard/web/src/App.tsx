@@ -18,7 +18,6 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const connection = useConnectionStore((s) => s.connection);
-  const triggerSimulation = useConnectionStore((s) => s.triggerSimulation);
   const fetchConfig = useConnectionStore((s) => s.fetchConfig);
   const initEventSource = useConnectionStore((s) => s.initEventSource);
   const closeEventSource = useConnectionStore((s) => s.closeEventSource);
@@ -42,27 +41,16 @@ export default function App() {
     }
   }, [isConnected]);
 
-  // Handle starting UERANSIM simulator
+  // Handle starting the built-in 5G control-plane simulator.
   const handleStartSimulator = async () => {
     setStartingSim(true);
     try {
-      // Trigger core simulator start in 5G mode
       await api.simulatorStart("5g");
-      
-      // Simulate successful gNB connection events from the mock layer after a delay
-      setTimeout(() => {
-        setStartingSim(false);
-        setShowUeransimModal(false);
-        triggerSimulation("connected");
-      }, 1500);
+      setShowUeransimModal(false);
     } catch (err) {
       console.error("Failed to start simulator:", err);
-      // Fallback: force simulated connection even if backend simulator endpoint fails
-      setTimeout(() => {
-        setStartingSim(false);
-        setShowUeransimModal(false);
-        triggerSimulation("connected");
-      }, 1500);
+    } finally {
+      setStartingSim(false);
     }
   };
 
@@ -167,20 +155,20 @@ export default function App() {
 
             <div className="flex items-center gap-2 text-emerald-400">
               <HelpCircle className="w-6 h-6" />
-              <h3 className="text-lg font-bold text-white">Using UERANSIM?</h3>
+              <h3 className="text-lg font-bold text-white">Use the built-in 5G simulator</h3>
             </div>
 
             <p className="text-sm text-slate-300 leading-relaxed">
-              UERANSIM is an open-source 5G gNodeB and UE simulator. You can launch it inside QCore's dev container with a single click.
+              Run QCore's built-in 5G control-plane simulator to generate a live registration trace. Full UERANSIM validation still runs through Docker and CI evidence.
             </p>
 
             <div className="bg-darkbg-950 p-4 rounded-xl border border-darkbg-800 space-y-2 text-xs font-mono">
               <div className="flex items-center gap-2 text-slate-400 border-b border-darkbg-800/60 pb-1.5">
                 <Terminal className="w-3.5 h-3.5" />
-                <span>Docker Container CLI</span>
+                <span>Dashboard API</span>
               </div>
               <p className="text-slate-300 break-all leading-normal">
-                $ ./qcore-cli simulator start --mode 5g
+                {"POST /api/simulator/start {\"mode\":\"5g\"}"}
               </p>
             </div>
 
@@ -198,7 +186,7 @@ export default function App() {
                 ) : (
                   <>
                     <Play className="w-4 h-4" />
-                    Launch UERANSIM Simulator
+                    Start 5G simulator
                   </>
                 )}
               </button>

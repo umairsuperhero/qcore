@@ -100,3 +100,13 @@ amf:
   amf_set_id: 1
   amf_pointer: 0
   tac: 1
+
+dashboard:
+  bind_address: "0.0.0.0"
+  port: 3000
+  hss_url: "http://localhost:8080"
+  mme_url: "http://localhost:8081"
+  mme_s1ap_addr: "localhost:36412"   # built-in 4G simulator target
+  amf_ngap_addr: "localhost:38412"   # built-in 5G simulator target
+  spgw_url: "http://localhost:8082"
+  collector_url: "http://localhost:9099"

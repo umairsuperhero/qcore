@@ -68,23 +68,39 @@ func New(cfg *config.Config, log logger.Logger) (*Server, error) {
 		aiEngine:     ai.NewEngine(cfg.AI, log),
 	}
 
-	// Build the simulator template from config + the demo subscriber.
+	// Build simulator templates from config + the demo subscriber.
 	// The demo subscriber's credentials are the 3GPP TS 35.208 Test Set 1
 	// vectors that cmd/hss/main.go seeds on first run.
-	plmn, err := simulator.PackPLMN(cfg.MME.PLMN)
+	mmePLMN, err := simulator.PackPLMN(cfg.MME.PLMN)
 	if err != nil {
 		return nil, err
 	}
-	simTemplate := simulator.Options{
-		MMEAddr: cfg.Dashboard.MMES1APAddr,
-		PLMN:    plmn,
-		TAC:     cfg.MME.TAC,
-		IMSI:    "001010000000001",
-		Ki:      "465b5ce8b199b49faa5f0a2ee238a6bc",
-		OPc:     "cd63cb71954a9f4e48a5994e37a02baf",
+	amfPLMN, err := simulator.PackPLMN(cfg.AMF.PLMN)
+	if err != nil {
+		return nil, err
+	}
+	sim4G := simulator.Options{
+		Mode:          "4g",
+		MMEAddr:       cfg.Dashboard.MMES1APAddr,
+		TransportMode: cfg.MME.SCTPMode,
+		PLMN:          mmePLMN,
+		TAC:           cfg.MME.TAC,
+		IMSI:          "001010000000001",
+		Ki:            "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:           "cd63cb71954a9f4e48a5994e37a02baf",
+	}
+	sim5G := simulator.Options{
+		Mode:          "5g",
+		MMEAddr:       cfg.Dashboard.AMFNGAPAddr,
+		TransportMode: cfg.AMF.SCTPMode,
+		PLMN:          amfPLMN,
+		TAC:           cfg.AMF.TAC,
+		IMSI:          "001010000000001",
+		Ki:            "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:           "cd63cb71954a9f4e48a5994e37a02baf",
 	}
 	simEmitter := events.New(cfg.Dashboard.CollectorURL, "simulator", log)
-	s.sim = NewSimulatorController(simTemplate, simEmitter, log)
+	s.sim = NewSimulatorController(sim4G, sim5G, simEmitter, log)
 
 	s.routes()
 	return s, nil

@@ -53,6 +53,7 @@ func TestLoad_NoFile(t *testing.T) {
 	// All defaults
 	assert.Equal(t, "qcore-hss", cfg.HSS.Name)
 	assert.Equal(t, 8080, cfg.HSS.APIPort)
+	assert.Equal(t, "localhost:38412", cfg.Dashboard.AMFNGAPAddr)
 }
 
 func TestLoad_MissingFile(t *testing.T) {

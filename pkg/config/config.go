@@ -66,7 +66,7 @@ type AMFConfig struct {
 	NGAPPort           int    `mapstructure:"ngap_port"`
 	APIPort            int    `mapstructure:"api_port"`
 	PLMN               string `mapstructure:"plmn"`
-	SCTPMode           string `mapstructure:"sctp_mode"`           // "tcp" (dev) or "sctp"
+	SCTPMode           string `mapstructure:"sctp_mode"`            // "tcp" (dev) or "sctp"
 	ServingNetworkName string `mapstructure:"serving_network_name"` // "5G:mnc<MNC>.mcc<MCC>.3gppnetwork.org"
 	NRFURL             string `mapstructure:"nrf_url"`
 	AUSFURL            string `mapstructure:"ausf_url"`
@@ -119,21 +119,21 @@ type MMEConfig struct {
 	SCTPMode    string   `mapstructure:"sctp_mode"` // "tcp" (dev) or "sctp" (production)
 	PLMN        string   `mapstructure:"plmn"`      // e.g. "00101"
 	HSSURL      string   `mapstructure:"hss_url"`   // HSS REST API base URL
-	TAC         uint16   `mapstructure:"tac"`        // Tracking Area Code
+	TAC         uint16   `mapstructure:"tac"`       // Tracking Area Code
 	MMEGroupID  uint16   `mapstructure:"mme_group_id"`
 	MMECode     uint8    `mapstructure:"mme_code"`
 	RelCapacity uint8    `mapstructure:"relative_capacity"` // 0-255, for load balancing
-	TAIList     []string `mapstructure:"tai_list"`           // e.g. ["00101:0001"]
-	SPGWURL     string   `mapstructure:"spgw_url"`           // HTTP S11 endpoint of SPGW
+	TAIList     []string `mapstructure:"tai_list"`          // e.g. ["00101:0001"]
+	SPGWURL     string   `mapstructure:"spgw_url"`          // HTTP S11 endpoint of SPGW
 }
 
 type SPGWConfig struct {
 	Name        string `mapstructure:"name"`
 	BindAddress string `mapstructure:"bind_address"`
-	APIPort     int    `mapstructure:"api_port"` // HTTP API (our S11-over-HTTP)
-	S1UPort     int    `mapstructure:"s1u_port"` // GTP-U (2152)
-	UEPool      string `mapstructure:"ue_pool"`  // e.g. "10.45.0.0/24"
-	Gateway     string `mapstructure:"gateway"`  // e.g. "10.45.0.1"
+	APIPort     int    `mapstructure:"api_port"`    // HTTP API (our S11-over-HTTP)
+	S1UPort     int    `mapstructure:"s1u_port"`    // GTP-U (2152)
+	UEPool      string `mapstructure:"ue_pool"`     // e.g. "10.45.0.0/24"
+	Gateway     string `mapstructure:"gateway"`     // e.g. "10.45.0.1"
 	SGWU1Addr   string `mapstructure:"sgw_u1_addr"` // what we advertise to the MME as our S1-U IP
 	Egress      string `mapstructure:"egress"`      // "log" (default) or "tun" (Linux only)
 	TUNName     string `mapstructure:"tun_name"`    // Linux TUN device name (default "qcore0")
@@ -148,6 +148,7 @@ type DashboardConfig struct {
 	HSSURL       string `mapstructure:"hss_url"`
 	MMEURL       string `mapstructure:"mme_url"`
 	MMES1APAddr  string `mapstructure:"mme_s1ap_addr"` // host:port for the built-in simulator
+	AMFNGAPAddr  string `mapstructure:"amf_ngap_addr"` // host:port for the built-in 5G simulator
 	SPGWURL      string `mapstructure:"spgw_url"`
 	CollectorURL string `mapstructure:"collector_url"`
 }
@@ -269,6 +270,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("dashboard.hss_url", "http://localhost:8080")
 	v.SetDefault("dashboard.mme_url", "http://localhost:8081")
 	v.SetDefault("dashboard.mme_s1ap_addr", "localhost:36412")
+	v.SetDefault("dashboard.amf_ngap_addr", "localhost:38412")
 	v.SetDefault("dashboard.spgw_url", "http://localhost:8082")
 	v.SetDefault("dashboard.collector_url", "http://localhost:9099")
 }
