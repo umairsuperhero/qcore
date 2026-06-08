@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { api } from "../api/client";
 import type { QEvent, DiagnosticResult, RANConfig } from "../api/types";
-import { getMockEvents, getMockDiagnostic } from "../api/traceStreamMock"; // We'll move mock logic here
 
 export type GNBState = "waiting" | "connected" | "failed";
+export type ProtocolMode = "4g" | "5g";
 
 export interface GNBConnectionData {
   state: GNBState;
@@ -24,7 +24,7 @@ export interface TraceStreamState {
   events: QEvent[];
   streaming: boolean;
   activeScenario: string | null;
-  mode: "4g" | "5g";
+  mode: ProtocolMode;
   diagnostic: DiagnosticResult | null;
   journeyId: string | null;
 }
@@ -34,30 +34,22 @@ interface ConnectionStore {
   loading: boolean;
   config: RANConfig | null;
   connection: GNBConnectionData;
+  mode: ProtocolMode;
 
   // Trace Stream State
   traceState: TraceStreamState;
-
-  // Simulation Overrides
-  isSimulated: boolean;
-  simulatedState: GNBState;
-  isMockStream: boolean; // Replaces USE_MOCK_STREAM
 
   // Actions
   fetchConfig: () => Promise<void>;
   initEventSource: () => void;
   closeEventSource: () => void;
-  triggerSimulation: (state: GNBState) => void;
   resetToLive: () => void;
-  runScenario: (scenario: string, mode: "4g" | "5g") => void;
+  startSimulator: (scenario?: string) => Promise<void>;
   clearTrace: () => void;
-  setMode: (mode: "4g" | "5g") => void;
+  setMode: (mode: ProtocolMode) => void;
 }
 
 let esInstance: EventSource | null = null;
-let timerRef: number | null = null;
-
-const genId = () => Math.random().toString(36).substring(2, 9);
 
 function endpointAddress(address: string, port: number, fallbackPort: number) {
   const host =
@@ -74,9 +66,26 @@ function formatPlmn(plmn: string) {
   return plmn;
 }
 
+function connectionFieldsForMode(cfg: RANConfig, mode: ProtocolMode) {
+  if (mode === "4g") {
+    return {
+      amfAddress: endpointAddress(cfg.mme_address, cfg.mme_s1ap_port, 36412),
+      configuredPlmn: formatPlmn(cfg.plmn),
+      configuredTac: String(cfg.tac),
+    };
+  }
+
+  return {
+    amfAddress: endpointAddress(cfg.amf_address || cfg.mme_address, cfg.amf_ngap_port, 38412),
+    configuredPlmn: formatPlmn(cfg.amf_plmn || cfg.plmn),
+    configuredTac: String(cfg.amf_tac || cfg.tac),
+  };
+}
+
 export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   loading: true,
   config: null,
+  mode: "5g",
   connection: {
     state: "waiting",
     amfAddress: "Loading...",
@@ -93,26 +102,19 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     journeyId: null,
   },
 
-  isSimulated: false,
-  simulatedState: "waiting",
-  isMockStream: false,
-
   fetchConfig: async () => {
     try {
       const cfg = await api.ranConfig();
-      const amfAddr = endpointAddress(cfg.amf_address || cfg.mme_address, cfg.amf_ngap_port, 38412);
-      const formattedPlmn = formatPlmn(cfg.amf_plmn || cfg.plmn);
+      const mode = get().mode;
+      const fields = connectionFieldsForMode(cfg, mode);
 
       set((state) => {
-        if (state.isSimulated) return { config: cfg, loading: false };
         return {
           config: cfg,
           loading: false,
           connection: {
             ...state.connection,
-            amfAddress: amfAddr,
-            configuredPlmn: formattedPlmn,
-            configuredTac: String(cfg.amf_tac || cfg.tac),
+            ...fields,
           },
         };
       });
@@ -123,7 +125,6 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   initEventSource: () => {
-    if (get().isSimulated) return;
     if (esInstance) return; // Already initialized
 
     const es = new EventSource("/api/events/stream");
@@ -188,8 +189,6 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
         // 2. Process Trace Stream
         set((state) => {
-          if (state.isMockStream) return state; // Ignore real events if mock stream is active
-          
           const newEvents = [...state.traceState.events, ev].slice(-200);
           const activeJourney = ev.journey_id || state.traceState.journeyId;
 
@@ -232,69 +231,16 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     }
   },
 
-  triggerSimulation: (state: GNBState) => {
-    get().closeEventSource();
-    set({ isSimulated: true, simulatedState: state });
-    
-    // Update connection with simulated values
-    const { config } = get();
-    const defaultAmf = config
-      ? endpointAddress(config.amf_address || config.mme_address, config.amf_ngap_port, 38412)
-      : "192.168.1.50:38412";
-    
-    const defaultPlmn = config ? config.amf_plmn || config.plmn : "00101";
-    const formattedPlmn = formatPlmn(defaultPlmn);
-    const defaultTac = config ? String(config.amf_tac || config.tac) : "1";
-
-    if (state === "waiting") {
-      set((s) => ({
-        connection: { ...s.connection, state: "waiting", amfAddress: defaultAmf, configuredPlmn: formattedPlmn, configuredTac: defaultTac },
-      }));
-    } else if (state === "connected") {
-      set((s) => ({
-        connection: {
-          ...s.connection,
-          state: "connected",
-          amfAddress: defaultAmf,
-          configuredPlmn: formattedPlmn,
-          configuredTac: defaultTac,
-          gnbName: "Nokia AirScale",
-          negotiatedPlmn: "001/01",
-          negotiatedTac: "1",
-          negotiatedSlice: "eMBB",
-        },
-      }));
-    } else if (state === "failed") {
-      set((s) => ({
-        connection: {
-          ...s.connection,
-          state: "failed",
-          amfAddress: defaultAmf,
-          configuredPlmn: formattedPlmn,
-          configuredTac: defaultTac,
-          failReason: "NG Setup rejected",
-          sentPlmn: "310/260",
-          fixGnb: "set MCC=001, MNC=01",
-          fixQCore: "Change QCore to 310/260",
-        },
-      }));
-    }
-  },
-
   resetToLive: () => {
-    set({ isSimulated: false, isMockStream: false });
     // Re-evaluate config into connection
-    const { config } = get();
+    const { config, mode } = get();
     if (config) {
-      const amfAddr = endpointAddress(config.amf_address || config.mme_address, config.amf_ngap_port, 38412);
-      const formattedPlmn = formatPlmn(config.amf_plmn || config.plmn);
+      const fields = connectionFieldsForMode(config, mode);
       set((state) => ({
         connection: {
           ...state.connection,
           state: "waiting", // Reset to waiting on live reconnect
-          amfAddress: amfAddr,
-          configuredPlmn: formattedPlmn,
-          configuredTac: String(config.amf_tac || config.tac),
+          ...fields,
         },
       }));
     }
@@ -302,10 +248,6 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   clearTrace: () => {
-    if (timerRef) {
-      window.clearTimeout(timerRef);
-      timerRef = null;
-    }
     set((state) => ({
       traceState: {
         ...state.traceState,
@@ -318,57 +260,62 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     }));
   },
 
-  runScenario: (scenario: string, mode: "4g" | "5g") => {
+  startSimulator: async (scenario?: string) => {
+    const mode = get().mode;
+    const activeScenario = scenario || "happy_path";
     get().clearTrace();
-    set({ isMockStream: true }); // Start mock scenario
-
-    const jId = "jrn-" + genId();
-    const mockEventsList = getMockEvents(scenario, mode, jId);
-
     set((state) => ({
       traceState: {
         ...state.traceState,
         streaming: true,
-        activeScenario: scenario,
+        activeScenario,
         mode,
-        journeyId: jId,
         events: [],
+        diagnostic: null,
+        journeyId: null,
       },
     }));
 
-    let index = 0;
-    const pushNextEvent = () => {
-      if (index >= mockEventsList.length) {
-        const diag = getMockDiagnostic(scenario);
+    if (scenario) {
+      await api.simulatorInject(mode, scenario);
+    } else {
+      await api.simulatorStart(mode);
+    }
+
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+      const status = await api.simulatorStatus();
+      if (status.state === "success" || status.state === "failed") {
         set((state) => ({
           traceState: {
             ...state.traceState,
             streaming: false,
-            diagnostic: diag,
+            journeyId: status.last_journey || state.traceState.journeyId,
           },
         }));
         return;
       }
+    }
 
-      const nextEv = mockEventsList[index];
-      set((state) => ({
-        traceState: {
-          ...state.traceState,
-          events: [...state.traceState.events, nextEv],
-        },
-      }));
-
-      index++;
-      const delay = 400 + Math.random() * 400;
-      timerRef = window.setTimeout(pushNextEvent, delay);
-    };
-
-    timerRef = window.setTimeout(pushNextEvent, 200);
+    set((state) => ({
+      traceState: {
+        ...state.traceState,
+        streaming: false,
+      },
+    }));
   },
 
-  setMode: (mode: "4g" | "5g") => {
+  setMode: (mode: ProtocolMode) => {
     set((state) => ({
+      mode,
       traceState: { ...state.traceState, mode },
+      connection: state.config
+        ? {
+            ...state.connection,
+            state: "waiting",
+            ...connectionFieldsForMode(state.config, mode),
+          }
+        : state.connection,
     }));
   },
 }));

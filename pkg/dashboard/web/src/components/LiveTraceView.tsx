@@ -14,26 +14,25 @@ import {
 
 export default function LiveTraceView() {
   const traceState = useConnectionStore((s) => s.traceState);
-  const isMockStream = useConnectionStore((s) => s.isMockStream);
-  const runScenario = useConnectionStore((s) => s.runScenario);
+  const mode = useConnectionStore((s) => s.mode);
+  const startSimulator = useConnectionStore((s) => s.startSimulator);
   const clearTrace = useConnectionStore((s) => s.clearTrace);
   const setMode = useConnectionStore((s) => s.setMode);
 
-  const { events, streaming, activeScenario, mode, diagnostic } = traceState;
-  const isMock = isMockStream;
+  const { events, streaming, activeScenario, diagnostic } = traceState;
   const clear = clearTrace;
 
   const [learningMode, setLearningMode] = useState(false);
   const [activeView, setActiveView] = useState<"timeline" | "raw">("timeline");
 
   // Handler for running standard attach
-  const handleRunAttach = () => {
-    runScenario("happy_path", mode);
+  const handleRunAttach = async () => {
+    await startSimulator();
   };
 
   // Handler for failure injection
-  const handleInjectFailure = (scenario: string) => {
-    runScenario(scenario, mode);
+  const handleInjectFailure = async (scenario: string) => {
+    await startSimulator(scenario);
   };
 
   return (
@@ -53,7 +52,7 @@ export default function LiveTraceView() {
                 Live Signaling Monitor
               </h2>
               <p className="text-xs text-slate-400 font-medium">
-                {isMock ? "Mock verification environment active" : "Real-time SSE event stream connected"}
+                Real-time SSE event stream connected
               </p>
             </div>
           </div>
