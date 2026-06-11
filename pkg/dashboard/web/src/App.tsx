@@ -16,6 +16,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const connection = useConnectionStore((s) => s.connection);
+  const traceState = useConnectionStore((s) => s.traceState);
   const fetchConfig = useConnectionStore((s) => s.fetchConfig);
   const initEventSource = useConnectionStore((s) => s.initEventSource);
   const closeEventSource = useConnectionStore((s) => s.closeEventSource);
@@ -29,13 +30,20 @@ export default function App() {
   }, [fetchConfig, initEventSource, closeEventSource]);
 
   const isConnected = connection.state === "connected";
+  const hasTraceActivity =
+    traceState.streaming ||
+    traceState.events.length > 0 ||
+    traceState.activeScenario !== null ||
+    traceState.journeyId !== null;
+  const canShowTrace = isConnected || hasTraceActivity;
 
-  // Force Tab to "ran" if connection state changes to disconnected
+  // Keep post-connection tabs gated, but allow an active simulator run to
+  // navigate straight to Live Trace before setup flips the connection state.
   useEffect(() => {
-    if (!isConnected) {
+    if (!isConnected && tab !== "ran" && !(tab === "trace" && hasTraceActivity)) {
       setTab("ran");
     }
-  }, [isConnected]);
+  }, [hasTraceActivity, isConnected, tab]);
 
   return (
     <div className="min-h-screen bg-darkbg-950 text-slate-100 flex flex-col font-sans">
@@ -77,8 +85,8 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-6">
           <nav className="flex gap-2 -mb-px">
             {TABS.map((t) => {
-              // Hide other tabs unless gNB is connected
-              if (t.id !== "ran" && !isConnected) return null;
+              if (t.id === "trace" && !canShowTrace) return null;
+              if (t.id !== "ran" && t.id !== "trace" && !isConnected) return null;
 
               return (
                 <button
@@ -110,9 +118,9 @@ export default function App() {
           <>
             {tab === "health" && <HealthView onStartSim={() => setTab("trace")} />}
             {tab === "subscribers" && <SubscribersView />}
-            {tab === "trace" && <LiveTraceView />}
           </>
         )}
+        {tab === "trace" && canShowTrace && <LiveTraceView />}
       </main>
 
       {/* Footer Info */}

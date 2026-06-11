@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CoreHealth, NFStatus, SimulatorStatus } from "../api/types";
+import { useConnectionStore } from "../stores/connectionStore";
 
 interface Props {
   onStartSim: () => void;
@@ -18,6 +19,9 @@ export default function HealthView({ onStartSim }: Props) {
   const [sim, setSim] = useState<SimulatorStatus | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mode = useConnectionStore((s) => s.mode);
+  const setMode = useConnectionStore((s) => s.setMode);
+  const startSimulator = useConnectionStore((s) => s.startSimulator);
 
   useEffect(() => {
     const tick = async () => {
@@ -35,14 +39,14 @@ export default function HealthView({ onStartSim }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  const [mode, setMode] = useState<"4g" | "5g">("5g");
-
   const startSim = async () => {
     setBusy(true);
     try {
-      const status = await api.simulatorStart(mode);
-      setSim(status);
+      const run = startSimulator();
       onStartSim();
+      await run;
+      const status = await api.simulatorStatus();
+      setSim(status);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -53,9 +57,11 @@ export default function HealthView({ onStartSim }: Props) {
   const injectScenario = async (scenario: string) => {
     setBusy(true);
     try {
-      const status = await api.simulatorInject(mode, scenario);
-      setSim(status);
+      const run = startSimulator(scenario);
       onStartSim();
+      await run;
+      const status = await api.simulatorStatus();
+      setSim(status);
     } catch (e) {
       setErr((e as Error).message);
     } finally {

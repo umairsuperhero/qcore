@@ -46,8 +46,9 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
     const key = scenario || "happy_path";
     setStartingScenario(key);
     try {
-      await startSimulator(scenario);
+      const run = startSimulator(scenario);
       onStartTrace();
+      await run;
     } finally {
       setStartingScenario(null);
     }
@@ -90,7 +91,7 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
           Is your {modeTitle} connected?
         </h1>
         <p className="text-slate-400 mt-3 text-sm md:text-base">
-          Establish the interface (NG Setup) between your 5G gNodeB / 4G eNodeB and the Core.
+          Establish the interface between your 5G gNodeB or 4G eNodeB and the Core.
         </p>
       </div>
 
@@ -218,7 +219,7 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
                 {/* Connection Parameters Section */}
                 <div className="my-6">
                   <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-                    Point your gNB here
+                    Point your {modeTitle} here
                   </div>
                   
                   <div className="space-y-3 bg-darkbg-950/70 p-5 rounded-2xl border border-darkbg-800 font-mono text-sm">

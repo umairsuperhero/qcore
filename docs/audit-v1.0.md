@@ -2,9 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.14 — 2026-06-08
-**Auditor of record this revision:** focused C3/T9 RAN-connect slice on
-`codex/c3-dashboard-5g-mode`; local `make verify-fast`.
+**Current revision:** v1.15 — 2026-06-11
+**Auditor of record this revision:** focused C2/C3 credibility-gate branch on
+`codex/c2-c3-unmock-scenarios`; local `npx tsc --noEmit --pretty false` and
+`make verify-fast`.
 
 ---
 
@@ -12,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.15 | 2026-06-11 | **C2/C3 credibility gate advanced; still not claimed as fully shipped.** The dashboard production source no longer references `traceStreamMock`, `getMockEvents`, `runScenario`, or `isMockStream`; the dead mock stream file was removed. The hero screen now has a global 4G EPC / 5G SA selector, shows the matching RAN endpoint, and launches happy-path or failure scenarios through the real backend simulator API. Hero, Health, and Live Trace all route simulator starts through the same store path backed by `/api/simulator/start`, `/api/simulator/inject`, `/api/simulator/status`, real `/api/events/stream` SSE events, and the real diagnostics path. App tab gating now allows a hero-launched simulator run to navigate directly to Live Trace and keep it visible while the trace is active, even before the connection state flips to connected. Verification performed this revision: `npx tsc --noEmit --pretty false` and `make verify-fast` passed, including dashboard typecheck and Vite build. Remaining proof before marking C2/C3 shipped: manual/browser UX replay against the running dashboard and acceptance evidence that the trace visible to the user is the backend simulator/SSE trace end-to-end. |
 | v1.14 | 2026-06-08 | **C3/T9 dashboard 5G mode started; not yet shipped as a full milestone.** `/api/ran-config` now exposes first-class AMF/NGAP connection values (`amf_address`, `amf_ngap_port`, `amf_plmn`, `amf_tac`, `serving_network_name`) alongside the legacy 4G MME/S1AP values. The dashboard hero now derives its gNB endpoint from AMF/NGAP fields instead of MME/S1AP fields, and the API provides a UERANSIM gNB snippet keyed from the AMF configuration. Verification performed this revision: `make verify-fast` passed, including Docker Go targeted tests for `pkg/dashboard`, dashboard `tsc --noEmit`, and `vite build`. |
 | v1.13 | 2026-06-08 | **C2/T8 simulator UX started; not yet shipped as a full milestone.** The dashboard now has separate 4G and 5G simulator templates, so 5G starts target the configured AMF NGAP endpoint instead of accidentally reusing the 4G MME S1AP listener. The built-in simulator accepts configured transport mode (`tcp` dev fallback or native `sctp`), Docker/dashboard config exposes `dashboard.amf_ngap_addr`, and the Health view renders real simulator mode/status/failure-step/journey data plus scenario buttons for wrong Ki, wrong PLMN, unknown IMSI, and timeout. The prior modal no longer claims to launch UERANSIM or force a simulated success after backend failure. Verification performed this revision: `make verify-fast` passed, including Docker Go targeted tests for `pkg/config`, `pkg/dashboard`, `pkg/simulator`, plus dashboard `tsc --noEmit` and `vite build`. |
 | v1.12 | 2026-06-08 | **T10 shipped for the bundled UERANSIM Docker/cloud-Linux profile.** The final data-plane gate is green: QCore now sends NGAP `PDUSessionResourceSetupRequest`, decodes the gNB's `PDUSessionResourceSetupResponse`, forwards the gNB N3 tunnel to SMF, performs PFCP Session Modification into UPF, configures real TUN/NAT in the UPF container, and proves `ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE. GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`; CI run `27115479708` is green. Scope is explicit: this validates the bundled UERANSIM v3.2.8 Docker profile on Linux/TUN, not a broad conformance matrix. |
@@ -79,7 +81,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
 | Phase C Diagnostic AI — offline SLM (§9.3) | ✅ Code merged / 🔭 live-serve pending | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar are merged and unit-tested; real GGUF pull / air-gapped render has not yet been validated |
-| Dashboard experience layer (hero + live trace) | ✅ Shipped | gNB-connection hero screen (Gate 1) + animated live signaling-trace view; `pkg/dashboard/web` |
+| Dashboard experience layer (hero + live trace) | ✅ Base shipped / ◑ C2/C3 unmocking in progress | gNB-connection hero screen (Gate 1) + animated live signaling-trace view; current C2/C3 branch removes frontend fake scenario traces and routes simulator controls to backend API + SSE, pending browser replay evidence |
 
 ## 4. Open interop gaps → long-term decisions
 
@@ -160,8 +162,9 @@ traces. **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile:** 
 accepts NGSetup, registration, PDU Session Establishment Accept, NGAP PDU Session
 Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
 uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. Remaining to v1:
-T8/T9 (5G simulator UX, dashboard 5G mode), plus B2 live model-serve validation on the
-AI path.
+complete T8/T9 (C2/C3) by browser-proving the newly unmocked dashboard simulator UX
+against the backend simulator/SSE path, plus B2 live model-serve validation on the AI
+path.
 
 ## 6. Deferred (unchanged from charter §11)
 

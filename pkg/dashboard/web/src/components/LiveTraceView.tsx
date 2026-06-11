@@ -19,7 +19,7 @@ export default function LiveTraceView() {
   const clearTrace = useConnectionStore((s) => s.clearTrace);
   const setMode = useConnectionStore((s) => s.setMode);
 
-  const { events, streaming, activeScenario, diagnostic } = traceState;
+  const { events, streaming, activeScenario, diagnostic, error } = traceState;
   const clear = clearTrace;
 
   const [learningMode, setLearningMode] = useState(false);
@@ -156,6 +156,13 @@ export default function LiveTraceView() {
               >
                 Fail: Wrong Ki
               </button>
+              <button
+                className="btn-secondary text-[11px] font-medium border-amber-950/20 text-amber-400 bg-amber-950/5 hover:bg-amber-950/20"
+                disabled={streaming}
+                onClick={() => handleInjectFailure("wrong_plmn")}
+              >
+                Fail: Wrong PLMN
+              </button>
               <button 
                 className="btn-secondary text-[11px] font-medium border-amber-950/20 text-amber-400 bg-amber-950/5 hover:bg-amber-950/20"
                 disabled={streaming} 
@@ -181,6 +188,12 @@ export default function LiveTraceView() {
           <Sliders className="w-4 h-4 text-emerald-500" />
           <span>Active scenario: <strong className="text-white font-bold">{activeScenario.toUpperCase()}</strong></span>
           {streaming && <span className="animate-pulse text-emerald-400"> (Streaming events...)</span>}
+        </div>
+      )}
+
+      {error && (
+        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+          {error}
         </div>
       )}
 

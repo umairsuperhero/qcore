@@ -2,7 +2,7 @@
 
 > Living reference. Refreshed at the end of each build session, on every milestone,
 > and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
-> Last updated: 2026-06-08
+> Last updated: 2026-06-11
 >
 > **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/v1-gap-closure-plan.md` (executable plan to reach v1 — tracks A–E, sequenced, per-task acceptance criteria)
 
@@ -51,16 +51,17 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | **Interop hardening (I1–I4 / D-1…D-4)** | D-1 PLMN codec (`pkg/ident`) · D-2 NRF register/discover · D-3 real SUCI + genuine unprovisioned-IMSI reject · D-4 N11 AMF→SMF (E2E no longer fakes the SMF call). All merged to main. | ✅ Complete |
 | Dashboard experience layer | gNB-connection hero screen (Gate 1) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
-| 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Error injection on the real-SUCI 5G sim; protocol selector, 5G sim controls, UDR view. C2/C3 slices are in progress: separate 4G/5G simulator targets, real simulator status, 5G scenario buttons, and first-class AMF/NGAP RAN-connect data. | ◑ In progress |
+| 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Error injection on the real-SUCI 5G sim; protocol selector, 5G sim controls, UDR view. C2/C3 slices are in progress: production dashboard source no longer uses fake scenario traces, the hero exposes 4G/5G simulator controls, and simulator runs route through the backend API + real SSE stream. Browser replay evidence is still required before marking the milestone shipped. | ◑ In progress |
 | UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup + Registration Complete + PDU session + NGAP PDU Session Resource Setup + PFCP remote tunnel update + UPF real TUN/NAT + UE ping over `uesimtun0`. Evidence: `ueransim-interop` run `27115478758`. | ✅ Shipped for bundled profile |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
 
 > **Verification note:** as of 2026-06-08 every package compiles, `go vet` is clean,
-> `go test ./...` and `go test -race ./...` pass (verified in `golang:1.23`), and the
-> dashboard front-end builds and type-checks with `npm run build` + `tsc --noEmit`.
-> T10 is validated for the bundled UERANSIM Docker/cloud-Linux profile by GitHub Actions
-> run `27115478758`. Broader RAN/device compatibility still needs target-specific replay
-> evidence before being claimed.
+> `go test ./...` and `go test -race ./...` pass (verified in `golang:1.23`). As of the
+> 2026-06-11 C2/C3 unmocking refresh, the dashboard passes `npx tsc --noEmit --pretty
+> false` and `make verify-fast`, including Vite build. T10 is validated for the bundled
+> UERANSIM Docker/cloud-Linux profile by GitHub Actions run `27115478758`. Broader
+> RAN/device compatibility still needs target-specific replay evidence before being
+> claimed.
 
 ---
 
@@ -189,9 +190,8 @@ I1–I4 are recorded in `docs/audit-v1.0.md` §4 (D-1…D-4).
 
 ### Then: T8–T10 (T7 and T10 done)
 T7: ✅ Phase A event instrumentation for 5G NFs (C1) — done; Phase C can now reason over 5G traces.
-T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI). First slice in progress: dashboard-controlled 5G simulator starts now target AMF NGAP, and the Health view exposes real simulator status plus 5G-compatible error-injection buttons.
-T9: Dashboard 5G mode. First slice in progress: `/api/ran-config` exposes AMF/NGAP values and a UERANSIM gNB snippet, and the hero uses AMF/NGAP instead of legacy MME/S1AP fields for the gNB endpoint.
-T9: Dashboard 5G mode (protocol selector, 5G sim buttons, UDR subscriber view).
+T8: 5G simulator UX (NGAP+NAS-5G, 5G-AKA, error injection — builds on I2's real SUCI). In progress: dashboard-controlled 4G/5G simulator starts target the selected backend simulator mode, failure scenarios route through `/api/simulator/inject`, and the fake frontend scenario stream has been removed.
+T9: Dashboard 5G mode. In progress: `/api/ran-config` exposes AMF/NGAP values and a UERANSIM gNB snippet, the hero uses AMF/NGAP or MME/S1AP according to the selected protocol, and Live Trace stays visible for active backend simulator/SSE runs before the connection state flips to connected. Remaining proof: browser replay of the full user journey.
 T10: ✅ UERANSIM compatibility verification (real gNB+UE in sidecar) — shipped for the bundled Docker/cloud-Linux profile as of GitHub Actions run `27115478758`; UE ping over `uesimtun0` succeeds through UPF.
 
 ---

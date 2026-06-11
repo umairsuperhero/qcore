@@ -27,6 +27,7 @@ export interface TraceStreamState {
   mode: ProtocolMode;
   diagnostic: DiagnosticResult | null;
   journeyId: string | null;
+  error: string | null;
 }
 
 interface ConnectionStore {
@@ -100,6 +101,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     mode: "5g",
     diagnostic: null,
     journeyId: null,
+    error: null,
   },
 
   fetchConfig: async () => {
@@ -256,6 +258,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         activeScenario: null,
         diagnostic: null,
         journeyId: null,
+        error: null,
       },
     }));
   },
@@ -273,36 +276,49 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         events: [],
         diagnostic: null,
         journeyId: null,
+        error: null,
       },
     }));
 
-    if (scenario) {
-      await api.simulatorInject(mode, scenario);
-    } else {
-      await api.simulatorStart(mode);
-    }
-
-    for (let attempt = 0; attempt < 25; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 800));
-      const status = await api.simulatorStatus();
-      if (status.state === "success" || status.state === "failed") {
-        set((state) => ({
-          traceState: {
-            ...state.traceState,
-            streaming: false,
-            journeyId: status.last_journey || state.traceState.journeyId,
-          },
-        }));
-        return;
+    try {
+      if (scenario) {
+        await api.simulatorInject(mode, scenario);
+      } else {
+        await api.simulatorStart(mode);
       }
-    }
 
-    set((state) => ({
-      traceState: {
-        ...state.traceState,
-        streaming: false,
-      },
-    }));
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        const status = await api.simulatorStatus();
+        if (status.state === "success" || status.state === "failed") {
+          set((state) => ({
+            traceState: {
+              ...state.traceState,
+              streaming: false,
+              journeyId: status.last_journey || state.traceState.journeyId,
+              error: status.last_error || null,
+            },
+          }));
+          return;
+        }
+      }
+
+      set((state) => ({
+        traceState: {
+          ...state.traceState,
+          streaming: false,
+          error: "Simulator did not finish within the dashboard polling window.",
+        },
+      }));
+    } catch (e) {
+      set((state) => ({
+        traceState: {
+          ...state.traceState,
+          streaming: false,
+          error: (e as Error).message,
+        },
+      }));
+    }
   },
 
   setMode: (mode: ProtocolMode) => {
