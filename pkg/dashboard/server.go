@@ -90,14 +90,15 @@ func New(cfg *config.Config, log logger.Logger) (*Server, error) {
 		OPc:           "cd63cb71954a9f4e48a5994e37a02baf",
 	}
 	sim5G := simulator.Options{
-		Mode:          "5g",
-		MMEAddr:       cfg.Dashboard.AMFNGAPAddr,
-		TransportMode: cfg.AMF.SCTPMode,
-		PLMN:          amfPLMN,
-		TAC:           cfg.AMF.TAC,
-		IMSI:          "001010000000001",
-		Ki:            "465b5ce8b199b49faa5f0a2ee238a6bc",
-		OPc:           "cd63cb71954a9f4e48a5994e37a02baf",
+		Mode:               "5g",
+		MMEAddr:            cfg.Dashboard.AMFNGAPAddr,
+		TransportMode:      cfg.AMF.SCTPMode,
+		ServingNetworkName: cfg.AMF.ServingNetworkName,
+		PLMN:               amfPLMN,
+		TAC:                cfg.AMF.TAC,
+		IMSI:               "001010000000001",
+		Ki:                 "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:                "cd63cb71954a9f4e48a5994e37a02baf",
 	}
 	simEmitter := events.New(cfg.Dashboard.CollectorURL, "simulator", log)
 	s.sim = NewSimulatorController(sim4G, sim5G, simEmitter, log)

@@ -33,9 +33,9 @@ func syntheticTrace(payload interface{}) []events.Event {
 
 // table-driven test: one row per catalog rule.
 var catalogRuleTests = []struct {
-	name     string // human label
-	ruleID   string // must match rule.id in catalog.go
-	trace    []events.Event
+	name                  string // human label
+	ruleID                string // must match rule.id in catalog.go
+	trace                 []events.Event
 	wantRootCauseContains string // key phrase that must appear in RootCause
 }{
 	// ── 5G typed-payload rules ───────────────────────────────────────────────
@@ -193,6 +193,42 @@ var catalogRuleTests = []struct {
 
 	// ── String-matching catch-all rules ─────────────────────────────────────
 	{
+		name:   "Simulator wrong Ki scenario",
+		ruleID: "simulator_wrong_ki",
+		trace: []events.Event{{
+			Category: events.ErrorEvent,
+			Message:  "Scenario wrong_ki failed at security_mode_command: read timed out after 3s",
+		}},
+		wantRootCauseContains: "Ki",
+	},
+	{
+		name:   "Simulator wrong PLMN scenario",
+		ruleID: "simulator_wrong_plmn",
+		trace: []events.Event{{
+			Category: events.ErrorEvent,
+			Message:  "Scenario wrong_plmn failed at ng_setup: expected NG Setup Response",
+		}},
+		wantRootCauseContains: "PLMN",
+	},
+	{
+		name:   "Simulator unprovisioned IMSI scenario",
+		ruleID: "simulator_unprovisioned_imsi",
+		trace: []events.Event{{
+			Category: events.ErrorEvent,
+			Message:  "Scenario unprovisioned_imsi failed at auth_request: AMF sent Registration Reject",
+		}},
+		wantRootCauseContains: "Unknown subscriber",
+	},
+	{
+		name:   "Simulator wrong MME address scenario",
+		ruleID: "simulator_wrong_mme_address",
+		trace: []events.Event{{
+			Category: events.ErrorEvent,
+			Message:  "Scenario wrong_mme_address failed at connect: dial tcp: connection refused",
+		}},
+		wantRootCauseContains: "endpoint",
+	},
+	{
 		name:   "NGAP transport error",
 		ruleID: "ngap_transport_error",
 		trace: []events.Event{{
@@ -222,10 +258,10 @@ var catalogRuleTests = []struct {
 }
 
 // TestCatalogRules runs every row in catalogRuleTests and asserts:
-//   1. Analyze returns Matched=true for the synthetic trace.
-//   2. AnalyzeWithID returns the expected rule ID.
-//   3. RootCause contains the expected phrase.
-//   4. Explanation and Fix are non-empty.
+//  1. Analyze returns Matched=true for the synthetic trace.
+//  2. AnalyzeWithID returns the expected rule ID.
+//  3. RootCause contains the expected phrase.
+//  4. Explanation and Fix are non-empty.
 func TestCatalogRules(t *testing.T) {
 	c := NewCatalog()
 	for _, tc := range catalogRuleTests {

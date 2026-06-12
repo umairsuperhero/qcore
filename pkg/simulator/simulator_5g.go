@@ -55,16 +55,7 @@ func (c *Client) attach5g(ctx context.Context) (string, error) {
 }
 
 func (c *Client) ngSetup() error {
-	plmn := c.opts.PLMN
-	if c.opts.Scenario == "wrong_plmn" {
-		plmn = [3]byte{0x99, 0xF9, 0x99}
-	}
-	req := &ngap.NGSetupRequest{
-		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: plmn, GNBID: 0xABCDE, GNBIDBits: 22},
-		RANNodeName:     "qcore-builtin-sim-5g",
-		SupportedTAList: []ngap.SupportedTA{{TAC: [3]byte{0x00, byte(c.opts.TAC >> 8), byte(c.opts.TAC)}, BroadcastPLMN: []ngap.BroadcastPLMNItem{{PLMN: plmn}}}},
-		DefaultPagingDRX: 1,
-	}
+	req := buildNGSetupRequest(c.opts)
 	bytes, err := ngap.EncodeNGSetupRequest(req)
 	if err != nil {
 		return fmt.Errorf("encode NG Setup: %w", err)
@@ -83,6 +74,25 @@ func (c *Client) ngSetup() error {
 	}
 	c.emit(events.SignalingRx, events.SeverityInfo, "ngap", "Received NG Setup Response", nil)
 	return nil
+}
+
+func buildNGSetupRequest(opts Options) *ngap.NGSetupRequest {
+	plmn := opts.PLMN
+	if opts.Scenario == "wrong_plmn" {
+		plmn = [3]byte{0x99, 0xF9, 0x99}
+	}
+	return &ngap.NGSetupRequest{
+		GlobalRANNodeID: ngap.GlobalGNBID{PLMN: plmn, GNBID: 0xABCDE, GNBIDBits: 22},
+		RANNodeName:     "qcore-builtin-sim-5g",
+		SupportedTAList: []ngap.SupportedTA{{
+			TAC: [3]byte{0x00, byte(opts.TAC >> 8), byte(opts.TAC)},
+			BroadcastPLMN: []ngap.BroadcastPLMNItem{{
+				PLMN:   plmn,
+				SNSSAI: []ngap.SNSSAI{{SST: 1, SD: []byte{0x00, 0x00, 0x01}}},
+			}},
+		}},
+		DefaultPagingDRX: 1,
+	}
 }
 
 func (c *Client) initialUE5g() error {
@@ -110,16 +120,16 @@ func (c *Client) initialUE5g() error {
 		MSIN:             encodeMSINBCD(msin),
 	})
 	req := &nas5g.RegistrationRequest{
-		RegistrationType: 0x01,
-		MobileIdentity:   suciBytes,
+		RegistrationType:     0x01,
+		MobileIdentity:       suciBytes,
 		UESecurityCapability: []byte{0x80, 0x80, 0x00, 0x00},
 	}
 	nasBody := nas5g.EncodeRegistrationRequest(req)
 
 	msg := &ngap.InitialUEMessage{
-		RANUENGAPID:          uint64(c.enbUES1ID),
-		NASPDU:               nasBody,
-		UserLocationInfo:     ngap.UserLocationInformationNR{},
+		RANUENGAPID:           uint64(c.enbUES1ID),
+		NASPDU:                nasBody,
+		UserLocationInfo:      ngap.UserLocationInformationNR{},
 		RRCEstablishmentCause: ngap.RRCMoSignalling,
 	}
 	bytes, err := ngap.EncodeInitialUEMessage(msg)
@@ -162,16 +172,10 @@ func (c *Client) readAuthRequest5g(_ context.Context) (*nas5g.AuthenticationRequ
 	}
 	const nasHeaderLen = 3 // plain 5GMM header: EPD + SecurityHeaderType + MessageType
 	body := nasPDU[nasHeaderLen:]
-	if len(body) < 1+16+1+16 {
-		return nil, fmt.Errorf("Authentication Request body too short: %d", len(body))
+	req, err := nas5g.DecodeAuthenticationRequest(body)
+	if err != nil {
+		return nil, fmt.Errorf("decode Authentication Request: %w", err)
 	}
-	req := &nas5g.AuthenticationRequest{NASKeySetID: body[0] & 0x0F}
-	copy(req.RAND[:], body[1:17])
-	autnLen := int(body[17])
-	if autnLen != 16 {
-		return nil, fmt.Errorf("AUTN length %d, expected 16", autnLen)
-	}
-	copy(req.AUTN[:], body[18:34])
 	c.emit(events.SignalingRx, events.SeverityInfo, "nas5g", "Received NAS Authentication Request", nil)
 	return req, nil
 }
@@ -189,19 +193,24 @@ func (c *Client) sendAuthResponse5g(authReq *nas5g.AuthenticationRequest) error 
 		return fmt.Errorf("parse OPc: %w", err)
 	}
 
-	res, _, _, _, err := subscriber.F2345(ki, opc, authReq.RAND)
+	res, ck, ik, _, err := subscriber.F2345(ki, opc, authReq.RAND)
 	if err != nil {
 		return fmt.Errorf("Milenage F2345: %w", err)
 	}
+	snName := c.opts.ServingNetworkName
+	if snName == "" {
+		snName = "5G:mnc001.mcc001.3gppnetwork.org"
+	}
+	resStar := subscriber.DeriveRESStar(ck, ik, snName, authReq.RAND, res)
 
 	authResp := nas5g.EncodeAuthenticationResponse(&nas5g.AuthenticationResponse{
-		ResStar: res[:], // Simulator currently uses res directly, in reality RES* is derived from Kausf
+		ResStar: resStar[:],
 	})
 
 	ulMsg := &ngap.UplinkNASTransport{
-		AMFUENGAPID:      uint64(c.mmeUES1ID),
-		RANUENGAPID:      uint64(c.enbUES1ID),
-		NASPDU:           authResp,
+		AMFUENGAPID: uint64(c.mmeUES1ID),
+		RANUENGAPID: uint64(c.enbUES1ID),
+		NASPDU:      authResp,
 	}
 	bytes, err := ngap.EncodeUplinkNASTransport(ulMsg)
 	if err != nil {
@@ -218,6 +227,12 @@ func (c *Client) readSecModeCommand5g(_ context.Context) error {
 	nasPDU, _, err := c.readDownlinkNAS5g(3 * time.Second)
 	if err != nil {
 		return err
+	}
+	if len(nasPDU) >= 7 {
+		outer, err := nas5g.DecodeHeader(nasPDU)
+		if err == nil && outer.SecurityHeaderType != nas5g.SecurityHeaderPlainNAS {
+			nasPDU = nasPDU[7:]
+		}
 	}
 	hdr, err := nas5g.DecodeHeader(nasPDU)
 	if err != nil {
@@ -238,9 +253,9 @@ func (c *Client) sendSecModeComplete5g() error {
 	wrapped := plain // Unprotected for now or use 5G wrap
 
 	ulMsg := &ngap.UplinkNASTransport{
-		AMFUENGAPID:      uint64(c.mmeUES1ID),
-		RANUENGAPID:      uint64(c.enbUES1ID),
-		NASPDU:           wrapped,
+		AMFUENGAPID: uint64(c.mmeUES1ID),
+		RANUENGAPID: uint64(c.enbUES1ID),
+		NASPDU:      wrapped,
 	}
 	bytes, err := ngap.EncodeUplinkNASTransport(ulMsg)
 	if err != nil {

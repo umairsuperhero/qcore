@@ -28,15 +28,16 @@ import (
 // Options drives one attach attempt. Defaults give a successful happy-path
 // attach against the seeded demo subscriber.
 type Options struct {
-	Mode          string  // "4g" or "5g", defaults to "4g"
-	MMEAddr       string  // host:port for the MME/AMF signaling listener
-	TransportMode string  // "tcp" for dev fallback, "sctp" for native SCTP
-	PLMN          [3]byte // packed PLMN (e.g. {0x00, 0xF1, 0x10} = "00101")
-	TAC           uint16
-	IMSI          string // 15 digits
-	Ki            string // 32 hex chars
-	OPc           string // 32 hex chars
-	Scenario      string // empty for happy path, or "wrong_ki" / "wrong_plmn" / "unprovisioned_imsi" / "wrong_mme_address"
+	Mode               string  // "4g" or "5g", defaults to "4g"
+	MMEAddr            string  // host:port for the MME/AMF signaling listener
+	TransportMode      string  // "tcp" for dev fallback, "sctp" for native SCTP
+	ServingNetworkName string  // 5G serving network name used for RES* derivation
+	PLMN               [3]byte // packed PLMN (e.g. {0x00, 0xF1, 0x10} = "00101")
+	TAC                uint16
+	IMSI               string // 15 digits
+	Ki                 string // 32 hex chars
+	OPc                string // 32 hex chars
+	Scenario           string // empty for happy path, or "wrong_ki" / "wrong_plmn" / "unprovisioned_imsi" / "wrong_mme_address"
 }
 
 // Result is what the controller exposes to the dashboard after Run completes.
@@ -100,9 +101,18 @@ func Run(ctx context.Context, opts Options, emitter events.Emitter, log logger.L
 		res.Success = false
 		res.FailedStep = step
 		res.Err = err
-		c.emit(events.ErrorEvent, events.SeverityError, "s1ap",
-			fmt.Sprintf("Attach failed at %s: %v", step, err),
-			events.ErrorPayload{Code: step, Message: err.Error()})
+		proto := "s1ap"
+		if opts.Mode == "5g" {
+			proto = "ngap"
+		}
+		code := step
+		msg := fmt.Sprintf("Attach failed at %s: %v", step, err)
+		if opts.Scenario != "" {
+			code = opts.Scenario
+			msg = fmt.Sprintf("Scenario %s failed at %s: %v", opts.Scenario, step, err)
+		}
+		c.emit(events.ErrorEvent, events.SeverityError, proto, msg,
+			events.ErrorPayload{Code: code, Message: err.Error()})
 		return res
 	}
 	res.Success = true
