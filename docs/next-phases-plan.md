@@ -68,7 +68,7 @@ the number; if a target is missed, fix the *flow*, not the measurement.
 - **TTFC:** from a cold `git clone` (or `make up`) to the first successful attach
   (4G simulator) and first 5G registration (5G simulator), wall-clock.
 - **TTRC:** from an injected failure (`wrong_ki`, `wrong_plmn`, `unprovisioned_imsi`,
-  `timeout`) to the Diagnostic AI report being available (via the dashboard / the
+  `wrong_mme_address`) to the Diagnostic AI report being available (via the dashboard / the
   `/api/diagnostics/journey/{id}` path), wall-clock.
 
 **Acceptance.**

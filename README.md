@@ -94,6 +94,19 @@ curl -X POST http://localhost:3000/api/simulator/inject/wrong_mme_address \
   -H "Content-Type: application/json" -d '{"mode":"5g"}'
 ```
 
+### Measuring TTFC/TTRC
+
+The measurement harness exercises the same backend simulator and diagnostics APIs the
+dashboard uses. It prints TTFC/TTRC rows and can optionally write JSON evidence.
+
+```bash
+# Against an already-running dashboard
+make measure
+
+# Cold compose start, full 5G profile, and JSON evidence
+scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json
+```
+
 ### Manual API
 
 ```bash
