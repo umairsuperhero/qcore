@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/qcore-project/qcore/pkg/config"
 	"github.com/qcore-project/qcore/pkg/events"
@@ -97,6 +99,40 @@ func TestB2_LocalSLMEscalation(t *testing.T) {
 	}
 	if !strings.Contains(gotPrompt, "NGSetupFailure") {
 		t.Errorf("trace was not grounded into the prompt; prompt=%q", gotPrompt)
+	}
+}
+
+func TestB2_LiveLocalSLM(t *testing.T) {
+	liveURL := os.Getenv("QCORE_AI_LIVE_LOCAL_URL")
+	if liveURL == "" {
+		t.Skip("set QCORE_AI_LIVE_LOCAL_URL to run live offline SLM validation")
+	}
+	model := os.Getenv("QCORE_AI_LIVE_LOCAL_MODEL")
+	if model == "" {
+		model = "qwen2.5-1.5b-instruct"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	eng := NewEngine(config.AIConfig{
+		Provider: "local",
+		Model:    model,
+		LocalURL: liveURL,
+	}, logger.New("error", "console"))
+
+	res, err := eng.Diagnose(ctx, genericErrorTrace())
+	if err != nil {
+		t.Fatalf("Diagnose returned error: %v", err)
+	}
+	if !res.Matched {
+		t.Fatal("expected Matched=true")
+	}
+	if res.Explanation == "" || res.RootCause == "" || res.Fix == "" {
+		t.Fatalf("expected populated live SLM result, got %+v", res)
+	}
+	if strings.Contains(res.RootCause, "not reachable") || strings.Contains(res.Fix, "make up-ai") {
+		t.Fatalf("engine fell back instead of using live local SLM: %+v", res)
 	}
 }
 

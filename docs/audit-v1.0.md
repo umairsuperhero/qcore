@@ -2,9 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.18 — 2026-06-13
-**Auditor of record this revision:** P1.1 TTFC/TTRC measurement harness on
-`codex/measure-ttfc-ttrc`; cold compose replay from the current checkout.
+**Current revision:** v1.19 — 2026-06-13
+**Auditor of record this revision:** P1.2 B2 live offline-SLM validation on
+`codex/b2-live-serve`; `make up-ai`, live QCore engine test, dashboard diagnostics API
+replay, and internal-network air-gap smoke test.
 
 ---
 
@@ -12,6 +13,7 @@ recurring cadence (see *Audit cadence* below).
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.19 | 2026-06-13 | **P1.2 B2 offline SLM live-serve validated.** Fixed the llama.cpp sidecar entrypoint to `/app/llama-server`, then ran `make up-ai` with the baked Qwen2.5-1.5B GGUF sidecar. Evidence: `curl http://localhost:8088/health` returned `{"status":"ok"}`; `/v1/models` reported `qwen2.5-1.5b-instruct`; a direct `/v1/chat/completions` call returned structured JSON; `docker run --network docker_default ... QCORE_AI_LIVE_LOCAL_URL=http://qcore-slm:8088/v1 go test ./pkg/ai -run TestB2_LiveLocalSLM -count=1 -v` passed; a collector-injected catalog-miss journey fetched through `http://localhost:3000/api/diagnostics/journey/{id}` returned populated `Explanation`/`RootCause`/`Fix` without the unavailable-model fallback; and the baked `docker-qcore-slm:latest` image answered on an internal Docker network (`--internal`) with no external egress. Scope note: this validates the local llama.cpp sidecar path and dashboard diagnostic API integration, not broad model-quality coverage. |
 | v1.18 | 2026-06-13 | **P1.1 TTFC/TTRC measured.** Added `scripts/measure-ttfc-ttrc.sh` / `make measure` and ran `scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json`. Evidence file: `measurements/latest.json`. Results from this checkout with Docker layer cache available: cold compose start to dashboard ready 76.253s; 4G simulator TTFC after dashboard ready 0.121s; 5G simulator TTFC after dashboard ready 1.245s; computed cold start + 4G TTFC 76.374s; computed cold start + 5G TTFC 77.498s. TTRC: `wrong_ki` 3.556s, `wrong_plmn` 0.177s, `unprovisioned_imsi` 0.183s, `wrong_mme_address` 3.545s. All measured P1.1 values are within the charter targets of TTFC < 5 min simulator and TTRC < 30s for known catalogued failures. Scope note: this is a cold compose/current-checkout measurement, not a fresh-clone/no-cache benchmark. |
 | v1.17 | 2026-06-13 | **Post-v1 planning surface reconciled.** Added `docs/next-phases-plan.md` as the active executable plan now that T10 data-plane and the C2/C3 credibility gate are merged on `main`. Updated README, AGENTS/CLAUDE instructions, wiki, and the historical v1 gap-closure plan so future agents do not keep treating C2/C3 as the next critical path. New critical path: P1.1 TTFC/TTRC measurement, P1.2 B2 live offline-SLM validation, then real-failure catalog rules and RAN/device config reconciliation. Docs-only revision; no new product behavior is claimed. |
 | v1.16 | 2026-06-13 | **C2/C3 credibility gate runtime-proven.** The Docker dashboard now launches the selected built-in simulator mode end-to-end from the hero/Live Trace controls: 4G happy path reached attach complete (`j-ec2d20ec-61fd-48fd-8c18-123d2eef409e`), 5G happy path reached registration complete over AMF NGAP/SCTP (`j-f0f1265e-0c48-4e08-aa73-bf6a1783da78`), and browser replay from the hero showed Live Trace raw logs populated by real `/api/events/stream` SSE events (`j-6ac891b9-0121-4853-a356-72fd82616233`). The `wrong_ki` failure scenario is also runtime-proven through the UI: it emits a real failed journey (`j-d909999e-fbdc-4865-9b74-c7fc37d40372`) and renders the Diagnostic AI report with a Ki/OPc root cause. Fixes made during replay: dashboard diagnostics now fetch the collector's real `/journeys/{id}/events` route, Docker passes native SCTP mode into the dashboard simulator, Linux SCTP resolves Docker DNS names, the 5G simulator emits a valid SupportedTA/S-NSSAI in NGSetup, decodes real Authentication Request layout, derives RES*, unwraps protected SMC for simulator validation, and tags injected failure events by scenario so the catalog can diagnose them deterministically. Verification performed this revision: focused Docker Go tests for `pkg/ai`, `pkg/dashboard`, `pkg/simulator`, `pkg/sctp`, `pkg/ngap`, `pkg/nas5g`, and `pkg/amf` passed; `npx tsc --noEmit --pretty false` and `make verify-fast` passed locally. GitHub CI remains the merge gate after push. Scope note: this ships the C2/C3 credibility-gate slice (real simulator UX + mode selection + SSE + diagnostics), not the broader later UDR/operator view. |
@@ -82,7 +84,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ In-process E2E + external data-plane ping pass | compiles; SMF/PFCP/UPF tests pass; UERANSIM UE ping over `uesimtun0` succeeds through UPF (`27115478758`) |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
 | Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
-| Phase C Diagnostic AI — offline SLM (§9.3) | ✅ Code merged / 🔭 live-serve pending | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar are merged and unit-tested; real GGUF pull / air-gapped render has not yet been validated |
+| Phase C Diagnostic AI — offline SLM (§9.3) | ✅ Shipped for local sidecar path | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar are live-validated with real GGUF, dashboard diagnostics API replay, and internal-network air-gap smoke test |
 | Dashboard experience layer (hero + live trace) | ✅ Base shipped / ✅ C2/C3 credibility gate runtime-proven | gNB-connection hero screen (Gate 1) + animated live signaling-trace view; current C2/C3 branch removes frontend fake scenario traces and routes simulator controls to backend API + real SSE. Browser replay proves hero-launched 5G happy path raw SSE logs and UI-rendered `wrong_ki` Diagnostic AI output. |
 
 ## 4. Open interop gaps → long-term decisions
@@ -165,8 +167,8 @@ accepts NGSetup, registration, PDU Session Establishment Accept, NGAP PDU Sessio
 Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
 uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. C2/C3 credibility-gate
 UX is also merged and runtime-proven. The active post-v1 critical path is now captured in
-`docs/next-phases-plan.md`: measure TTFC/TTRC, validate B2 live offline-SLM serving, then
-deepen the diagnostic moat and workflow adoption.
+`docs/next-phases-plan.md`: TTFC/TTRC measurement and B2 live offline-SLM serving are now
+validated; next are real-failure catalog rules and RAN/device config reconciliation.
 
 ## 6. Deferred (unchanged from charter §11)
 

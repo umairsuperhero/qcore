@@ -27,5 +27,5 @@ EXPOSE 8088
 # --alias controls the model name reported by the OpenAI API; it must match
 # QCORE_AI_MODEL so the engine's request names a served model. -c is the
 # context window (room for a multi-NF trace + the JSON answer).
-ENTRYPOINT ["/llama-server"]
+ENTRYPOINT ["/app/llama-server"]
 CMD ["-m", "/models/model.gguf", "--host", "0.0.0.0", "--port", "8088", "-c", "4096", "--alias", "qwen2.5-1.5b-instruct"]

@@ -25,8 +25,9 @@ pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub 
   UERANSIM v3.2.8 Docker/cloud-Linux profile: real UE `ping -c 3 -I uesimtun0` succeeds
   (`ueransim-interop` run `27115478758`). ✅.
 - **Diagnostic catalog** (13 typed rules, 4G+5G) + AI Level 1/2 + optional Gemini
-  escalation — ✅. **Offline SLM (B2): code merged + unit-tested**, live model-serve
-  **pending** (P1.2 below).
+  escalation — ✅. **Offline SLM (B2): live-validated** with the baked llama.cpp/Qwen
+  sidecar, QCore engine live test, dashboard diagnostics API replay, and internal-network
+  air-gap smoke test. ✅.
 - **Dashboard C2/C3 credibility gate runtime-proven** (audit v1.16): hero 4G/5G selector,
   backend-driven simulator happy/failure runs, real `/api/events/stream` SSE in Live
   Trace, real Diagnostic AI report on `wrong_ki`. ✅.
@@ -87,11 +88,17 @@ the number; if a target is missed, fix the *flow*, not the measurement.
 **Stop condition.** Numbers measured + recorded, or the exact flow blocker documented.
 
 ### P1.2 — B2 offline SLM live model-serve validation · branch `codex/b2-live-serve` · effort **M**
-**Why.** B2 is "code merged + unit-tested" but never run against a real model. It's the
-offline-AI moat (charter §9.3); it can't be called shipped until it serves.
+**Status.** Validated on 2026-06-13. `make up-ai` pulled/built the real GGUF sidecar,
+the SLM served `qwen2.5-1.5b-instruct` at `/v1`, `TestB2_LiveLocalSLM` passed against
+`http://qcore-slm:8088/v1`, the Docker dashboard diagnostics API explained a
+collector-injected catalog-miss journey without falling back to `make up-ai`, and the
+baked image answered on an internal Docker network with no external egress.
 
-**Scope.** Validate the existing `pkg/ai` local provider + `make up-ai` llama.cpp sidecar
-(baked Qwen2.5-1.5B GGUF). Do NOT redesign the engine.
+**Why.** B2 was previously "code merged + unit-tested" but not run against a real model.
+The 2026-06-13 validation closes that gap for the local sidecar path.
+
+**Scope.** Historical validation scope for the existing `pkg/ai` local provider +
+`make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF). Do NOT redesign the engine.
 - Pull/build the GGUF sidecar; bring it up with `make up-ai`.
 - Drive a catalog-miss failure and confirm the **offline** SLM produces a grounded
   explanation **with no cloud account and no API key**.
@@ -106,7 +113,7 @@ offline-AI moat (charter §9.3); it can't be called shipped until it serves.
 
 **Verify.** `make verify-fast`; the documented `make up-ai` run.
 
-**Stop condition.** Offline + air-gapped explanation proven, or the serve blocker documented.
+**Stop condition.** Met. Offline + air-gapped explanation proven.
 
 ---
 
@@ -195,7 +202,7 @@ generalize the bundled-profile result into a conformance-matrix claim.
 ```
 NOW (parallel):
   ├─ P1.1 Measure TTFC/TTRC      codex/measure-ttfc-ttrc     ⭐ credibility headline
-  └─ P1.2 B2 live-serve          codex/b2-live-serve         ⭐ finishes the offline moat
+  └─ P1.2 B2 live-serve          codex/b2-live-serve         ✅ finishes the offline moat
 
 THEN (the moat):
   ├─ P2.1 Catalog ← real failures codex/catalog-real-failures
