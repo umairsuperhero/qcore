@@ -24,7 +24,7 @@ pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub 
 - **5G SA control + user plane** with **T10 real-RAN data plane** for the bundled
   UERANSIM v3.2.8 Docker/cloud-Linux profile: real UE `ping -c 3 -I uesimtun0` succeeds
   (`ueransim-interop` run `27115478758`). ✅.
-- **Diagnostic catalog** (13 typed rules, 4G+5G) + AI Level 1/2 + optional Gemini
+- **Diagnostic catalog** (28 rules, including 9 UERANSIM/T10 interop findings, 4G+5G) + AI Level 1/2 + optional Gemini
   escalation — ✅. **Offline SLM (B2): live-validated** with the baked llama.cpp/Qwen
   sidecar, QCore engine live test, dashboard diagnostics API replay, and internal-network
   air-gap smoke test. ✅.
@@ -123,6 +123,13 @@ Goal: the charter calls AI Level-2 Diagnose **the flagship**. Make it diagnose *
 failures, not toy ones, and add the highest-value diagnostic feature.
 
 ### P2.1 — Mine interop findings into the catalog · branch `codex/catalog-real-failures` · effort **M**
+**Status.** ✅ Complete on 2026-06-13. Added catalog rules:
+`t10_downlink_nas_transport_aper`, `t10_smc_kamf_supi_prefix`,
+`t10_initial_context_setup_aper`, `t10_registration_accept_guti_tlve`,
+`t10_ul_nas_transport_shape`, `t10_smf_url_localhost`,
+`t10_pdu_session_accept_missing`, `t10_data_plane_n2_n3_gap`, and
+`t10_upf_tun_unavailable`.
+
 **Why.** Every real T10 blocker we fixed (K_AMF/SUPI-prefix, GUTI TLV-E length, NGAP APER
 extensibility, SMF URL in Docker) is a failure a real user could hit. Turn them into
 catalog rules so QCore *diagnoses* them.
@@ -205,8 +212,8 @@ NOW (parallel):
   └─ P1.2 B2 live-serve          codex/b2-live-serve         ✅ finishes the offline moat
 
 THEN (the moat):
-  ├─ P2.1 Catalog ← real failures codex/catalog-real-failures
-  └─ P2.2 E1 reconciliation       codex/e1-ran-reconciliation ⭐ highest-value diag feature
+  ├─ P2.1 Catalog ← real failures codex/catalog-real-failures ✅
+  └─ P2.2 E1 reconciliation       codex/e1-ran-reconciliation ⭐ next highest-value diag feature
 
 THEN (adoption, by user pull):
   └─ P3.1 E2 → P3.2 E3 → P3.3 Learning Mode
@@ -219,7 +226,7 @@ DEMAND-DRIVEN (only when a target needs it):
 
 1. **Phase 1:** TTFC/TTRC measured + in README (targets met or gap documented); B2 offline
    + air-gapped explanation proven. Every AI/metric ✅ is evidence-backed.
-2. **Phase 2:** real interop failures are diagnosable catalog rules; config reconciliation
+2. **Phase 2:** real interop failures are diagnosable catalog rules; next, config reconciliation
    reports a deliberately-mismatched gNB/UE config with the fix.
 3. **Phase 3:** a user can author + replay a scenario and wire it into CI.
 4. **Phase 4:** at least one real-device (Profile A/B) or non-UERANSIM target validated,

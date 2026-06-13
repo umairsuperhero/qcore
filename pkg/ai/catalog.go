@@ -314,6 +314,200 @@ var catalog = []rule{
 		},
 	},
 
+	// ── Real interop findings from UERANSIM T10 ───────────────────────────────
+	// These are specific, evidence-backed failure modes from docs/3gpp-tracking.md.
+	// Match stable ErrorPayload code/cause tags when present, with narrow message
+	// fallbacks for captured external logs.
+
+	{
+		id: "t10_downlink_nas_transport_aper",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_downlink_nas_transport_aper", "downlink_nas_transport_aper") ||
+					(strings.Contains(msg, "downlinknastransport") &&
+						(strings.Contains(msg, "aper") || strings.Contains(msg, "transfer-syntax-error"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The gNB rejected QCore's DownlinkNASTransport as an invalid APER-encoded NGAP PDU.",
+						RootCause:   "NGAP DownlinkNASTransport APER encoding mismatch: UE-NGAP-ID or NAS-PDU value encoding is malformed on the wire.",
+						Fix: "Capture the rejected NGAP hex and validate the DownlinkNASTransport IE container against UERANSIM. " +
+							"Check AMF/RAN UE NGAP ID constrained integer encoding, criticality, and NAS-PDU OCTET STRING length/alignment. " +
+							"Use the external-corpus fixture path rather than relying on QCore round trips.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_smc_kamf_supi_prefix",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_smc_kamf_supi_prefix", "kamf_supi_prefix", "smc_integrity_failure") ||
+					(strings.Contains(msg, "security mode command") &&
+						(strings.Contains(msg, "integrity check failed") || strings.Contains(msg, "mac failed"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The UE rejected the Security Mode Command because the NAS integrity MAC did not verify.",
+						RootCause:   "K_AMF/K_NASint mismatch: QCore likely derived K_AMF using the SBI SUPI string with the `imsi-` prefix instead of the bare IMSI digits required by TS 33.501 Annex A.7.",
+						Fix: "Derive K_AMF with bare IMSI digits only, while keeping `imsi-<digits>` for SBI and telemetry. " +
+							"Then verify K_NASint uses NIA2, ABBA is 0x0000, bearer is 1, and the NAS downlink count matches the protected SMC.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_initial_context_setup_aper",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_initial_context_setup_aper", "initial_context_setup_aper") ||
+					(strings.Contains(msg, "initialcontextsetuprequest") &&
+						(strings.Contains(msg, "aper") || strings.Contains(msg, "transfer-syntax-error"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The gNB rejected QCore's InitialContextSetupRequest before the UE could receive Registration Accept.",
+						RootCause:   "InitialContextSetupRequest APER encoding mismatch, especially UEAggregateMaximumBitRate or UESecurityCapabilities extension-marker/bit-string encoding.",
+						Fix: "Validate the rejected InitialContextSetupRequest hex against UERANSIM. " +
+							"Check BitRate extensible constrained integer encoding and all UE security-capability BIT STRING extension markers.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_registration_accept_guti_tlve",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_registration_accept_guti_tlve", "guti_tlve_length") ||
+					(strings.Contains(msg, "registration accept") &&
+						(strings.Contains(msg, "guti") || strings.Contains(msg, "t3510") || strings.Contains(msg, "ue signal lost"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "Registration reached Initial Context Setup, but the UE failed around Registration Accept / assigned 5G-GUTI handling.",
+						RootCause:   "Assigned 5G-GUTI IEI 0x77 in Registration Accept is malformed; UERANSIM expects IE6/TLV-E with a two-byte length field.",
+						Fix: "Encode Registration Accept assigned 5G-GUTI as IEI 0x77 followed by a two-byte length and the 5G-GUTI value. " +
+							"Pin the plain NAS bytes with an external UERANSIM fixture.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_ul_nas_transport_shape",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_ul_nas_transport_shape", "ul_nas_transport_shape") ||
+					(strings.Contains(msg, "ul nas transport") &&
+						(strings.Contains(msg, "decode") || strings.Contains(msg, "pdu session"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The UE sent a protected UL NAS Transport for PDU session setup, but the AMF could not process the decoded NAS payload.",
+						RootCause:   "UL NAS Transport parsing mismatch: the AMF must route the decrypted inner NAS payload and accept UERANSIM's low-nibble payload-container type plus IE1/IE3 optional fields.",
+						Fix: "Unwrap protected NAS before dispatching to UL NAS Transport handling. " +
+							"Decode payload-container type from the low nibble and parse PDU Session ID as IE3 (`0x12 value`) plus request type as IE1.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_smf_url_localhost",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_smf_url_localhost", "smf_url_localhost") ||
+					(strings.Contains(msg, "smf") && strings.Contains(msg, "localhost:8002")) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The AMF tried to create a PDU session but contacted a container-local SMF address.",
+						RootCause:   "Docker networking misconfiguration: `localhost:8002` inside the AMF container points back to the AMF container, not the SMF service.",
+						Fix:         "Set `QCORE_AMF_SMF_URL=http://smf:8002` in the 5G compose profile, or use the SMF service DNS name for any containerized AMF deployment.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_pdu_session_accept_missing",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_pdu_session_accept_missing", "pdu_session_accept_missing") ||
+					(strings.Contains(msg, "pdu session establishment") &&
+						(strings.Contains(msg, "accept") || strings.Contains(msg, "session establishment")) &&
+						(strings.Contains(msg, "missing") || strings.Contains(msg, "not received") || strings.Contains(msg, "dropped"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The SMF created the PDU session, but the UE did not receive or accept the 5GSM PDU Session Establishment Accept.",
+						RootCause:   "AMF did not relay a spec-complete protected DL NAS Transport with mandatory 5GSM Accept IEs.",
+						Fix: "Send a protected DL NAS Transport carrying PDU Session Establishment Accept with selected PDU session type, SSC mode, Authorized QoS Rules, Session-AMBR, and PDU address. " +
+							"Pin the NAS bytes with a UERANSIM golden fixture.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_data_plane_n2_n3_gap",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_data_plane_n2_n3_gap", "data_plane_n2_n3_gap") ||
+					(strings.Contains(msg, "pdu session") &&
+						(strings.Contains(msg, "ping") || strings.Contains(msg, "data-plane") || strings.Contains(msg, "data plane")) &&
+						(strings.Contains(msg, "failed") || strings.Contains(msg, "no external") || strings.Contains(msg, "no packet"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "PDU session signaling completed, but no UE packet was proven through the UPF.",
+						RootCause:   "Missing N2/N3 data-plane completion: AMF must send NGAP PDU Session Resource Setup, SMF must PFCP-modify the UPF with the gNB N3 tunnel, and UPF must route through real TUN/NAT.",
+						Fix: "Verify PDU Session Resource Setup Request/Response, PFCP Session Modification with gNB N3 IP/TEID, and UPF Linux TUN/NAT configuration. " +
+							"Do not call T10 complete until `ping -I uesimtun0` succeeds.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	{
+		id: "t10_upf_tun_unavailable",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := eventText(ev)
+				if errorPayloadHasAny(ev, "t10_upf_tun_unavailable", "upf_tun_unavailable") ||
+					(strings.Contains(msg, "tun") &&
+						(strings.Contains(msg, "/dev/net/tun") || strings.Contains(msg, "dummyegress") || strings.Contains(msg, "cap_net_admin") || strings.Contains(msg, "tun egress"))) {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The UPF could not use a real Linux TUN interface, so user-plane packets cannot prove external data flow.",
+						RootCause:   "UPF runtime lacks `/dev/net/tun`, NET_ADMIN/CAP_NET_ADMIN, or Linux TUN support and fell back to dummy egress.",
+						Fix:         "Run the UPF on Linux with `/dev/net/tun` mounted and NET_ADMIN enabled, assign the UE subnet to the TUN interface, enable IP forwarding, and configure NAT/MASQUERADE.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
 	// ── Catch-all string-matching rules (legacy; prefer typed rules above) ─────
 	// These fire for cases where the NF did not emit a structured failure payload.
 
@@ -516,4 +710,29 @@ func uint32Hex(v uint32) string {
 		v >>= 4
 	}
 	return string(b)
+}
+
+func eventText(ev events.Event) string {
+	parts := []string{ev.Message}
+	if p, ok := ev.Payload.(events.ErrorPayload); ok {
+		parts = append(parts, p.Code, p.Cause, p.Message)
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+func errorPayloadHasAny(ev events.Event, values ...string) bool {
+	p, ok := ev.Payload.(events.ErrorPayload)
+	if !ok {
+		return false
+	}
+	code := strings.ToLower(p.Code)
+	cause := strings.ToLower(p.Cause)
+	msg := strings.ToLower(p.Message)
+	for _, v := range values {
+		needle := strings.ToLower(v)
+		if code == needle || cause == needle || strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }

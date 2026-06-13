@@ -2,7 +2,7 @@
 
 > Living reference. Maintained on the quarterly interop check-in cadence (see bottom)
 > and updated whenever a real-RAN interop finding lands.
-> Last updated: 2026-06-08
+> Last updated: 2026-06-13
 
 ## Principle: relevance, not parity
 
@@ -59,6 +59,14 @@ This is not a claim of Release completeness.
 
 Real-RAN interop surfaces conformance gaps the in-process test can't. Each is logged here
 with the spec reference and the fix.
+
+As of 2026-06-13, the diagnostic catalog recognizes these findings through stable
+`events.ErrorPayload` tags and narrow captured-message fallbacks:
+`t10_downlink_nas_transport_aper`, `t10_smc_kamf_supi_prefix`,
+`t10_initial_context_setup_aper`, `t10_registration_accept_guti_tlve`,
+`t10_ul_nas_transport_shape`, `t10_smf_url_localhost`,
+`t10_pdu_session_accept_missing`, `t10_data_plane_n2_n3_gap`, and
+`t10_upf_tun_unavailable`.
 
 | Date | Finding | Spec | Resolution |
 |---|---|---|---|

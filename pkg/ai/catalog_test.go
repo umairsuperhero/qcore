@@ -12,7 +12,7 @@ import (
 // fails and someone has to intentionally lower the threshold.
 func TestCatalogCoverage(t *testing.T) {
 	c := NewCatalog()
-	const minRules = 9
+	const minRules = 28
 	if c.RuleCount() < minRules {
 		t.Errorf("catalog has %d rules, want at least %d (charter §9.1 requires ≥9 cause categories)",
 			c.RuleCount(), minRules)
@@ -28,6 +28,20 @@ func syntheticTrace(payload interface{}) []events.Event {
 		Protocol: "nas5g",
 		Message:  "test event",
 		Payload:  payload,
+	}}
+}
+
+func syntheticInteropTrace(code, message string) []events.Event {
+	return []events.Event{{
+		NF:       "amf",
+		Category: events.ErrorEvent,
+		Severity: events.SeverityError,
+		Protocol: "ngap",
+		Message:  message,
+		Payload: events.ErrorPayload{
+			Code:    code,
+			Message: message,
+		},
 	}}
 }
 
@@ -189,6 +203,89 @@ var catalogRuleTests = []struct {
 			// no AttachCompletePayload — simulates data-plane stall
 		},
 		wantRootCauseContains: "SPGW",
+	},
+
+	// ── Real UERANSIM T10 interop findings ──────────────────────────────────
+	{
+		name:   "T10 DownlinkNASTransport APER transfer-syntax-error",
+		ruleID: "t10_downlink_nas_transport_aper",
+		trace: syntheticInteropTrace(
+			"t10_downlink_nas_transport_aper",
+			"UERANSIM rejected DownlinkNASTransport with APER transfer-syntax-error",
+		),
+		wantRootCauseContains: "DownlinkNASTransport",
+	},
+	{
+		name:   "T10 SMC integrity failure from K_AMF SUPI prefix",
+		ruleID: "t10_smc_kamf_supi_prefix",
+		trace: syntheticInteropTrace(
+			"t10_smc_kamf_supi_prefix",
+			"Security Mode Command integrity check failed",
+		),
+		wantRootCauseContains: "K_AMF",
+	},
+	{
+		name:   "T10 InitialContextSetupRequest APER transfer-syntax-error",
+		ruleID: "t10_initial_context_setup_aper",
+		trace: syntheticInteropTrace(
+			"t10_initial_context_setup_aper",
+			"gNB reports APER transfer-syntax-error on InitialContextSetupRequest",
+		),
+		wantRootCauseContains: "InitialContextSetupRequest",
+	},
+	{
+		name:   "T10 Registration Accept assigned GUTI TLV-E length",
+		ruleID: "t10_registration_accept_guti_tlve",
+		trace: syntheticInteropTrace(
+			"t10_registration_accept_guti_tlve",
+			"Registration Accept failed around assigned 5G-GUTI; UE signal lost",
+		),
+		wantRootCauseContains: "5G-GUTI",
+	},
+	{
+		name:   "T10 UL NAS Transport UERANSIM IE shape",
+		ruleID: "t10_ul_nas_transport_shape",
+		trace: syntheticInteropTrace(
+			"t10_ul_nas_transport_shape",
+			"decode UL NAS Transport failed for protected PDU Session Establishment Request",
+		),
+		wantRootCauseContains: "UL NAS Transport",
+	},
+	{
+		name:   "T10 AMF container uses localhost SMF URL",
+		ruleID: "t10_smf_url_localhost",
+		trace: syntheticInteropTrace(
+			"t10_smf_url_localhost",
+			"AMF failed to reach SMF at http://localhost:8002 from inside Docker",
+		),
+		wantRootCauseContains: "localhost:8002",
+	},
+	{
+		name:   "T10 PDU Session Establishment Accept missing",
+		ruleID: "t10_pdu_session_accept_missing",
+		trace: syntheticInteropTrace(
+			"t10_pdu_session_accept_missing",
+			"PDU Session Establishment Accept not received by UERANSIM after SMF 201",
+		),
+		wantRootCauseContains: "mandatory",
+	},
+	{
+		name:   "T10 PDU session established but no data-plane ping",
+		ruleID: "t10_data_plane_n2_n3_gap",
+		trace: syntheticInteropTrace(
+			"t10_data_plane_n2_n3_gap",
+			"PDU session established but ping failed; no external data-plane packet proven",
+		),
+		wantRootCauseContains: "N2/N3",
+	},
+	{
+		name:   "T10 UPF Linux TUN unavailable",
+		ruleID: "t10_upf_tun_unavailable",
+		trace: syntheticInteropTrace(
+			"t10_upf_tun_unavailable",
+			"Failed to create Linux TUN egress. Falling back to DummyEgress. /dev/net/tun unavailable",
+		),
+		wantRootCauseContains: "TUN",
 	},
 
 	// ── String-matching catch-all rules ─────────────────────────────────────

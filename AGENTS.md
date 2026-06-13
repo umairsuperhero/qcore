@@ -54,8 +54,9 @@ on `main`, including under `-race`).
 **Track A — Interop Hardening (D-1…D-4 / I1–I4) is COMPLETE** (merged to main): one
 standards-correct PLMN codec (`pkg/ident`), real null-scheme SUCI + genuine
 unprovisioned-IMSI reject, NRF register/discover with static fallback, and N11 AMF→SMF
-(the E2E test no longer fakes the SMF call). **B1 (diagnostic catalog depth)** — 13 typed
-rules across ≥9 cause categories, 4G+5G — and **C1 (T7) 5G Phase-A telemetry** —
+(the E2E test no longer fakes the SMF call). **B1/P2.1 (diagnostic catalog depth)** — 28
+rules, including 9 UERANSIM/T10 interop findings, across ≥9 cause categories, 4G+5G — and
+**C1 (T7) 5G Phase-A telemetry** —
 AUSF/UDM/SMF/UPF emit journey-correlated events, one correlated trace per 5G
 registration, verified by `TestC1_RegistrationEventTrace` (PR #25) — are also complete.
 The dashboard experience layer (gNB-connection hero screen / Gate 1, and the animated
@@ -99,8 +100,8 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 `docs/v1-gap-closure-plan.md` is retained as the historical v1 gap-closure plan
 (tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
 (`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
-3.556s. P1.2 B2 live offline-SLM serving is validated; the next critical path is
-real-failure catalog rules and RAN/device config reconciliation.
+3.556s. P1.2 B2 live offline-SLM serving is validated. P2.1 real-failure catalog
+rules are complete; the next critical path is P2.2 RAN/device config reconciliation.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
