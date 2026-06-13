@@ -2,10 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.19 — 2026-06-13
-**Auditor of record this revision:** P1.2 B2 live offline-SLM validation on
-`codex/b2-live-serve`; `make up-ai`, live QCore engine test, dashboard diagnostics API
-replay, and internal-network air-gap smoke test.
+**Current revision:** v1.20 — 2026-06-13
+**Auditor of record this revision:** P2.1 real-failure catalog rules on
+`codex/catalog-real-failures`; focused catalog tests, Docker `go test -race ./pkg/ai/...`,
+and `make verify-fast`.
 
 ---
 
@@ -13,6 +13,7 @@ replay, and internal-network air-gap smoke test.
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.20 | 2026-06-13 | **P2.1 real-failure catalog rules complete.** `pkg/ai/catalog.go` now includes 9 deterministic UERANSIM/T10 interop-finding rules for the exact failures recorded in `docs/3gpp-tracking.md`: DownlinkNASTransport APER rejection, SMC K_AMF/SUPI-prefix integrity failure, InitialContextSetupRequest APER rejection, Registration Accept 5G-GUTI TLV-E length, UL NAS Transport shape, container-local SMF URL, missing PDU Session Establishment Accept, N2/N3 data-plane gap, and UPF TUN unavailability. Each rule returns Explanation/RootCause/Fix and is pinned by table-driven tests using stable `events.ErrorPayload` tags plus captured-message fallbacks. Verification for this revision: focused catalog tests passed in Docker; `docker run --rm -v "$PWD":/src -w /src -v qcore-gomod:/go/pkg/mod golang:1.23 go test -race ./pkg/ai/...` and `make verify-fast` passed. Scope note: this adds diagnoses for known real failures; it does not broaden real-RAN compatibility beyond the bundled T10 profile. |
 | v1.19 | 2026-06-13 | **P1.2 B2 offline SLM live-serve validated.** Fixed the llama.cpp sidecar entrypoint to `/app/llama-server`, then ran `make up-ai` with the baked Qwen2.5-1.5B GGUF sidecar. Evidence: `curl http://localhost:8088/health` returned `{"status":"ok"}`; `/v1/models` reported `qwen2.5-1.5b-instruct`; a direct `/v1/chat/completions` call returned structured JSON; `docker run --network docker_default ... QCORE_AI_LIVE_LOCAL_URL=http://qcore-slm:8088/v1 go test ./pkg/ai -run TestB2_LiveLocalSLM -count=1 -v` passed; a collector-injected catalog-miss journey fetched through `http://localhost:3000/api/diagnostics/journey/{id}` returned populated `Explanation`/`RootCause`/`Fix` without the unavailable-model fallback; and the baked `docker-qcore-slm:latest` image answered on an internal Docker network (`--internal`) with no external egress. Scope note: this validates the local llama.cpp sidecar path and dashboard diagnostic API integration, not broad model-quality coverage. |
 | v1.18 | 2026-06-13 | **P1.1 TTFC/TTRC measured.** Added `scripts/measure-ttfc-ttrc.sh` / `make measure` and ran `scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json`. Evidence file: `measurements/latest.json`. Results from this checkout with Docker layer cache available: cold compose start to dashboard ready 76.253s; 4G simulator TTFC after dashboard ready 0.121s; 5G simulator TTFC after dashboard ready 1.245s; computed cold start + 4G TTFC 76.374s; computed cold start + 5G TTFC 77.498s. TTRC: `wrong_ki` 3.556s, `wrong_plmn` 0.177s, `unprovisioned_imsi` 0.183s, `wrong_mme_address` 3.545s. All measured P1.1 values are within the charter targets of TTFC < 5 min simulator and TTRC < 30s for known catalogued failures. Scope note: this is a cold compose/current-checkout measurement, not a fresh-clone/no-cache benchmark. |
 | v1.17 | 2026-06-13 | **Post-v1 planning surface reconciled.** Added `docs/next-phases-plan.md` as the active executable plan now that T10 data-plane and the C2/C3 credibility gate are merged on `main`. Updated README, AGENTS/CLAUDE instructions, wiki, and the historical v1 gap-closure plan so future agents do not keep treating C2/C3 as the next critical path. New critical path: P1.1 TTFC/TTRC measurement, P1.2 B2 live offline-SLM validation, then real-failure catalog rules and RAN/device config reconciliation. Docs-only revision; no new product behavior is claimed. |
@@ -83,7 +84,7 @@ All of the following were uncommitted when found and are now fixed and green:
 | 5G SA control plane | ✅ In-process E2E + bundled UERANSIM T10 replay pass | `pkg/amf` integration test green; UERANSIM completes registration and PDU session on cloud Linux (`27115478758`) |
 | 5G SA user plane (SMF/UPF/PFCP) | ✅ In-process E2E + external data-plane ping pass | compiles; SMF/PFCP/UPF tests pass; UERANSIM UE ping over `uesimtun0` succeeds through UPF (`27115478758`) |
 | Native SCTP | ✅ Linux path compiles + used by E2E | `pkg/sctp/sctp_linux.go`; macOS keeps TCP fallback |
-| Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 13 typed rules across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1, PR #24) |
+| Phase C Diagnostic AI — catalog (§9.1) | ✅ Wired + deepened | `pkg/ai/catalog.go` = 28 rules, including 9 UERANSIM/T10 interop-finding rules, across ≥9 §9.1 categories, 4G+5G; table-driven tests pass (B1 + P2.1) |
 | Phase C Diagnostic AI — offline SLM (§9.3) | ✅ Shipped for local sidecar path | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar are live-validated with real GGUF, dashboard diagnostics API replay, and internal-network air-gap smoke test |
 | Dashboard experience layer (hero + live trace) | ✅ Base shipped / ✅ C2/C3 credibility gate runtime-proven | gNB-connection hero screen (Gate 1) + animated live signaling-trace view; current C2/C3 branch removes frontend fake scenario traces and routes simulator controls to backend API + real SSE. Browser replay proves hero-launched 5G happy path raw SSE logs and UI-rendered `wrong_ki` Diagnostic AI output. |
 
@@ -167,8 +168,9 @@ accepts NGSetup, registration, PDU Session Establishment Accept, NGAP PDU Sessio
 Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
 uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. C2/C3 credibility-gate
 UX is also merged and runtime-proven. The active post-v1 critical path is now captured in
-`docs/next-phases-plan.md`: TTFC/TTRC measurement and B2 live offline-SLM serving are now
-validated; next are real-failure catalog rules and RAN/device config reconciliation.
+`docs/next-phases-plan.md`: TTFC/TTRC measurement, B2 live offline-SLM serving, and
+P2.1 real-failure catalog rules are now validated; next is P2.2 RAN/device config
+reconciliation.
 
 ## 6. Deferred (unchanged from charter §11)
 

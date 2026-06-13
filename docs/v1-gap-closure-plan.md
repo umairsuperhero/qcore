@@ -19,7 +19,8 @@ control + user plane build and pass an *in-process* E2E test over native SCTP an
 bundled UERANSIM Docker/cloud-Linux T10 replay. **Track A
 (Interop Hardening, A1–A4 / D-1…D-4) is complete and merged** — standards-correct PLMN
 codec, real SUCI + genuine unprovisioned-IMSI reject, NRF register/discover, and N11
-AMF→SMF. **B1 (diagnostic catalog depth) is complete** (13 typed rules, 4G+5G). The
+AMF→SMF. **B1 (diagnostic catalog depth) is complete** (initially 13 typed rules, 4G+5G;
+later P2.1 expanded this to 28 rules including 9 UERANSIM/T10 interop findings). The
 dashboard experience layer (gNB hero screen / Gate 1, live signaling-trace) has shipped.
 Everything compiles, `go vet` is clean, `go test ./...` passes (CI green on `main`,
 including `-race`). T10 is shipped for the bounded UERANSIM profile by GitHub Actions
@@ -30,8 +31,8 @@ paths, streams real SSE, and renders real diagnostic output.
 
 **C1 (5G telemetry, T7), C2/C3 credibility gate, T10, and B2 live offline-SLM validation are complete for their stated
 scopes.** This document is retained to explain how v1 was closed. For new execution,
-start from `docs/next-phases-plan.md`: next work is real-failure catalog rules,
-RAN/device config reconciliation, then workflow adoption.
+start from `docs/next-phases-plan.md`: P2.1 real-failure catalog rules are complete;
+next work is RAN/device config reconciliation, then workflow adoption.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -351,7 +352,7 @@ validation are complete. Active execution moved to `docs/next-phases-plan.md`.
 | A2 SUCI | D-3, §7 | S–M | ✅ PR #16 — merged |
 | A3 NRF discovery | D-2, §9 observability | M | ✅ PR #17 — merged |
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
-| B1 catalog depth | §9.1, §4 | M | ✅ PR #24 — merged (13 typed rules, 4G+5G, ≥9 §9.1 categories) |
+| B1/P2.1 catalog depth | §9.1, §4 | M | ✅ PR #24 + P2.1 — 28 rules total, including 9 UERANSIM/T10 interop findings, ≥9 §9.1 categories |
 | B2 embedded SLM | §9.3, D5, OpenQ1 | L | ✅ local sidecar path shipped |
 | C1 5G telemetry (T7) | §8 Pillar 4 | M | ✅ PR #25 — AUSF/UDM/SMF/UPF emit journey-correlated events; one trace AMF→AUSF→UDM |
 | C2 5G simulator (T8) | D10, §7 | M | ✅ credibility-gate slice runtime-proven and merged |
