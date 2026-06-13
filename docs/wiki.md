@@ -4,7 +4,7 @@
 > and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
 > Last updated: 2026-06-13
 >
-> **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/v1-gap-closure-plan.md` (executable plan to reach v1 — tracks A–E, sequenced, per-task acceptance criteria)
+> **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` / `AGENTS.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/next-phases-plan.md` (active post-v1 executable plan). `docs/v1-gap-closure-plan.md` is retained as the historical v1 plan.
 
 ---
 
@@ -60,7 +60,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 > 2026-06-13 C2/C3 replay, browser and API evidence proves 4G/5G backend simulator
 > happy paths, real SSE Live Trace, and UI-rendered `wrong_ki` Diagnostic AI output;
 > focused Docker Go tests for the touched packages pass, and local `make verify-fast`
-> passes. GitHub CI remains the merge gate. T10 is validated for the bundled
+> passes. GitHub CI remains the ongoing merge gate for future PRs. T10 is validated for the bundled
 > UERANSIM Docker/cloud-Linux profile by GitHub Actions run `27115478758`. Broader
 > RAN/device compatibility still needs target-specific replay evidence before being
 > claimed.
@@ -89,7 +89,7 @@ All NFs emit structured events to:
 +------------+              +------------+
 ```
 
-### 5G SA (bounded UERANSIM profile shipped; product UX still in progress)
+### 5G SA (bounded UERANSIM profile shipped; product proof/adoption now in progress)
 
 ```
 gNB ──N2 NGAP──▶ AMF ──SBI──▶ AUSF ──SBI──▶ UDM ──SBI──▶ UDR
@@ -165,11 +165,14 @@ Both 4G and 5G share `pkg/subscriber` as a unified subscriber store — provisio
 
 ## 5. 5G SA Track
 
-Critical path **T1 → T7 is landed in code and green in the in-process E2E test, the
-Interop-Hardening track (I1–I4 / D-1…D-4) is complete, and T10 is green for the bundled
-UERANSIM Docker/cloud-Linux profile.** What remains for a credible v1 product experience
-is **T8/T9 (C2/C3)**: 5G simulator UX and dashboard 5G mode. Long-term decisions behind
-I1–I4 are recorded in `docs/audit-v1.0.md` §4 (D-1…D-4).
+Critical path **T1 → T10 is landed for the bundled UERANSIM Docker/cloud-Linux profile**:
+T1–T7 are green in the in-process E2E test, Interop-Hardening (I1–I4 / D-1…D-4) is
+complete, T8/T9 C2/C3 credibility-gate UX is runtime-proven, and T10 proves registration,
+PDU session, and UE ping over `uesimtun0`. The active work is no longer 5G protocol
+build-out; it is the post-v1 proof/adoption plan in `docs/next-phases-plan.md`:
+TTFC/TTRC measurement, B2 live offline-SLM validation, real-failure catalog rules, and
+RAN/device config reconciliation. Long-term decisions behind I1–I4 are recorded in
+`docs/audit-v1.0.md` §4 (D-1…D-4).
 
 | Step | What | State |
 |------|------|-------|

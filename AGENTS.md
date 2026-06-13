@@ -69,7 +69,7 @@ provider + `make up-ai` llama.cpp sidecar; catalog still runs first). CI now bui
 binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to main; full Go
 build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
 
-**The remaining critical-path streams are independent — run in parallel:**
+**The prior critical-path streams are now mostly complete:**
   - **T10 (UERANSIM real-RAN validation / LANE 5) is COMPLETE for the bundled
     Docker/cloud-Linux profile.** A real UERANSIM replay over native SCTP reaches
     NGSetup → InitialUEMessage → Authentication Request/Response → AUSF confirmation →
@@ -79,14 +79,11 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
     UE ping over `uesimtun0`. GitHub Actions `ueransim-interop` run `27115478758`
     records `T10 DATA PLANE PASS`; CI run `27115479708` is green. Evidence and scope:
     `docs/ueransim-compat.md`.
-  - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
-    sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
-    The C2/C3 credibility-gate slice is runtime-proven on
-    `codex/c2-c3-unmock-scenarios`: the hero selects 4G EPC or 5G SA, shows the
-    matching RAN endpoint, launches backend simulator happy paths and injected
-    failures, navigates to Live Trace, renders real SSE raw logs, and shows the real
-    Diagnostic AI report for `wrong_ki`. Broader UDR/operator detail remains a later
-    C3/product slice.
+  - **C2 (T8) / C3 (T9) — the 5G simulator UX + dashboard 5G-mode credibility gate —
+    is runtime-proven and merged to main.** The hero selects 4G EPC or 5G SA, shows the
+    matching RAN endpoint, launches backend simulator happy paths and injected failures,
+    navigates to Live Trace, renders real SSE raw logs, and shows the real Diagnostic AI
+    report for `wrong_ki`. Broader UDR/operator detail remains a later product slice.
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve
     validation (real GGUF pull / air-gapped render) remains (charter §9.3 / D5).
 
@@ -95,13 +92,11 @@ real-RAN/device compatibility still needs per-target replay evidence; do not gen
 this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living audit;
 **re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
-**The executable v1 gap-closure plan is `docs/v1-gap-closure-plan.md`** — tracks A
-(interop hardening I1–I4 / D-1…D-4), B (catalog depth + embedded SLM), C (5G
-telemetry/sim/dashboard, T7–T9), D (UERANSIM, T10), E (reconciliation, scenarios, CI).
-It is self-contained with per-task acceptance criteria + verify commands and is the
-doc to hand an executing agent. Critical path now shifts to merging the C2/C3
-credibility-gate PR after full verification, then B2 live model-serve validation
-(offline AI) and later Phase-D workflow slices.
+**The active executable plan is now `docs/next-phases-plan.md`.** The older
+`docs/v1-gap-closure-plan.md` is retained as the historical v1 gap-closure plan
+(tracks A–E). The post-v1 critical path is: P1.1 measure TTFC/TTRC, P1.2 validate B2
+live offline-SLM serving, then deepen the diagnostic moat with real-failure catalog
+rules and RAN/device config reconciliation.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

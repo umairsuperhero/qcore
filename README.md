@@ -31,24 +31,25 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 QCore's bet: **win on developer experience, ship 5G-SA-leading.** Not a protocol
 feature-count race against open5GS/free5GC — a core that's fast to run, deeply
 observable, and explains its own failures. The full vision is in the
-[Experience Charter](docs/experience-charter.md); the executable plan is
-[`docs/v1-gap-closure-plan.md`](docs/v1-gap-closure-plan.md).
+[Experience Charter](docs/experience-charter.md); the post-v1 executable plan is
+[`docs/next-phases-plan.md`](docs/next-phases-plan.md).
 
 **Where we are now:** the 4G EPC is end-to-end verified; the 5G SA control + user plane
 pass an in-process E2E test over native SCTP; T10 passes against the bundled UERANSIM
-Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog and the
-offline AI (B2) are merged; the live dashboard runs on real data.
+Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog is shipped;
+the live dashboard runs on real backend simulator/SSE/diagnostic data.
 
-**The path to v1 (two parallel tracks):**
-1. **5G experience:** T10 is green for the bundled UERANSIM Docker/cloud-Linux profile:
-   a real gNB/UE registers, establishes a PDU session, and pings over `uesimtun0`
-   through QCore's UPF. Next: 5G simulator UX (C2/T8) and dashboard 5G mode (C3/T9).
-2. **The AI moat.** Catalog (shipped) + offline SLM (code merged); next is live
-   model-serve validation, then deeper root-cause diagnosis.
+**The post-v1 path now shifts from protocol build-out to proof and adoption:**
+1. **Prove the promise:** measure TTFC/TTRC and record the numbers, then validate the
+   offline SLM live with no cloud key and an air-gapped run.
+2. **Deepen the AI moat:** turn the real interop failures into catalog rules and add
+   RAN/device config reconciliation.
+3. **Adopt into workflow:** scenario authoring, CI hooks, then Learning Mode.
 
-**Then (Phase D):** scenario authoring, CI hooks, Learning Mode. Conformance & interop
-status lives in [`docs/3gpp-tracking.md`](docs/3gpp-tracking.md);
-the living audit is [`docs/audit-v1.0.md`](docs/audit-v1.0.md).
+Conformance & interop status lives in [`docs/3gpp-tracking.md`](docs/3gpp-tracking.md);
+the living audit is [`docs/audit-v1.0.md`](docs/audit-v1.0.md). The older
+[`docs/v1-gap-closure-plan.md`](docs/v1-gap-closure-plan.md) is retained as the
+historical v1 execution plan.
 
 > **Honesty note:** rows marked ✅ above mean *build + vet + tests pass* (and, where
 > stated, external replay evidence). T10 is validated for the bundled UERANSIM

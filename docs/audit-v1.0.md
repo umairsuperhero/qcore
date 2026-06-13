@@ -2,10 +2,9 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.16 — 2026-06-13
-**Auditor of record this revision:** focused C2/C3 credibility-gate branch on
-`codex/c2-c3-unmock-scenarios`; local Docker/package tests plus browser replay
-against `http://localhost:3000`.
+**Current revision:** v1.17 — 2026-06-13
+**Auditor of record this revision:** docs-only post-v1 planning reconciliation on
+`main`; no product code changes.
 
 ---
 
@@ -13,6 +12,7 @@ against `http://localhost:3000`.
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.17 | 2026-06-13 | **Post-v1 planning surface reconciled.** Added `docs/next-phases-plan.md` as the active executable plan now that T10 data-plane and the C2/C3 credibility gate are merged on `main`. Updated README, AGENTS/CLAUDE instructions, wiki, and the historical v1 gap-closure plan so future agents do not keep treating C2/C3 as the next critical path. New critical path: P1.1 TTFC/TTRC measurement, P1.2 B2 live offline-SLM validation, then real-failure catalog rules and RAN/device config reconciliation. Docs-only revision; no new product behavior is claimed. |
 | v1.16 | 2026-06-13 | **C2/C3 credibility gate runtime-proven.** The Docker dashboard now launches the selected built-in simulator mode end-to-end from the hero/Live Trace controls: 4G happy path reached attach complete (`j-ec2d20ec-61fd-48fd-8c18-123d2eef409e`), 5G happy path reached registration complete over AMF NGAP/SCTP (`j-f0f1265e-0c48-4e08-aa73-bf6a1783da78`), and browser replay from the hero showed Live Trace raw logs populated by real `/api/events/stream` SSE events (`j-6ac891b9-0121-4853-a356-72fd82616233`). The `wrong_ki` failure scenario is also runtime-proven through the UI: it emits a real failed journey (`j-d909999e-fbdc-4865-9b74-c7fc37d40372`) and renders the Diagnostic AI report with a Ki/OPc root cause. Fixes made during replay: dashboard diagnostics now fetch the collector's real `/journeys/{id}/events` route, Docker passes native SCTP mode into the dashboard simulator, Linux SCTP resolves Docker DNS names, the 5G simulator emits a valid SupportedTA/S-NSSAI in NGSetup, decodes real Authentication Request layout, derives RES*, unwraps protected SMC for simulator validation, and tags injected failure events by scenario so the catalog can diagnose them deterministically. Verification performed this revision: focused Docker Go tests for `pkg/ai`, `pkg/dashboard`, `pkg/simulator`, `pkg/sctp`, `pkg/ngap`, `pkg/nas5g`, and `pkg/amf` passed; `npx tsc --noEmit --pretty false` and `make verify-fast` passed locally. GitHub CI remains the merge gate after push. Scope note: this ships the C2/C3 credibility-gate slice (real simulator UX + mode selection + SSE + diagnostics), not the broader later UDR/operator view. |
 | v1.15 | 2026-06-11 | **C2/C3 credibility gate advanced; still not claimed as fully shipped.** The dashboard production source no longer references `traceStreamMock`, `getMockEvents`, `runScenario`, or `isMockStream`; the dead mock stream file was removed. The hero screen now has a global 4G EPC / 5G SA selector, shows the matching RAN endpoint, and launches happy-path or failure scenarios through the real backend simulator API. Hero, Health, and Live Trace all route simulator starts through the same store path backed by `/api/simulator/start`, `/api/simulator/inject`, `/api/simulator/status`, real `/api/events/stream` SSE events, and the real diagnostics path. App tab gating now allows a hero-launched simulator run to navigate directly to Live Trace and keep it visible while the trace is active, even before the connection state flips to connected. Verification performed this revision: `npx tsc --noEmit --pretty false` and `make verify-fast` passed, including dashboard typecheck and Vite build. Remaining proof before marking C2/C3 shipped: manual/browser UX replay against the running dashboard and acceptance evidence that the trace visible to the user is the backend simulator/SSE trace end-to-end. |
 | v1.14 | 2026-06-08 | **C3/T9 dashboard 5G mode started; not yet shipped as a full milestone.** `/api/ran-config` now exposes first-class AMF/NGAP connection values (`amf_address`, `amf_ngap_port`, `amf_plmn`, `amf_tac`, `serving_network_name`) alongside the legacy 4G MME/S1AP values. The dashboard hero now derives its gNB endpoint from AMF/NGAP fields instead of MME/S1AP fields, and the API provides a UERANSIM gNB snippet keyed from the AMF configuration. Verification performed this revision: `make verify-fast` passed, including Docker Go targeted tests for `pkg/dashboard`, dashboard `tsc --noEmit`, and `vite build`. |
@@ -162,10 +162,10 @@ T7 (5G event instrumentation, C1) is also complete, so Phase C can reason over r
 traces. **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile:** UERANSIM
 accepts NGSetup, registration, PDU Session Establishment Accept, NGAP PDU Session
 Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
-uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. Remaining to v1:
-merge the runtime-proven C2/C3 credibility-gate branch after full verification, then
-continue with B2 live model-serve validation on the AI path and later C3/Phase-D
-workflow views such as UDR/operator detail.
+uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. C2/C3 credibility-gate
+UX is also merged and runtime-proven. The active post-v1 critical path is now captured in
+`docs/next-phases-plan.md`: measure TTFC/TTRC, validate B2 live offline-SLM serving, then
+deepen the diagnostic moat and workflow adoption.
 
 ## 6. Deferred (unchanged from charter §11)
 
