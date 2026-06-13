@@ -85,8 +85,15 @@ func (s *Service) Handler() http.Handler {
 }
 
 func (s *Service) registerRoutes() {
+	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("POST /nsmf-pdusession/v1/sm-contexts", s.postSMContexts)
 	s.mux.HandleFunc("POST /nsmf-pdusession/v1/sm-contexts/modify", s.postSMContextModify)
+}
+
+func (s *Service) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 // Start runs background tasks like UPF association.

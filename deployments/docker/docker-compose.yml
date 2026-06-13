@@ -314,6 +314,7 @@ services:
         condition: service_healthy
     environment:
       SBI_BINDADDRESS: 0.0.0.0
+      SBI_ADVERTISEADDRESS: smf
       SBI_PORT: "8002"
       SBI_NRFURL: http://nrf:8083
       SMF_IPPOOLCIDR: "10.45.0.0/16"

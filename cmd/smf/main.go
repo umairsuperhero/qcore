@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -30,14 +31,16 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./smf.yaml)")
-	
+
 	viper.SetDefault("sbi.bindAddress", "0.0.0.0")
+	viper.SetDefault("sbi.advertiseAddress", "")
 	viper.SetDefault("sbi.port", 8002) // AMF=8000, AUSF=8006, UDM=8003, UDR=8004, NRF=8001
 	viper.SetDefault("sbi.nrfUrl", "http://nrf:8001")
 	viper.SetDefault("smf.ipPoolCidr", "10.45.0.0/16")
 	viper.SetDefault("smf.upfPfcpAddr", "upf:8805")
 	viper.SetDefault("smf.localPfcpIp", "0.0.0.0")
-	
+
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	if err := rootCmd.Execute(); err != nil {
@@ -92,6 +95,10 @@ func run() error {
 	// NRF: self-register (non-fatal if NRF is down).
 	nrfURL := viper.GetString("sbi.nrfUrl")
 	nrfCli := nrfclient.NewHTTPClient(nrfURL, "SMF", false)
+	advertiseAddress := viper.GetString("sbi.advertiseAddress")
+	if advertiseAddress == "" {
+		advertiseAddress = viper.GetString("sbi.bindAddress")
+	}
 	smfProfile := &nrfclient.NFProfile{
 		NFInstanceID: instanceID,
 		NFType:       nrfclient.NFTypeSMF,
@@ -100,7 +107,7 @@ func run() error {
 			ServiceName: "nsmf-pdusession",
 			Versions:    []string{"v1"},
 			Scheme:      "http",
-			IPAddr:      viper.GetString("sbi.bindAddress"),
+			IPAddr:      advertiseAddress,
 			Port:        viper.GetInt("sbi.port"),
 		}},
 	}
