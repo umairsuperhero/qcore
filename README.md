@@ -40,8 +40,8 @@ Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog is s
 the live dashboard runs on real backend simulator/SSE/diagnostic data.
 
 **The post-v1 path now shifts from protocol build-out to proof and adoption:**
-1. **Prove the promise:** measure TTFC/TTRC and record the numbers, then validate the
-   offline SLM live with no cloud key and an air-gapped run.
+1. **Prove the promise:** TTFC/TTRC are now measured for a cold compose run; next,
+   validate the offline SLM live with no cloud key and an air-gapped run.
 2. **Deepen the AI moat:** turn the real interop failures into catalog rules and add
    RAN/device config reconciliation.
 3. **Adopt into workflow:** scenario authoring, CI hooks, then Learning Mode.
@@ -106,6 +106,24 @@ make measure
 # Cold compose start, full 5G profile, and JSON evidence
 scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json
 ```
+
+Latest measured run, 2026-06-13, from the current checkout with Docker layer cache
+available:
+
+| Metric | Result |
+|--------|--------|
+| Cold compose start to dashboard ready | 76.253s |
+| 4G simulator TTFC after dashboard ready | 0.121s |
+| 5G simulator TTFC after dashboard ready | 1.245s |
+| Cold start + 4G TTFC | 76.374s |
+| Cold start + 5G TTFC | 77.498s |
+| 5G `wrong_ki` TTRC | 3.556s |
+| 5G `wrong_plmn` TTRC | 0.177s |
+| 5G `unprovisioned_imsi` TTRC | 0.183s |
+| 5G `wrong_mme_address` TTRC | 3.545s |
+
+Evidence: [`measurements/latest.json`](measurements/latest.json). This is a cold compose
+measurement, not a fresh-clone/no-cache benchmark.
 
 ### Manual API
 

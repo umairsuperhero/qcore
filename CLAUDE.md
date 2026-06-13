@@ -91,9 +91,10 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 
 **The active executable plan is now `docs/next-phases-plan.md`.** The older
 `docs/v1-gap-closure-plan.md` is retained as the historical v1 gap-closure plan
-(tracks A–E). The post-v1 critical path is: P1.1 measure TTFC/TTRC, P1.2 validate B2
-live offline-SLM serving, then deepen the diagnostic moat with real-failure catalog
-rules and RAN/device config reconciliation.
+(tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
+(`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
+3.556s. The next critical path is P1.2 live offline-SLM serving, then real-failure
+catalog rules and RAN/device config reconciliation.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

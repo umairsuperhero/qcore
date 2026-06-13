@@ -1,0 +1,76 @@
+{
+  "dashboard_url": "http://localhost:3000",
+  "results": [
+    {
+      "duration_ms": 76253,
+      "journey_id": "-",
+      "metric": "stack_ready",
+      "mode": "-",
+      "note": "dashboard /api/health ready_for_use=true",
+      "scenario": "-",
+      "state": "ready",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 121,
+      "journey_id": "j-52e44999-ce98-4527-a2f8-84a9efb35045",
+      "metric": "ttfc",
+      "mode": "4g",
+      "note": " ",
+      "scenario": "happy_path",
+      "state": "success",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 1245,
+      "journey_id": "j-f1c23e93-c98a-4401-9b76-a26f2360a62c",
+      "metric": "ttfc",
+      "mode": "5g",
+      "note": " ",
+      "scenario": "happy_path",
+      "state": "success",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 3556,
+      "journey_id": "j-e6d812a6-0078-4e64-9efa-361b5f1845f1",
+      "metric": "ttrc",
+      "mode": "5g",
+      "note": "Ki/OPc mismatch: the UE-side credentials do not match the subscriber credentials stored in QCore.",
+      "scenario": "wrong_ki",
+      "state": "failed",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 177,
+      "journey_id": "j-548209a2-580a-401d-bd10-b833eb560a3d",
+      "metric": "ttrc",
+      "mode": "5g",
+      "note": "PLMN mismatch: the RAN is broadcasting or presenting a PLMN that QCore is not configured to serve.",
+      "scenario": "wrong_plmn",
+      "state": "failed",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 183,
+      "journey_id": "j-ba24ade3-8b40-41be-962a-f8c19876af01",
+      "metric": "ttrc",
+      "mode": "5g",
+      "note": "Unknown subscriber: the UE identity is not provisioned in QCore's subscriber database.",
+      "scenario": "unprovisioned_imsi",
+      "state": "failed",
+      "status": "pass"
+    },
+    {
+      "duration_ms": 3545,
+      "journey_id": "j-41d66822-76dd-4ae8-bcfa-b2ef34897d4f",
+      "metric": "ttrc",
+      "mode": "5g",
+      "note": "Wrong core signaling endpoint: the RAN/UE simulator is pointed at the wrong MME S1AP or AMF NGAP address.",
+      "scenario": "wrong_mme_address",
+      "state": "failed",
+      "status": "pass"
+    }
+  ],
+  "schema": "qcore.measurement.v1"
+}

@@ -174,6 +174,11 @@ TTFC/TTRC measurement, B2 live offline-SLM validation, real-failure catalog rule
 RAN/device config reconciliation. Long-term decisions behind I1–I4 are recorded in
 `docs/audit-v1.0.md` §4 (D-1…D-4).
 
+Latest P1.1 measurement, 2026-06-13 (`measurements/latest.json`): cold compose start to
+dashboard ready 76.253s; cold start + 5G simulator TTFC 77.498s; worst known-failure
+TTRC 3.556s (`wrong_ki`). Scope: current checkout with Docker layer cache available, not
+a fresh-clone/no-cache benchmark.
+
 | Step | What | State |
 |------|------|-------|
 | T1 | Binary entrypoints (`cmd/amf|ausf|udm|udr|nrf`), Dockerfiles, compose, config | ✅ Done |

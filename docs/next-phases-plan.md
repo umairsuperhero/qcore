@@ -59,8 +59,13 @@ Goal: convert "we built it" into "we measured/validated it," so v1 can be announ
 honestly. Both tasks finish the last 10% of already-built work.
 
 ### P1.1 — Measure TTFC & TTRC · branch `codex/measure-ttfc-ttrc` · effort **S–M**
+**Status.** Measured on 2026-06-13 from the current checkout with Docker layer cache
+available; evidence is `measurements/latest.json`. TTFC and TTRC are inside charter
+targets for this cold compose run. A stricter fresh-clone/no-cache benchmark remains a
+future measurement variant, not a blocker for P1.1.
+
 **Why.** The charter's two PRIMARY success metrics (§4) — Time-to-First-Connection and
-Time-to-Root-Cause — have never been measured. The product is sold on them.
+Time-to-Root-Cause — had not been measured before this task. The product is sold on them.
 
 **Scope.** Add a measurement harness (a script + a small Go or shell driver, e.g.
 `scripts/measure-ttfc-ttrc.sh` or `make measure`). Do NOT change product behavior to game
