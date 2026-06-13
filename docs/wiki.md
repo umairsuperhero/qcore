@@ -47,7 +47,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test and the bundled UERANSIM Docker/cloud-Linux T10 replay. | ✅ Shipped for bundled UERANSIM profile |
 | 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel), and validated by UERANSIM UE ping over `uesimtun0` through UPF. | ✅ Shipped for bundled UERANSIM profile |
 | Phase C — Diagnostic AI (catalog) | `pkg/ai/catalog.go`: 13 typed symptom→cause rules across ≥9 cause categories (4G + 5G) + optional Gemini escalation; wired to the dashboard diagnose endpoint. | ✅ Shipped (catalog) |
-| Phase C — Diagnostic AI (offline SLM) | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF); catalog runs first, SLM handles misses over the same grounded prompt. Code merged + unit-tested green; live model-serve (real GGUF pull / air-gapped) not yet validated. | ✅ Code merged / 🔭 live-serve pending |
+| Phase C — Diagnostic AI (offline SLM) | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF); catalog runs first, SLM handles misses over the same grounded prompt. Live-validated with real GGUF, dashboard diagnostics API replay, and an internal-network air-gap smoke test. | ✅ Shipped |
 | **Interop hardening (I1–I4 / D-1…D-4)** | D-1 PLMN codec (`pkg/ident`) · D-2 NRF register/discover · D-3 real SUCI + genuine unprovisioned-IMSI reject · D-4 N11 AMF→SMF (E2E no longer fakes the SMF call). All merged to main. | ✅ Complete |
 | Dashboard experience layer | gNB-connection hero screen (Gate 1) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
@@ -170,8 +170,8 @@ T1–T7 are green in the in-process E2E test, Interop-Hardening (I1–I4 / D-1�
 complete, T8/T9 C2/C3 credibility-gate UX is runtime-proven, and T10 proves registration,
 PDU session, and UE ping over `uesimtun0`. The active work is no longer 5G protocol
 build-out; it is the post-v1 proof/adoption plan in `docs/next-phases-plan.md`:
-TTFC/TTRC measurement, B2 live offline-SLM validation, real-failure catalog rules, and
-RAN/device config reconciliation. Long-term decisions behind I1–I4 are recorded in
+TTFC/TTRC measurement and B2 live offline-SLM validation are complete; next are
+real-failure catalog rules and RAN/device config reconciliation. Long-term decisions behind I1–I4 are recorded in
 `docs/audit-v1.0.md` §4 (D-1…D-4).
 
 Latest P1.1 measurement, 2026-06-13 (`measurements/latest.json`): cold compose start to
@@ -246,7 +246,7 @@ Every signaling message, NF state transition, and config change is emitted as a 
 
 Event types (4G, shipped): `S1SetupPayload`, `AttachRequestPayload`, `AuthRequestPayload`, `AuthResponsePayload`, `SecurityModePayload`, `AttachAcceptPayload`, `BearerCreatePayload`.
 
-5G event types (T7, pending): `NGSetupPayload`, `RegistrationRequestPayload`, `AuthRequest5GPayload`, `SecurityModeCommand5GPayload`, `RegistrationAcceptPayload`, `PDUSessionEstablishmentPayload`, `PFCPAssociationPayload`, `PFCPSessionEstablishmentPayload`.
+5G event types (T7, shipped): `NGSetupPayload`, `RegistrationRequestPayload`, `AuthRequest5GPayload`, `SecurityModeCommand5GPayload`, `RegistrationAcceptPayload`, `PDUSessionEstablishmentPayload`, `PFCPAssociationPayload`, `PFCPSessionEstablishmentPayload`.
 
 ---
 

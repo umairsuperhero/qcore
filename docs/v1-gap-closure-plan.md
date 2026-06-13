@@ -28,10 +28,10 @@ over `uesimtun0` through UPF. C2/C3 credibility-gate UX is also merged and
 runtime-proven: the dashboard chooses 4G/5G, launches backend simulator happy/failure
 paths, streams real SSE, and renders real diagnostic output.
 
-**C1 (5G telemetry, T7), C2/C3 credibility gate, and T10 are complete for their stated
+**C1 (5G telemetry, T7), C2/C3 credibility gate, T10, and B2 live offline-SLM validation are complete for their stated
 scopes.** This document is retained to explain how v1 was closed. For new execution,
-start from `docs/next-phases-plan.md`: P1.1 measure TTFC/TTRC and P1.2 validate B2 live
-offline-SLM serving.
+start from `docs/next-phases-plan.md`: next work is real-failure catalog rules,
+RAN/device config reconciliation, then workflow adoption.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -212,7 +212,7 @@ free-floats (§9.4): its prompt is the catalog result + the ground-truth trace.
 grounded diagnosis renders. Unit test the provider routing with a mock SLM endpoint.
 **Depends on.** B1 (catalog is the grounding); independent of Track A.
 
-**Status — engine + wiring landed (branch `plan/b2-embedded-slm`), model-serve validation pending.**
+**Status — COMPLETE for the local llama.cpp sidecar path.**
 What is done and **green under `-race`** (build + vet + `go test ./...` in `golang:1.23`):
 - `pkg/ai/engine.go` — `local` provider branch; shared `buildPrompt`/`parseModelResult`
   for both backends (one grounded prompt, never free-floats, §9.4); offline path degrades
@@ -225,13 +225,16 @@ What is done and **green under `-race`** (build + vet + `go test ./...` in `gola
   to `local` (env-overridable to `gemini`). `Makefile` — `make up-ai`; `down` tears down all profiles.
 - `config.example.yaml` — documents `local` vs `gemini` and `local_url`.
 - Tests: `pkg/ai/engine_test.go` — provider routing via a mock SLM, grounding assertion,
-  unformatted-output degradation, **catalog-wins-first**, and unreachable-sidecar graceful fallback.
+  unformatted-output degradation, **catalog-wins-first**, unreachable-sidecar graceful fallback,
+  and an env-gated live local SLM test.
 
-**Still gated (like T10 — needs a real environment, not the Go test sandbox):** an actual
-`make up-ai` build that pulls the GGUF and serves a real diagnosis end-to-end. The Go side
-is validated against a mock endpoint; the live model-serve + air-gapped failure-scenario
-render (the §9.3 acceptance) must be run on a host with Docker + network before B2 is
-marked ✅ "shipped." Trust rule: code + unit tests green ≠ validated against the real model.
+**Live validation evidence (2026-06-13):** `make up-ai` builds/runs the real GGUF sidecar;
+`/health`, `/v1/models`, and `/v1/chat/completions` respond; `TestB2_LiveLocalSLM` passes
+against `http://qcore-slm:8088/v1`; the dashboard diagnostics API returns a grounded
+Explanation/RootCause/Fix for a collector-injected catalog-miss journey without falling
+back to `make up-ai`; and the baked image answers on an internal Docker network with no
+external egress. Trust rule preserved: this marks the local sidecar path shipped, not
+general model-quality coverage.
 
 ---
 
@@ -337,8 +340,8 @@ Wave 4 (prove + adopt):                                                    │
 
 **Critical path to the D11 "5G-leading v1":** A1 → A2 → A4 → C1 → T10 is complete for
 the bundled UERANSIM profile, and the C2/C3 credibility-gate UX is merged/runtime-proven.
-**Critical path to the §9 "AI is load-bearing & offline":** B1 is complete; B2 live
-model-serve validation remains. Active execution moved to `docs/next-phases-plan.md`.
+**Critical path to the §9 "AI is load-bearing & offline":** B1 and B2 local sidecar
+validation are complete. Active execution moved to `docs/next-phases-plan.md`.
 
 ## 7. Effort summary & live status
 
@@ -349,7 +352,7 @@ model-serve validation remains. Active execution moved to `docs/next-phases-plan
 | A3 NRF discovery | D-2, §9 observability | M | ✅ PR #17 — merged |
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
 | B1 catalog depth | §9.1, §4 | M | ✅ PR #24 — merged (13 typed rules, 4G+5G, ≥9 §9.1 categories) |
-| B2 embedded SLM | §9.3, D5, OpenQ1 | L | ✅ code merged / 🔭 live-serve pending |
+| B2 embedded SLM | §9.3, D5, OpenQ1 | L | ✅ local sidecar path shipped |
 | C1 5G telemetry (T7) | §8 Pillar 4 | M | ✅ PR #25 — AUSF/UDM/SMF/UPF emit journey-correlated events; one trace AMF→AUSF→UDM |
 | C2 5G simulator (T8) | D10, §7 | M | ✅ credibility-gate slice runtime-proven and merged |
 | C3 dashboard 5G (T9) | §7, §8 | M | ✅ credibility-gate slice runtime-proven and merged; broader UDR/operator detail deferred |

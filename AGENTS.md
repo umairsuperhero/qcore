@@ -64,10 +64,11 @@ live signaling-trace view) has shipped.
 **Status update (2026-06-05 integration sweep):** The dashboard live trace is now
 **un-mocked** — it runs on the real `/api/events/stream` SSE feed (one zustand store; the
 dual EventSource collapsed to one) and calls the real diagnostic engine on live failures;
-build migrated esbuild→Vite. **B2 (offline embedded SLM) code is merged** (`pkg/ai` local
-provider + `make up-ai` llama.cpp sidecar; catalog still runs first). CI now builds all 13
-binaries + `go vet`. Lanes 1–4 + the T10 progress branch are integrated to main; full Go
-build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
+build migrated esbuild→Vite. **B2 (offline embedded SLM) is live-validated** (`pkg/ai`
+local provider + `make up-ai` llama.cpp sidecar with baked Qwen2.5-1.5B GGUF; catalog
+still runs first, SLM handles misses). CI now builds all 13 binaries + `go vet`.
+Lanes 1–4 + the T10 progress branch are integrated to main; full Go build/vet/test
+(`-race`) and dashboard `tsc`/`vite build` verified green.
 
 **The prior critical-path streams are now mostly complete:**
   - **T10 (UERANSIM real-RAN validation / LANE 5) is COMPLETE for the bundled
@@ -84,8 +85,10 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
     matching RAN endpoint, launches backend simulator happy paths and injected failures,
     navigates to Live Trace, renders real SSE raw logs, and shows the real Diagnostic AI
     report for `wrong_ki`. Broader UDR/operator detail remains a later product slice.
-  - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve
-    validation (real GGUF pull / air-gapped render) remains (charter §9.3 / D5).
+  - **B2 — embedded offline SLM:** COMPLETE for the local llama.cpp sidecar path. `make
+    up-ai` builds/runs the real GGUF sidecar, QCore's diagnostic engine reaches it through
+    the `local` provider, dashboard diagnostics explain a catalog-miss journey through the
+    grounded prompt, and an internal Docker network air-gap smoke test succeeds.
 
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
@@ -96,8 +99,8 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 `docs/v1-gap-closure-plan.md` is retained as the historical v1 gap-closure plan
 (tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
 (`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
-3.556s. The next critical path is P1.2 live offline-SLM serving, then real-failure
-catalog rules and RAN/device config reconciliation.
+3.556s. P1.2 B2 live offline-SLM serving is validated; the next critical path is
+real-failure catalog rules and RAN/device config reconciliation.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,
