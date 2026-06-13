@@ -42,7 +42,7 @@ observability, and AI that explains failures. UX is the product.
 - For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
   language is caught before summary or commit.
 
-## Current baseline (2026-06-08)
+## Current baseline (2026-06-13)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -76,22 +76,25 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
     Setup, PFCP remote tunnel update, UPF real TUN/NAT, and UE ping over `uesimtun0`.
     GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`;
     CI run `27115479708` is green. Scope and evidence: `docs/ueransim-compat.md`.
-  - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
-    sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
+  - **C2 (T8) / C3 (T9) — the 5G simulator UX + dashboard 5G-mode credibility gate — is
+    runtime-proven and merged to main** (audit v1.16): the hero selects 4G EPC / 5G SA,
+    launches backend simulator happy paths + injected failures, navigates to Live Trace,
+    renders real `/api/events/stream` SSE, and shows the real Diagnostic AI report for
+    `wrong_ki`. Broader UDR/operator detail is a later product slice.
   - **B2 — embedded offline SLM:** code merged (see status update above); only live
-    model-serve validation remains (charter §9.3 / D5).
+    model-serve validation remains (charter §9.3 / D5) — see Phase 1 of the next-phases plan.
 
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
 this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living audit;
 **re-verify build/vet/test before trusting any ✅ — "code exists" is not "shipped."**
 
-**The executable v1 gap-closure plan is `docs/v1-gap-closure-plan.md`** — tracks A
-(interop hardening I1–I4 / D-1…D-4), B (catalog depth + embedded SLM), C (5G
-telemetry/sim/dashboard, T7–T9), D (UERANSIM, T10), E (reconciliation, scenarios, CI).
-It is self-contained with per-task acceptance criteria + verify commands and is the
-doc to hand an executing agent. Critical path now shifts to C2→C3 (5G simulator/dashboard
-experience) and B2 live model-serve validation (offline AI).
+**The active executable plan is now `docs/next-phases-plan.md`.** The older
+`docs/v1-gap-closure-plan.md` is retained as the historical v1 gap-closure plan
+(tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
+(`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
+3.556s. The next critical path is P1.2 live offline-SLM serving, then real-failure
+catalog rules and RAN/device config reconciliation.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

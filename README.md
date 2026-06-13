@@ -31,24 +31,25 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 QCore's bet: **win on developer experience, ship 5G-SA-leading.** Not a protocol
 feature-count race against open5GS/free5GC — a core that's fast to run, deeply
 observable, and explains its own failures. The full vision is in the
-[Experience Charter](docs/experience-charter.md); the executable plan is
-[`docs/v1-gap-closure-plan.md`](docs/v1-gap-closure-plan.md).
+[Experience Charter](docs/experience-charter.md); the post-v1 executable plan is
+[`docs/next-phases-plan.md`](docs/next-phases-plan.md).
 
 **Where we are now:** the 4G EPC is end-to-end verified; the 5G SA control + user plane
 pass an in-process E2E test over native SCTP; T10 passes against the bundled UERANSIM
-Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog and the
-offline AI (B2) are merged; the live dashboard runs on real data.
+Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog is shipped;
+the live dashboard runs on real backend simulator/SSE/diagnostic data.
 
-**The path to v1 (two parallel tracks):**
-1. **5G experience:** T10 is green for the bundled UERANSIM Docker/cloud-Linux profile:
-   a real gNB/UE registers, establishes a PDU session, and pings over `uesimtun0`
-   through QCore's UPF. Next: 5G simulator UX (C2/T8) and dashboard 5G mode (C3/T9).
-2. **The AI moat.** Catalog (shipped) + offline SLM (code merged); next is live
-   model-serve validation, then deeper root-cause diagnosis.
+**The post-v1 path now shifts from protocol build-out to proof and adoption:**
+1. **Prove the promise:** TTFC/TTRC are now measured for a cold compose run; next,
+   validate the offline SLM live with no cloud key and an air-gapped run.
+2. **Deepen the AI moat:** turn the real interop failures into catalog rules and add
+   RAN/device config reconciliation.
+3. **Adopt into workflow:** scenario authoring, CI hooks, then Learning Mode.
 
-**Then (Phase D):** scenario authoring, CI hooks, Learning Mode. Conformance & interop
-status lives in [`docs/3gpp-tracking.md`](docs/3gpp-tracking.md);
-the living audit is [`docs/audit-v1.0.md`](docs/audit-v1.0.md).
+Conformance & interop status lives in [`docs/3gpp-tracking.md`](docs/3gpp-tracking.md);
+the living audit is [`docs/audit-v1.0.md`](docs/audit-v1.0.md). The older
+[`docs/v1-gap-closure-plan.md`](docs/v1-gap-closure-plan.md) is retained as the
+historical v1 execution plan.
 
 > **Honesty note:** rows marked ✅ above mean *build + vet + tests pass* (and, where
 > stated, external replay evidence). T10 is validated for the bundled UERANSIM
@@ -92,6 +93,37 @@ curl -X POST http://localhost:3000/api/simulator/inject/unprovisioned_imsi \
 curl -X POST http://localhost:3000/api/simulator/inject/wrong_mme_address \
   -H "Content-Type: application/json" -d '{"mode":"5g"}'
 ```
+
+### Measuring TTFC/TTRC
+
+The measurement harness exercises the same backend simulator and diagnostics APIs the
+dashboard uses. It prints TTFC/TTRC rows and can optionally write JSON evidence.
+
+```bash
+# Against an already-running dashboard
+make measure
+
+# Cold compose start, full 5G profile, and JSON evidence
+scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json
+```
+
+Latest measured run, 2026-06-13, from the current checkout with Docker layer cache
+available:
+
+| Metric | Result |
+|--------|--------|
+| Cold compose start to dashboard ready | 76.253s |
+| 4G simulator TTFC after dashboard ready | 0.121s |
+| 5G simulator TTFC after dashboard ready | 1.245s |
+| Cold start + 4G TTFC | 76.374s |
+| Cold start + 5G TTFC | 77.498s |
+| 5G `wrong_ki` TTRC | 3.556s |
+| 5G `wrong_plmn` TTRC | 0.177s |
+| 5G `unprovisioned_imsi` TTRC | 0.183s |
+| 5G `wrong_mme_address` TTRC | 3.545s |
+
+Evidence: [`measurements/latest.json`](measurements/latest.json). This is a cold compose
+measurement, not a fresh-clone/no-cache benchmark.
 
 ### Manual API
 

@@ -1,6 +1,8 @@
 # QCore v1 Gap-Closure Plan
 
 **Created:** 2026-05-30
+**Status:** Historical. The v1 core gap-closure work is substantially complete; the
+active executable plan is now `docs/next-phases-plan.md`.
 **Purpose:** A self-contained, executable plan to close the gap between today's
 build and the v1 the charter defines. Written to be handed to an executing agent
 (Claude Sonnet) with no prior context.
@@ -12,7 +14,7 @@ long-term decisions D-1…D-4) · `CLAUDE.md` (build order + cadence).
 
 ## 0. Read-me-first for the executing agent
 
-**Where things stand (verified 2026-06-08).** 4G EPC is end-to-end real. The 5G SA
+**Where things stand (verified 2026-06-13).** 4G EPC is end-to-end real. The 5G SA
 control + user plane build and pass an *in-process* E2E test over native SCTP and the
 bundled UERANSIM Docker/cloud-Linux T10 replay. **Track A
 (Interop Hardening, A1–A4 / D-1…D-4) is complete and merged** — standards-correct PLMN
@@ -22,14 +24,14 @@ dashboard experience layer (gNB hero screen / Gate 1, live signaling-trace) has 
 Everything compiles, `go vet` is clean, `go test ./...` passes (CI green on `main`,
 including `-race`). T10 is shipped for the bounded UERANSIM profile by GitHub Actions
 run `27115478758`, which proves registration, PDU session establishment, and UE ping
-over `uesimtun0` through UPF. What is **not** done is the full v1 product experience:
-5G simulator UX/dashboard mode and an **AI that is load-bearing and works offline**
-(§9.3/D5).
+over `uesimtun0` through UPF. C2/C3 credibility-gate UX is also merged and
+runtime-proven: the dashboard chooses 4G/5G, launches backend simulator happy/failure
+paths, streams real SSE, and renders real diagnostic output.
 
-**C1 (5G telemetry, T7) is also complete (PR #25), and T10 is complete for the bundled
-UERANSIM profile.** The remaining critical-path items are independent — run in parallel:
-**C2 (5G simulator UX) → C3 (dashboard 5G mode)** for the 5G product experience, and
-**B2 (offline embedded SLM)** for the AI moat. Start C2 and B2 next.
+**C1 (5G telemetry, T7), C2/C3 credibility gate, and T10 are complete for their stated
+scopes.** This document is retained to explain how v1 was closed. For new execution,
+start from `docs/next-phases-plan.md`: P1.1 measure TTFC/TTRC and P1.2 validate B2 live
+offline-SLM serving.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -334,10 +336,9 @@ Wave 4 (prove + adopt):                                                    │
 ```
 
 **Critical path to the D11 "5G-leading v1":** A1 → A2 → A4 → C1 → T10 is complete for
-the bundled UERANSIM profile. Current product critical path: C2 → C3.
-**Critical path to the §9 "AI is load-bearing & offline":** B1 → B2.
-Start **C2** and **B2 live model-serve validation** in parallel (B2 is independent of the
-5G UX track).
+the bundled UERANSIM profile, and the C2/C3 credibility-gate UX is merged/runtime-proven.
+**Critical path to the §9 "AI is load-bearing & offline":** B1 is complete; B2 live
+model-serve validation remains. Active execution moved to `docs/next-phases-plan.md`.
 
 ## 7. Effort summary & live status
 
@@ -348,10 +349,10 @@ Start **C2** and **B2 live model-serve validation** in parallel (B2 is independe
 | A3 NRF discovery | D-2, §9 observability | M | ✅ PR #17 — merged |
 | A4 N11 AMF→SMF | D-4, §7 | M–L | ✅ PR #19 — merged |
 | B1 catalog depth | §9.1, §4 | M | ✅ PR #24 — merged (13 typed rules, 4G+5G, ≥9 §9.1 categories) |
-| B2 embedded SLM | §9.3, D5, OpenQ1 | L | ☐ |
+| B2 embedded SLM | §9.3, D5, OpenQ1 | L | ✅ code merged / 🔭 live-serve pending |
 | C1 5G telemetry (T7) | §8 Pillar 4 | M | ✅ PR #25 — AUSF/UDM/SMF/UPF emit journey-correlated events; one trace AMF→AUSF→UDM |
-| C2 5G simulator (T8) | D10, §7 | M | ☐ |
-| C3 dashboard 5G (T9) | §7, §8 | M | ◑ Gate-1 hero screen merged (PR #20); live signaling trace in review (PR #21); design contract in `docs/ui-ux-design.md` (PR #18) |
+| C2 5G simulator (T8) | D10, §7 | M | ✅ credibility-gate slice runtime-proven and merged |
+| C3 dashboard 5G (T9) | §7, §8 | M | ✅ credibility-gate slice runtime-proven and merged; broader UDR/operator detail deferred |
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ✅ bundled UERANSIM profile validated (`27115478758`) |
 | E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ☐ |
 | E2 scenario authoring | §7 Step 7 | S–M | ☐ |
