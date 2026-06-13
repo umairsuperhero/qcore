@@ -4,8 +4,6 @@ import SubscribersView from "./components/SubscribersView";
 import LiveTraceView from "./components/LiveTraceView";
 import GNBHeroScreen from "./components/GNBHeroScreen";
 import { useConnectionStore } from "./stores/connectionStore";
-import { HelpCircle, Terminal, Play, X, RefreshCw } from "lucide-react";
-import { api } from "./api/client";
 
 type Tab = "ran" | "health" | "subscribers" | "trace";
 
@@ -18,13 +16,12 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const connection = useConnectionStore((s) => s.connection);
+  const traceState = useConnectionStore((s) => s.traceState);
   const fetchConfig = useConnectionStore((s) => s.fetchConfig);
   const initEventSource = useConnectionStore((s) => s.initEventSource);
   const closeEventSource = useConnectionStore((s) => s.closeEventSource);
 
   const [tab, setTab] = useState<Tab>("ran");
-  const [showUeransimModal, setShowUeransimModal] = useState(false);
-  const [startingSim, setStartingSim] = useState(false);
 
   useEffect(() => {
     fetchConfig();
@@ -33,26 +30,20 @@ export default function App() {
   }, [fetchConfig, initEventSource, closeEventSource]);
 
   const isConnected = connection.state === "connected";
+  const hasTraceActivity =
+    traceState.streaming ||
+    traceState.events.length > 0 ||
+    traceState.activeScenario !== null ||
+    traceState.journeyId !== null;
+  const canShowTrace = isConnected || hasTraceActivity;
 
-  // Force Tab to "ran" if connection state changes to disconnected
+  // Keep post-connection tabs gated, but allow an active simulator run to
+  // navigate straight to Live Trace before setup flips the connection state.
   useEffect(() => {
-    if (!isConnected) {
+    if (!isConnected && tab !== "ran" && !(tab === "trace" && hasTraceActivity)) {
       setTab("ran");
     }
-  }, [isConnected]);
-
-  // Handle starting the built-in 5G control-plane simulator.
-  const handleStartSimulator = async () => {
-    setStartingSim(true);
-    try {
-      await api.simulatorStart("5g");
-      setShowUeransimModal(false);
-    } catch (err) {
-      console.error("Failed to start simulator:", err);
-    } finally {
-      setStartingSim(false);
-    }
-  };
+  }, [hasTraceActivity, isConnected, tab]);
 
   return (
     <div className="min-h-screen bg-darkbg-950 text-slate-100 flex flex-col font-sans">
@@ -94,8 +85,8 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-6">
           <nav className="flex gap-2 -mb-px">
             {TABS.map((t) => {
-              // Hide other tabs unless gNB is connected
-              if (t.id !== "ran" && !isConnected) return null;
+              if (t.id === "trace" && !canShowTrace) return null;
+              if (t.id !== "ran" && t.id !== "trace" && !isConnected) return null;
 
               return (
                 <button
@@ -120,16 +111,16 @@ export default function App() {
         {tab === "ran" && (
           <GNBHeroScreen 
             onRegisterUE={() => setTab("subscribers")} 
-            onUseUeransim={() => setShowUeransimModal(true)} 
+            onStartTrace={() => setTab("trace")}
           />
         )}
         {isConnected && (
           <>
             {tab === "health" && <HealthView onStartSim={() => setTab("trace")} />}
             {tab === "subscribers" && <SubscribersView />}
-            {tab === "trace" && <LiveTraceView />}
           </>
         )}
+        {tab === "trace" && canShowTrace && <LiveTraceView />}
       </main>
 
       {/* Footer Info */}
@@ -141,65 +132,6 @@ export default function App() {
           </div>
         </div>
       </footer>
-
-      {/* UERANSIM Helper Dialog Modal */}
-      {showUeransimModal && (
-        <div className="fixed inset-0 bg-darkbg-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-slide-in">
-          <div className="card max-w-md w-full bg-darkbg-900 border-darkbg-700 p-6 flex flex-col gap-4 relative">
-            <button
-              onClick={() => setShowUeransimModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 hover:bg-darkbg-800 rounded-lg transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 text-emerald-400">
-              <HelpCircle className="w-6 h-6" />
-              <h3 className="text-lg font-bold text-white">Use the built-in 5G simulator</h3>
-            </div>
-
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Run QCore's built-in 5G control-plane simulator to generate a live registration trace. Full UERANSIM validation still runs through Docker and CI evidence.
-            </p>
-
-            <div className="bg-darkbg-950 p-4 rounded-xl border border-darkbg-800 space-y-2 text-xs font-mono">
-              <div className="flex items-center gap-2 text-slate-400 border-b border-darkbg-800/60 pb-1.5">
-                <Terminal className="w-3.5 h-3.5" />
-                <span>Dashboard API</span>
-              </div>
-              <p className="text-slate-300 break-all leading-normal">
-                {"POST /api/simulator/start {\"mode\":\"5g\"}"}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 mt-2">
-              <button
-                onClick={handleStartSimulator}
-                disabled={startingSim}
-                className="w-full btn-primary py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold"
-              >
-                {startingSim ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Starting Simulator...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4" />
-                    Start 5G simulator
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => setShowUeransimModal(false)}
-                className="w-full btn-secondary py-3 rounded-xl text-sm font-medium"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

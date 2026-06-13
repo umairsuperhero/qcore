@@ -42,7 +42,7 @@ observability, and AI that explains failures. UX is the product.
 - For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
   language is caught before summary or commit.
 
-## Current baseline (2026-06-08)
+## Current baseline (2026-06-13)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -81,6 +81,12 @@ build/vet/test (`-race`) and dashboard `tsc`/`vite build` verified green.
     `docs/ueransim-compat.md`.
   - **C2 (T8) → C3 (T9):** 5G simulator UX (error injection on the real-SUCI 5G
     sim), then dashboard 5G mode (protocol selector, 5G sim controls, UDR view).
+    The C2/C3 credibility-gate slice is runtime-proven on
+    `codex/c2-c3-unmock-scenarios`: the hero selects 4G EPC or 5G SA, shows the
+    matching RAN endpoint, launches backend simulator happy paths and injected
+    failures, navigates to Live Trace, renders real SSE raw logs, and shows the real
+    Diagnostic AI report for `wrong_ki`. Broader UDR/operator detail remains a later
+    C3/product slice.
   - **B2 — embedded offline SLM:** code merged (see status update); only live model-serve
     validation (real GGUF pull / air-gapped render) remains (charter §9.3 / D5).
 
@@ -93,8 +99,9 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 (interop hardening I1–I4 / D-1…D-4), B (catalog depth + embedded SLM), C (5G
 telemetry/sim/dashboard, T7–T9), D (UERANSIM, T10), E (reconciliation, scenarios, CI).
 It is self-contained with per-task acceptance criteria + verify commands and is the
-doc to hand an executing agent. Critical path now shifts to C2→C3 (5G simulator/dashboard
-experience) and B2 live model-serve validation (offline AI).
+doc to hand an executing agent. Critical path now shifts to merging the C2/C3
+credibility-gate PR after full verification, then B2 live model-serve validation
+(offline AI) and later Phase-D workflow slices.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

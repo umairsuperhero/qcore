@@ -229,7 +229,7 @@ var catalog = []rule{
 						Matched:     true,
 						Explanation: "The UE's XRES did not match the expected value from the HSS. The Milenage derivation failed.",
 						RootCause:   "Ki or OPc mismatch between the SIM and QCore's HSS for IMSI " + p.IMSI + ".",
-						Fix:         "Verify the Ki and OPc in the HSS match the SIM exactly. " +
+						Fix: "Verify the Ki and OPc in the HSS match the SIM exactly. " +
 							"Note: OP ≠ OPc — OPc is derived via AES_Ki(OP) XOR OP. " +
 							"Use the QCore dashboard (Subscribers → Edit) to correct the values.",
 					}, true
@@ -246,7 +246,7 @@ var catalog = []rule{
 			for _, ev := range trace {
 				if p, ok := ev.Payload.(events.ErrorPayload); ok && p.Code == "hss_error" {
 					return DiagnosticResult{
-						Matched:     true,
+						Matched: true,
 						Explanation: "The MME could not fetch authentication vectors from the HSS. " +
 							"The subscriber may not be provisioned, or the HSS is unreachable.",
 						RootCause: "HSS error: " + p.Message,
@@ -266,7 +266,7 @@ var catalog = []rule{
 			for _, ev := range trace {
 				if p, ok := ev.Payload.(events.S1SetupPayload); ok && !p.Success {
 					return DiagnosticResult{
-						Matched:     true,
+						Matched: true,
 						Explanation: "The eNodeB's S1 Setup Request was rejected by QCore's MME. " +
 							"The most common cause is a PLMN mismatch between the eNB and the MME.",
 						RootCause: "S1 Setup rejected for eNB " + p.ENBName + " (ID=" + uint32Hex(p.ENBID) + ").",
@@ -302,7 +302,7 @@ var catalog = []rule{
 			// the data plane likely failed to come up.
 			if hasAttachReq && hasSessionCreate && !hasAttachComplete {
 				return DiagnosticResult{
-					Matched:     true,
+					Matched: true,
 					Explanation: "The UE attached and a bearer was requested, but the session never completed. " +
 						"The SPGW may have failed to allocate an IP address or set up the GTP-U tunnel.",
 					RootCause: "Data plane setup failure: SPGW could not complete the bearer establishment.",
@@ -316,6 +316,85 @@ var catalog = []rule{
 
 	// ── Catch-all string-matching rules (legacy; prefer typed rules above) ─────
 	// These fire for cases where the NF did not emit a structured failure payload.
+
+	// Built-in simulator failure injection: wrong Ki/OPc.
+	{
+		id: "simulator_wrong_ki",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := strings.ToLower(ev.Message)
+				if ev.Category == events.ErrorEvent && strings.Contains(msg, "wrong_ki") {
+					res := diag.DiagnoseRegistrationFailure(diag.CauseAuthMACFailure, "", "", "built-in simulator wrong_ki scenario")
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: res.Explanation,
+						RootCause:   "Ki/OPc mismatch: the UE-side credentials do not match the subscriber credentials stored in QCore.",
+						Fix:         res.FixUESide + " " + res.FixQCoreSide,
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	// Built-in simulator failure injection: unsupported PLMN.
+	{
+		id: "simulator_wrong_plmn",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := strings.ToLower(ev.Message)
+				if ev.Category == events.ErrorEvent && strings.Contains(msg, "wrong_plmn") {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The built-in simulator intentionally advertised a PLMN that does not match QCore's configured network.",
+						RootCause:   "PLMN mismatch: the RAN is broadcasting or presenting a PLMN that QCore is not configured to serve.",
+						Fix: "Set the gNB/eNB PLMN to match QCore's configured MCC/MNC, or update QCore's PLMN if the RAN value is correct. " +
+							"For the Docker demo, use the default 001/01 PLMN.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	// Built-in simulator failure injection: unprovisioned subscriber.
+	{
+		id: "simulator_unprovisioned_imsi",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := strings.ToLower(ev.Message)
+				if ev.Category == events.ErrorEvent && strings.Contains(msg, "unprovisioned_imsi") {
+					res := diag.DiagnoseRegistrationFailure(diag.CauseUnknownSubscriber, "", "", "built-in simulator unprovisioned_imsi scenario")
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: res.Explanation,
+						RootCause:   "Unknown subscriber: the UE identity is not provisioned in QCore's subscriber database.",
+						Fix:         res.FixUESide + " " + res.FixQCoreSide,
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
+
+	// Built-in simulator failure injection: wrong core signaling address.
+	{
+		id: "simulator_wrong_mme_address",
+		matches: func(trace []events.Event) (DiagnosticResult, bool) {
+			for _, ev := range trace {
+				msg := strings.ToLower(ev.Message)
+				if ev.Category == events.ErrorEvent && strings.Contains(msg, "wrong_mme_address") {
+					return DiagnosticResult{
+						Matched:     true,
+						Explanation: "The built-in simulator intentionally dialed an address where QCore is not listening.",
+						RootCause:   "Wrong core signaling endpoint: the RAN/UE simulator is pointed at the wrong MME S1AP or AMF NGAP address.",
+						Fix:         "Set the simulator or RAN to QCore's advertised endpoint from the dashboard RAN config: S1AP 36412 for 4G or NGAP 38412 for 5G.",
+					}, true
+				}
+			}
+			return DiagnosticResult{}, false
+		},
+	},
 
 	// SCTP/NGAP transport issue — malformed PDU or connection error at the NGAP layer
 	{

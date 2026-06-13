@@ -47,7 +47,7 @@ func (s *Server) handleDiagnoseJourney(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fetchJourneyTrace(r *http.Request, journeyID string) ([]events.Event, error) {
-	url := fmt.Sprintf("%s/api/v1/journeys/%s/events", s.collectorURL.String(), journeyID)
+	url := fmt.Sprintf("%s/journeys/%s/events", s.collectorURL.String(), journeyID)
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,7 @@
 
 **The open-source 4G/5G core network that's actually easy to use.**
 
-> Updated: 2026-06-08
+> Updated: 2026-06-13
 
 QCore is a development and test environment for cellular networks — **not** a 5G core competing on protocol features. Primary user: the RAN/device developer who needs a core to test against. QCore wins on experience: fast start, deep observability, and AI that explains failures.
 
@@ -21,7 +21,7 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
 | 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening, 5G Phase-A telemetry, and **T10/UERANSIM real-RAN validation for the bundled Docker/cloud-Linux profile are shipped**: native SCTP, registration, PDU session establishment, NGAP PDU Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and UE ping over `uesimtun0` all pass against real UERANSIM. Evidence: `ueransim-interop` run `27115478758`; docs: `docs/ueransim-compat.md`. | ✅ Shipped |
 | Phase C — Diagnostic AI | Symptom→cause catalog deepened to 13 typed rules across ≥9 cause categories (4G + 5G); AI Level 1 (explain) + Level 2 (root-cause + fix); optional cloud (Gemini) escalation. **Offline embedded SLM (B2): code merged + unit-tested green** (`pkg/ai` local provider, `make up-ai` llama.cpp sidecar with a baked Qwen2.5-1.5B GGUF; catalog still runs first, the SLM only handles misses over the same grounded prompt). Live model-serve validation (real GGUF pull / air-gapped render) not yet run. | 🔭 In progress |
-| Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. **Now runs on real `/api/events/stream` data (un-mocked); live failures are decoded by the real diagnostic engine. Build migrated esbuild→Vite.** | ✅ Shipped |
+| Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. **Now runs on real `/api/events/stream` data (un-mocked); 4G/5G simulator launches route through the backend API; live injected failures are decoded by the real diagnostic engine. Build migrated esbuild→Vite.** | ✅ Shipped |
 | Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 In progress |
 
 ---
@@ -65,28 +65,32 @@ cd qcore
 make up          # builds images and starts all NFs + collector + dashboard
 ```
 
-Open **http://localhost:3000** — the dashboard shows system health and lets you add a subscriber, fire the built-in simulator, and watch the live event trace.
+Open **http://localhost:3000** — the dashboard shows system health, lets you choose 4G EPC or 5G SA, exposes the matching RAN endpoint, launches the built-in simulator, and streams the live trace from the backend event feed.
 
 The demo subscriber (3GPP TS 35.208 Test Set 1) is seeded automatically on first run.
 
 ### Simulator
 
-From the Health view: click **Start simulator** once all NFs are green. The simulator runs a real S1AP/NAS attach (Milenage, derived KASME, Security Mode) and the trace appears live in the dashboard.
+From the dashboard: choose **4G EPC** or **5G SA**, then click **Happy path** once all NFs are green. The simulator runs a real control-plane attach/registration and the trace appears live in the dashboard.
 
 Error injection — from the Live Trace view or directly:
 
 ```bash
 # Wrong Ki (auth failure)
-curl -X POST http://localhost:3000/api/simulator/inject/wrong_ki
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_ki \
+  -H "Content-Type: application/json" -d '{"mode":"5g"}'
 
 # Wrong PLMN (rejected at MME)
-curl -X POST http://localhost:3000/api/simulator/inject/wrong_plmn
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_plmn \
+  -H "Content-Type: application/json" -d '{"mode":"5g"}'
 
 # Unprovisioned IMSI
-curl -X POST http://localhost:3000/api/simulator/inject/unprovisioned_imsi
+curl -X POST http://localhost:3000/api/simulator/inject/unprovisioned_imsi \
+  -H "Content-Type: application/json" -d '{"mode":"5g"}'
 
 # Wrong MME address (connect failure)
-curl -X POST http://localhost:3000/api/simulator/inject/wrong_mme_address
+curl -X POST http://localhost:3000/api/simulator/inject/wrong_mme_address \
+  -H "Content-Type: application/json" -d '{"mode":"5g"}'
 ```
 
 ### Manual API

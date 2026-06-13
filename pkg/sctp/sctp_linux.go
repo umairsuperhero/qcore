@@ -25,15 +25,15 @@ const (
 
 // sctpSndRcvInfo is the linux C struct sctp_sndrcvinfo (roughly 32 bytes on 64-bit)
 type sctpSndRcvInfo struct {
-	Stream uint16
-	Ssn    uint16
-	Flags  uint16
-	Ppid   uint32
-	Context uint32
+	Stream     uint16
+	Ssn        uint16
+	Flags      uint16
+	Ppid       uint32
+	Context    uint32
 	Timetolive uint32
-	Tsn uint32
-	Cumtsn uint32
-	AssocID int32
+	Tsn        uint32
+	Cumtsn     uint32
+	AssocID    int32
 }
 
 type sctpAssociation struct {
@@ -77,7 +77,7 @@ func (a *sctpAssociation) Write(data []byte, streamID uint16) error {
 	h.Level = SOL_SCTP
 	h.Type = SCTP_SNDRCV
 	h.SetLen(unix.CmsgLen(32))
-	
+
 	infoBytes := (*[32]byte)(unsafe.Pointer(&info))[:]
 	copy(control[unix.CmsgLen(0):], infoBytes)
 
@@ -118,20 +118,38 @@ type sctpListener struct {
 }
 
 func parseAddr(addr string) (syscall.Sockaddr, error) {
-	parts := strings.Split(addr, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid address format")
-	}
-	ip := net.ParseIP(parts[0])
-	port, _ := strconv.Atoi(parts[1])
-	
-	sa := &syscall.SockaddrInet4{Port: port}
-	if ip != nil {
-		ip = ip.To4()
-		if ip != nil {
-			copy(sa.Addr[:], ip)
+	host, portText, err := net.SplitHostPort(addr)
+	if err != nil {
+		parts := strings.Split(addr, ":")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid address format")
 		}
+		host = parts[0]
+		portText = parts[1]
 	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		return nil, fmt.Errorf("invalid port %q: %w", portText, err)
+	}
+
+	sa := &syscall.SockaddrInet4{Port: port}
+	if host == "" || host == "0.0.0.0" {
+		return sa, nil
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		resolved, err := net.ResolveIPAddr("ip4", host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %q: %w", host, err)
+		}
+		ip = resolved.IP
+	}
+	ip = ip.To4()
+	if ip == nil {
+		return nil, fmt.Errorf("address %q is not IPv4", host)
+	}
+	copy(sa.Addr[:], ip)
 	return sa, nil
 }
 
