@@ -3,6 +3,7 @@ import type {
   Subscriber,
   SubscriberListResponse,
   RANConfig,
+  RANReconcileResult,
   SimulatorStatus,
   DiagnosticResult,
 } from "./types";
@@ -33,6 +34,11 @@ async function jsonSend<T>(method: string, path: string, body?: unknown): Promis
 export const api = {
   health: () => jsonGet<CoreHealth>("/api/health"),
   ranConfig: () => jsonGet<RANConfig>("/api/ran-config"),
+  reconcileRANConfig: (gnbYaml: string, ueYaml: string) =>
+    jsonSend<RANReconcileResult>("POST", "/api/ran-config/reconcile", {
+      gnb_yaml: gnbYaml,
+      ue_yaml: ueYaml,
+    }),
 
   listSubscribers: (page = 1, limit = 50) =>
     jsonGet<SubscriberListResponse>(

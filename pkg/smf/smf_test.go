@@ -12,7 +12,7 @@ func TestHealthRoute(t *testing.T) {
 	svc, err := NewService(Config{
 		IPPoolCIDR:  "10.45.0.0/16",
 		UPFPfcpAddr: "127.0.0.1:8805",
-		LocalPfcpIP: "127.0.0.1",
+		LocalPfcpIP: "127.0.0.2",
 	}, logger.New("error", "console"))
 	if err != nil {
 		t.Fatalf("NewService: %v", err)

@@ -117,6 +117,7 @@ func (s *Server) routes() {
 
 	api.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet)
 	api.HandleFunc("/ran-config", s.handleRANConfig).Methods(http.MethodGet)
+	api.HandleFunc("/ran-config/reconcile", s.handleRANConfigReconcile).Methods(http.MethodPost)
 
 	// Subscriber CRUD — proxied to HSS admin API. Strip /api so /api/subscribers
 	// hits /api/v1/subscribers on the HSS.

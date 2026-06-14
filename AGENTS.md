@@ -42,7 +42,7 @@ observability, and AI that explains failures. UX is the product.
 - For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
   language is caught before summary or commit.
 
-## Current baseline (2026-06-13)
+## Current baseline (2026-06-14)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -90,6 +90,11 @@ Lanes 1–4 + the T10 progress branch are integrated to main; full Go build/vet/
     up-ai` builds/runs the real GGUF sidecar, QCore's diagnostic engine reaches it through
     the `local` provider, dashboard diagnostics explain a catalog-miss journey through the
     grounded prompt, and an internal Docker network air-gap smoke test succeeds.
+  - **P2.2 — RAN/device config reconciliation:** COMPLETE for the dashboard/API
+    credibility slice. `POST /api/ran-config/reconcile` and the "Check my RAN config"
+    panel compare UERANSIM gNB/UE YAML against QCore AMF/subscriber config and report
+    PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki, OPc/OP, DNN, and SUCI-scheme
+    mismatches before attach without exposing raw secrets.
 
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
@@ -101,7 +106,8 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 (tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
 (`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
 3.556s. P1.2 B2 live offline-SLM serving is validated. P2.1 real-failure catalog
-rules are complete; the next critical path is P2.2 RAN/device config reconciliation.
+rules and P2.2 RAN/device config reconciliation are complete; the next critical path is
+Phase 3 workflow adoption, starting with P3.1 scenario authoring.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

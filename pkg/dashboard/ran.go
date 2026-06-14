@@ -1,8 +1,14 @@
 package dashboard
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
+
+	"github.com/qcore-project/qcore/pkg/diag"
 )
 
 // RANConfig is the read-only "connect a real RAN" view (B5 / Pillar 3).
@@ -37,6 +43,7 @@ type SampleSubscriber struct {
 	Ki   string `json:"ki"`
 	OPc  string `json:"opc"`
 	AMF  string `json:"amf"`
+	APN  string `json:"apn"`
 }
 
 func (s *Server) handleRANConfig(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +73,7 @@ func (s *Server) handleRANConfig(w http.ResponseWriter, r *http.Request) {
 			Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
 			OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
 			AMF:  "8000",
+			APN:  "internet",
 		},
 	}
 	rc.ConfigSnippet = map[string]string{
@@ -75,6 +83,84 @@ func (s *Server) handleRANConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, rc)
+}
+
+func (s *Server) handleRANConfigReconcile(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "reading request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	in, err := diag.ParseReconcileInput(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	sub, err := s.fetchReconcileSubscriber(r.Context(), in.IMSI)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	result := diag.ReconcileConfig(in, diag.ReconcileCore{
+		PLMN:               s.cfg.AMF.PLMN,
+		TAC:                s.cfg.AMF.TAC,
+		SNSSAIs:            []diag.SNSSAI{{SST: 1, SD: "000001"}},
+		ServingNetworkName: s.cfg.AMF.ServingNetworkName,
+		DefaultDNN:         "internet",
+		Subscriber:         sub,
+	})
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) fetchReconcileSubscriber(ctx context.Context, imsi string) (*diag.SubscriberCredentials, error) {
+	imsi = strings.TrimSpace(strings.TrimPrefix(imsi, "imsi-"))
+	if imsi == "" {
+		return nil, nil
+	}
+
+	u := *s.hssURL
+	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/subscribers/" + imsi
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating subscriber lookup: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("subscriber lookup failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("subscriber lookup returned %s", resp.Status)
+	}
+
+	var out struct {
+		Data struct {
+			IMSI string `json:"imsi"`
+			Ki   string `json:"ki"`
+			OPc  string `json:"opc"`
+			APN  string `json:"apn"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decoding subscriber lookup: %w", err)
+	}
+	if out.Data.IMSI == "" {
+		return nil, fmt.Errorf("subscriber lookup returned no subscriber data")
+	}
+	return &diag.SubscriberCredentials{
+		IMSI: out.Data.IMSI,
+		Ki:   out.Data.Ki,
+		OPc:  out.Data.OPc,
+		APN:  out.Data.APN,
+	}, nil
 }
 
 // externalAddress hides the 0.0.0.0 bind address by replacing it with a

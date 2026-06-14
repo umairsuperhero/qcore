@@ -2,10 +2,10 @@
 
 **Document status:** Living baseline audit. Re-audited at every milestone and on a
 recurring cadence (see *Audit cadence* below).
-**Current revision:** v1.20 — 2026-06-13
-**Auditor of record this revision:** P2.1 real-failure catalog rules on
-`codex/catalog-real-failures`; focused catalog tests, Docker `go test -race ./pkg/ai/...`,
-and `make verify-fast`.
+**Current revision:** v1.21 — 2026-06-14
+**Auditor of record this revision:** P2.2 RAN/device config reconciliation on
+`codex/e1-ran-reconciliation`; focused Docker tests, dashboard typecheck/build,
+dashboard runtime replay, and `make verify-fast`.
 
 ---
 
@@ -13,6 +13,7 @@ and `make verify-fast`.
 
 | Rev | Date | Summary |
 |-----|------|---------|
+| v1.21 | 2026-06-14 | **P2.2 RAN/device config reconciliation complete.** Added `pkg/diag/reconcile.go`, `POST /api/ran-config/reconcile`, and the dashboard "Check my RAN config" panel. The reconciler compares UERANSIM gNB/UE YAML against QCore AMF/subscriber config and reports PLMN, TAC, S-NSSAI SST/SD, serving-network-name, IMSI, Ki, OPc/OP, DNN, and SUCI-scheme mismatches before attach without echoing raw secrets. Dashboard runtime check: changing the gNB PLMN to `001/02` reported `gnb.plmn` / `plmn_mismatch`, showed QCore `001/01`, and gave the exact fix. Verification for this revision: Docker `go test ./pkg/diag ./pkg/dashboard`, dashboard `npx tsc --noEmit --pretty false`, dashboard `npm run build`, `make verify-fast`, and Docker `go build ./... && go vet ./... && go test -race ./...` passed. The branch also hardens `pkg/smf`'s health test to avoid a fixed PFCP-port collision during package-parallel race tests. Scope note: this is a dashboard/API diagnostic slice; it does not broaden T10 beyond the bundled UERANSIM profile or add new protocol features. |
 | v1.20 | 2026-06-13 | **P2.1 real-failure catalog rules complete.** `pkg/ai/catalog.go` now includes 9 deterministic UERANSIM/T10 interop-finding rules for the exact failures recorded in `docs/3gpp-tracking.md`: DownlinkNASTransport APER rejection, SMC K_AMF/SUPI-prefix integrity failure, InitialContextSetupRequest APER rejection, Registration Accept 5G-GUTI TLV-E length, UL NAS Transport shape, container-local SMF URL, missing PDU Session Establishment Accept, N2/N3 data-plane gap, and UPF TUN unavailability. Each rule returns Explanation/RootCause/Fix and is pinned by table-driven tests using stable `events.ErrorPayload` tags plus captured-message fallbacks. Verification for this revision: focused catalog tests passed in Docker; `docker run --rm -v "$PWD":/src -w /src -v qcore-gomod:/go/pkg/mod golang:1.23 go test -race ./pkg/ai/...` and `make verify-fast` passed. Scope note: this adds diagnoses for known real failures; it does not broaden real-RAN compatibility beyond the bundled T10 profile. |
 | v1.19 | 2026-06-13 | **P1.2 B2 offline SLM live-serve validated.** Fixed the llama.cpp sidecar entrypoint to `/app/llama-server`, then ran `make up-ai` with the baked Qwen2.5-1.5B GGUF sidecar. Evidence: `curl http://localhost:8088/health` returned `{"status":"ok"}`; `/v1/models` reported `qwen2.5-1.5b-instruct`; a direct `/v1/chat/completions` call returned structured JSON; `docker run --network docker_default ... QCORE_AI_LIVE_LOCAL_URL=http://qcore-slm:8088/v1 go test ./pkg/ai -run TestB2_LiveLocalSLM -count=1 -v` passed; a collector-injected catalog-miss journey fetched through `http://localhost:3000/api/diagnostics/journey/{id}` returned populated `Explanation`/`RootCause`/`Fix` without the unavailable-model fallback; and the baked `docker-qcore-slm:latest` image answered on an internal Docker network (`--internal`) with no external egress. Scope note: this validates the local llama.cpp sidecar path and dashboard diagnostic API integration, not broad model-quality coverage. |
 | v1.18 | 2026-06-13 | **P1.1 TTFC/TTRC measured.** Added `scripts/measure-ttfc-ttrc.sh` / `make measure` and ran `scripts/measure-ttfc-ttrc.sh --cold --output measurements/latest.json`. Evidence file: `measurements/latest.json`. Results from this checkout with Docker layer cache available: cold compose start to dashboard ready 76.253s; 4G simulator TTFC after dashboard ready 0.121s; 5G simulator TTFC after dashboard ready 1.245s; computed cold start + 4G TTFC 76.374s; computed cold start + 5G TTFC 77.498s. TTRC: `wrong_ki` 3.556s, `wrong_plmn` 0.177s, `unprovisioned_imsi` 0.183s, `wrong_mme_address` 3.545s. All measured P1.1 values are within the charter targets of TTFC < 5 min simulator and TTRC < 30s for known catalogued failures. Scope note: this is a cold compose/current-checkout measurement, not a fresh-clone/no-cache benchmark. |
@@ -169,8 +170,9 @@ Resource Setup, PFCP remote tunnel update, and data-plane traffic; `ping -c 3 -I
 uesimtun0 8.8.8.8` succeeds in GitHub Actions run `27115478758`. C2/C3 credibility-gate
 UX is also merged and runtime-proven. The active post-v1 critical path is now captured in
 `docs/next-phases-plan.md`: TTFC/TTRC measurement, B2 live offline-SLM serving, and
-P2.1 real-failure catalog rules are now validated; next is P2.2 RAN/device config
-reconciliation.
+P2.1 real-failure catalog rules are now validated, and P2.2 RAN/device config
+reconciliation is shipped. The next critical path is Phase 3 workflow adoption, starting
+with scenario authoring.
 
 ## 6. Deferred (unchanged from charter §11)
 
