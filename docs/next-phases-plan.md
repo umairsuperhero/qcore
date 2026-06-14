@@ -180,10 +180,14 @@ surface human-readable mismatches in the dashboard + via the diagnostic layer.
 Goal: turn QCore from "a core you run" into "a tool in your dev loop." Lower urgency than
 Phases 1–2; sequence by user pull.
 
-### P3.1 — Scenario authoring (E2) · branch `codex/e2-scenario-authoring` · effort **S–M**
-Author + replay failure/feature scenarios (generalize the `wrong_ki`/`wrong_plmn`
-injections). Acceptance: a user can define a scenario (YAML or UI), run it against the
-simulator, and get a deterministic pass/fail + trace. Tests + `make verify-fast` green.
+### P3.1 — Scenario authoring (E2) · branch `codex/e2-scenario-authoring` · ✅ **DONE**
+Author + replay failure/feature scenarios. Users save/list/run scenarios via
+`GET/POST /api/scenarios`, `GET/DELETE /api/scenarios/{name}`, and `POST
+/api/scenarios/{name}/run` (deterministic PASS/FAIL via `ScenarioDefinition.Expect`
++ `CompareScenarioOutcome`), plus a dashboard authoring panel; YAML store under
+`dashboard.scenario_dir`. Runtime-proven on the local 4G stack: a happy scenario →
+`pass:true`, a `wrong_ki` failure scenario → `pass:true` (`cause: wrong_ki`). Build +
+vet + `test -race` + frontend `tsc`/`vite build` green. See audit v1.22.
 
 ### P3.2 — CI hooks (E3) · branch `codex/e3-ci-hooks` · effort **M**
 Productize the `ueransim-interop` pattern so users run QCore scenarios in *their* CI
