@@ -38,9 +38,10 @@ type UEContext struct {
 	GUTI *ngap.GUAMI
 
 	// Authentication
-	AuthCtxURL string // AUSF 5g-aka-confirmation URL
-	RAND       [16]byte
-	AUTN       [16]byte
+	AuthCtxURL      string // AUSF 5g-aka-confirmation URL
+	ResyncAttempted bool   // Prevents infinite ping-pong on SQN resync
+	RAND            [16]byte
+	AUTN            [16]byte
 
 	// Keys (filled after AUSF confirmation)
 	KAMF    []byte // 256-bit

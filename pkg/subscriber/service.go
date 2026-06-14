@@ -215,6 +215,75 @@ func (s *Service) Generate5GAuthVector(ctx context.Context, imsi, snName string)
 	return av, nil
 }
 
+// Resync5GAuthVector attempts an SQN resynchronization from the AUTS parameter.
+// TS 33.102 § 6.3.3 and TS 33.501.
+func (s *Service) Resync5GAuthVector(ctx context.Context, imsi, snName, randHex, autsHex string) (*AuthVector5G, error) {
+	sub, err := s.GetSubscriber(ctx, imsi)
+	if err != nil {
+		return nil, err
+	}
+
+	ki, err := sub.KiBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding Ki: %w", err)
+	}
+	opc, err := sub.OPcBytes()
+	if err != nil {
+		return nil, fmt.Errorf("decoding OPc: %w", err)
+	}
+	
+	randBytes, err := hex.DecodeString(randHex)
+	if err != nil || len(randBytes) != 16 {
+		return nil, fmt.Errorf("invalid RAND")
+	}
+	var randVal [16]byte
+	copy(randVal[:], randBytes)
+
+	autsBytes, err := hex.DecodeString(autsHex)
+	if err != nil || len(autsBytes) != 14 {
+		return nil, fmt.Errorf("invalid AUTS")
+	}
+
+	akStar, err := F5Star(ki, opc, randVal)
+	if err != nil {
+		return nil, fmt.Errorf("computing F5*: %w", err)
+	}
+
+	// Recover SQN_MS = AUTS[0:6] XOR AK*
+	var sqnMS [6]byte
+	for i := 0; i < 6; i++ {
+		sqnMS[i] = autsBytes[i] ^ akStar[i]
+	}
+
+	macS, err := F1Star(ki, opc, randVal, sqnMS, [2]byte{0x00, 0x00})
+	if err != nil {
+		return nil, fmt.Errorf("computing F1*: %w", err)
+	}
+
+	for i := 0; i < 8; i++ {
+		if macS[i] != autsBytes[6+i] {
+			return nil, fmt.Errorf("MAC-S verification failed")
+		}
+	}
+
+	sqnMSHex := hex.EncodeToString(sqnMS[:])
+	
+	// Advance SQN past the UE's SQN
+	newSQN, err := AdvanceSQNHex(sqnMSHex)
+	if err != nil {
+		return nil, fmt.Errorf("advancing SQN: %w", err)
+	}
+	sub.SQN = newSQN
+	if err := s.db.WithContext(ctx).Model(sub).Update("sqn", sub.SQN).Error; err != nil {
+		return nil, fmt.Errorf("saving SQN: %w", err)
+	}
+
+	s.log.Infof("SQN resynchronized for IMSI=%s to %s", imsi, sub.SQN)
+	
+	// Issue a fresh vector with the new SQN
+	return s.Generate5GAuthVector(ctx, imsi, snName)
+}
+
 func (s *Service) ImportCSV(ctx context.Context, reader io.Reader) (int, error) {
 	r := csv.NewReader(reader)
 

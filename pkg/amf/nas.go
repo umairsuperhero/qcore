@@ -16,6 +16,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/ident"
 	"github.com/qcore-project/qcore/pkg/nas5g"
 	"github.com/qcore-project/qcore/pkg/ngap"
+	"github.com/qcore-project/qcore/pkg/udm"
 )
 
 // handleNASPDU is the top-level 5G-NAS dispatcher for one UE message.
@@ -250,6 +251,62 @@ func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext
 			CauseName: causeName,
 		},
 	})
+
+	if cause5GMM == nas5g.Cause5GMMSynchFailure && len(fail.AUTS) == 14 {
+		if ue.ResyncAttempted {
+			s.log.WithField("supi", ue.SUPI).Warn("amf: SQN resync already attempted, rejecting")
+		} else {
+			ue.ResyncAttempted = true
+			s.log.WithField("supi", ue.SUPI).Info("amf: attempting SQN resynchronization")
+
+			supiOrSuci := s.suciToString(ue.SUCI)
+			ausfReq := &ausf.AuthenticationInfo{
+				SupiOrSuci:         supiOrSuci,
+				ServingNetworkName: s.cfg.ServingNetworkName,
+				ResynchronizationInfo: &udm.ResynchronizationInfo{
+					RAND: hex.EncodeToString(ue.RAND[:]),
+					AUTS: hex.EncodeToString(fail.AUTS),
+				},
+			}
+
+			ctx = events.WithJourneyID(ctx, ue.JourneyID)
+			authCtx, confirmURL, err := s.ausfCli.CreateUEAuth(ctx, ausfReq)
+			if err != nil {
+				s.log.WithError(err).Error("amf: AUSF resync auth failed")
+			} else {
+				ue.AuthCtxURL = stripBaseURL(confirmURL)
+				ue.SUPI = authCtx.Links["5g-aka"].Href
+
+				randBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.RAND)
+				autnBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.AUTN)
+				copy(ue.RAND[:], randBytes)
+				copy(ue.AUTN[:], autnBytes)
+				ue.AuthCtxURL = confirmURL
+
+				s.emitter.Emit(events.Event{
+					JourneyID: ue.JourneyID,
+					NF:        "amf",
+					Category:  events.SignalingTx,
+					Severity:  events.SeverityInfo,
+					Protocol:  "nas5g",
+					Message:   "Authentication Request sent (Resync)",
+					Payload: events.AuthRequestPayload5G{
+						SUPI:    ue.SUPI,
+						RANDHex: hex.EncodeToString(ue.RAND[:8]),
+					},
+				})
+
+				authReq := nas5g.EncodeAuthenticationRequest(&nas5g.AuthenticationRequest{
+					NASKeySetID: 1,
+					ABBA:        []byte{0x00, 0x00},
+					RAND:        ue.RAND,
+					AUTN:        ue.AUTN,
+				})
+				ue.State = StateAuthPending
+				return ue.gNB.sendDownlinkNAS(ue, authReq)
+			}
+		}
+	}
 
 	// Map to a RegistrationFailurePayload so DiagnoseRegistration can match.
 	diagCause := diag.CauseAuthMACFailure

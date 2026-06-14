@@ -639,12 +639,18 @@ func EncodeRegistrationReject(cause Cause5GMM) []byte {
 // the network side, or SQN out of range). TS 24.501 §8.2.12.
 type AuthenticationFailure struct {
 	Cause Cause5GMM // mandatory: 0x14 = MAC failure, 0x15 = SQN failure
+	AUTS  []byte    // optional: IEI=0x30, 14 bytes (TS 24.501 8.2.12)
 }
 
 // EncodeAuthenticationFailure encodes a NAS Authentication Failure PDU.
-func EncodeAuthenticationFailure(cause Cause5GMM) []byte {
+func EncodeAuthenticationFailure(cause Cause5GMM, auts []byte) []byte {
 	hdr := EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeAuthenticationFailure})
-	return append(hdr, uint8(cause))
+	body := append(hdr, uint8(cause))
+	if len(auts) > 0 {
+		body = append(body, 0x30, uint8(len(auts)))
+		body = append(body, auts...)
+	}
+	return body
 }
 
 type Message struct {
@@ -683,6 +689,21 @@ func Decode(data []byte) (*Message, error) {
 		af := &AuthenticationFailure{}
 		if len(body) >= 1 {
 			af.Cause = Cause5GMM(body[0])
+			data := body[1:]
+			for len(data) >= 2 {
+				iei := data[0]
+				l := int(data[1])
+				data = data[2:]
+				if len(data) < l {
+					break
+				}
+				v := data[:l]
+				data = data[l:]
+				if iei == 0x30 {
+					af.AUTS = make([]byte, l)
+					copy(af.AUTS, v)
+				}
+			}
 		}
 		msg.AuthenticationFailure = af
 	case MsgTypeSecurityModeCommand:
