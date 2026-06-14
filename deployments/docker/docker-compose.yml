@@ -135,6 +135,9 @@ services:
       QCORE_AI_LOCAL_URL: ${QCORE_AI_LOCAL_URL:-http://qcore-slm:8088/v1}
       QCORE_AI_MODEL: ${QCORE_AI_MODEL:-qwen2.5-1.5b-instruct}
       QCORE_AI_API_KEY: ${QCORE_AI_API_KEY:-}
+    volumes:
+      # Persist authored scenarios across container recreation (make down/up).
+      - qcore-scenarios:/var/lib/qcore/scenarios
 
   # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order).
   # All 5G services are behind the "5g" Compose profile so the default
@@ -375,3 +378,4 @@ services:
 
 volumes:
   pgdata:
+  qcore-scenarios:

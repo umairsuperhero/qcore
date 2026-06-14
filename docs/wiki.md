@@ -54,7 +54,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
 | 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Credibility-gate slice: protocol selector, correct 4G/5G RAN endpoint, backend simulator happy paths, failure injection, real SSE Live Trace, and real Diagnostic AI output. Broader UDR/operator detail remains a later product slice. | ✅ Credibility gate runtime-proven |
 | UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup + Registration Complete + PDU session + NGAP PDU Session Resource Setup + PFCP remote tunnel update + UPF real TUN/NAT + UE ping over `uesimtun0`. Evidence: `ueransim-interop` run `27115478758`. | ✅ Shipped for bundled profile |
-| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
+| Phase D — Workflow adoption | **Scenario authoring shipped** (P3.1): save/list/run named scenarios (`/api/scenarios`, dashboard authoring panel) with deterministic PASS/FAIL + trace. CI hooks + Learning Mode next. | ◑ In progress |
 
 > **Verification note:** as of 2026-06-08 every package compiles, `go vet` is clean,
 > `go test ./...` and `go test -race ./...` pass (verified in `golang:1.23`). As of the
