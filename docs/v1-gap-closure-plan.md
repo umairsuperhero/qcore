@@ -14,7 +14,7 @@ long-term decisions D-1…D-4) · `CLAUDE.md` (build order + cadence).
 
 ## 0. Read-me-first for the executing agent
 
-**Where things stand (verified 2026-06-13).** 4G EPC is end-to-end real. The 5G SA
+**Where things stand (verified 2026-06-14).** 4G EPC is end-to-end real. The 5G SA
 control + user plane build and pass an *in-process* E2E test over native SCTP and the
 bundled UERANSIM Docker/cloud-Linux T10 replay. **Track A
 (Interop Hardening, A1–A4 / D-1…D-4) is complete and merged** — standards-correct PLMN
@@ -31,8 +31,8 @@ paths, streams real SSE, and renders real diagnostic output.
 
 **C1 (5G telemetry, T7), C2/C3 credibility gate, T10, and B2 live offline-SLM validation are complete for their stated
 scopes.** This document is retained to explain how v1 was closed. For new execution,
-start from `docs/next-phases-plan.md`: P2.1 real-failure catalog rules are complete;
-next work is RAN/device config reconciliation, then workflow adoption.
+start from `docs/next-phases-plan.md`: P2.1 real-failure catalog rules and P2.2
+RAN/device config reconciliation are complete; next work is workflow adoption.
 
 **Non-negotiable working rules:**
 1. **No Go toolchain on the host.** Build/test in Docker:
@@ -336,7 +336,7 @@ Wave 2 (real 5G flow):                                                     │
 Wave 3 (5G experience):                                                    │
   C2 5G sim UX ──> C3 dashboard 5G mode                                    │
 Wave 4 (prove + adopt):                                                    │
-  D/T10 UERANSIM ✅ (bundled profile)      E1 reconcile   E2 scenarios ──> E3 CI
+  D/T10 UERANSIM ✅ (bundled profile)      E1 reconcile ✅   E2 scenarios ──> E3 CI
 ```
 
 **Critical path to the D11 "5G-leading v1":** A1 → A2 → A4 → C1 → T10 is complete for
@@ -358,7 +358,7 @@ validation are complete. Active execution moved to `docs/next-phases-plan.md`.
 | C2 5G simulator (T8) | D10, §7 | M | ✅ credibility-gate slice runtime-proven and merged |
 | C3 dashboard 5G (T9) | §7, §8 | M | ✅ credibility-gate slice runtime-proven and merged; broader UDR/operator detail deferred |
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ✅ bundled UERANSIM profile validated (`27115478758`) |
-| E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ☐ |
+| E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ✅ P2.2 — dashboard/API reconciliation shipped |
 | E2 scenario authoring | §7 Step 7 | S–M | ☐ |
 | E3 CI hooks | §7 Step 8 | M | ☐ |
 

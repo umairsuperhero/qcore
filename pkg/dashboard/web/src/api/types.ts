@@ -88,8 +88,26 @@ export interface RANConfig {
     ki: string;
     opc: string;
     amf: string;
+    apn?: string;
   };
   config_snippet: Record<string, string>;
+}
+
+export interface RANConfigMismatch {
+  field: string;
+  ran_value: string;
+  core_value: string;
+  cause: string;
+  fix: string;
+  severity: "error" | "warn" | string;
+}
+
+export interface RANReconcileResult {
+  ok: boolean;
+  summary: string;
+  mismatches: RANConfigMismatch[] | null;
+  normalized: Record<string, unknown>;
+  core?: Record<string, string>;
 }
 
 export interface DiagnosticResult {

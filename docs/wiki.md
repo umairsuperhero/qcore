@@ -2,7 +2,7 @@
 
 > Living reference. Refreshed at the end of each build session, on every milestone,
 > and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 >
 > **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` / `AGENTS.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/next-phases-plan.md` (active post-v1 executable plan). `docs/v1-gap-closure-plan.md` is retained as the historical v1 plan.
 
@@ -48,6 +48,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel), and validated by UERANSIM UE ping over `uesimtun0` through UPF. | ✅ Shipped for bundled UERANSIM profile |
 | Phase C — Diagnostic AI (catalog) | `pkg/ai/catalog.go`: 28 symptom→cause rules, including 9 UERANSIM/T10 interop-finding rules, across ≥9 cause categories (4G + 5G) + optional Gemini escalation; wired to the dashboard diagnose endpoint. | ✅ Shipped (catalog) |
 | Phase C — Diagnostic AI (offline SLM) | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF); catalog runs first, SLM handles misses over the same grounded prompt. Live-validated with real GGUF, dashboard diagnostics API replay, and an internal-network air-gap smoke test. | ✅ Shipped |
+| Phase C — RAN/device config reconciliation | `pkg/diag/reconcile.go`, `POST /api/ran-config/reconcile`, and the dashboard "Check my RAN config" panel compare UERANSIM gNB/UE YAML against AMF/subscriber config and report PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki, OPc/OP, DNN, and SUCI-scheme mismatches before attach. Runtime-proven with a gNB PLMN `001/02` mismatch against QCore `001/01`. | ✅ Shipped |
 | **Interop hardening (I1–I4 / D-1…D-4)** | D-1 PLMN codec (`pkg/ident`) · D-2 NRF register/discover · D-3 real SUCI + genuine unprovisioned-IMSI reject · D-4 N11 AMF→SMF (E2E no longer fakes the SMF call). All merged to main. | ✅ Complete |
 | Dashboard experience layer | gNB-connection hero screen (Gate 1) + animated live signaling-trace view with progressive disclosure. | ✅ Shipped |
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
@@ -64,6 +65,8 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 > UERANSIM Docker/cloud-Linux profile by GitHub Actions run `27115478758`. Broader
 > RAN/device compatibility still needs target-specific replay evidence before being
 > claimed.
+> 2026-06-14 P2.2 replay proves the dashboard/API can catch a deliberate gNB PLMN
+> mismatch before attach through the real reconciliation endpoint.
 
 ---
 
@@ -171,7 +174,8 @@ complete, T8/T9 C2/C3 credibility-gate UX is runtime-proven, and T10 proves regi
 PDU session, and UE ping over `uesimtun0`. The active work is no longer 5G protocol
 build-out; it is the post-v1 proof/adoption plan in `docs/next-phases-plan.md`:
 TTFC/TTRC measurement, B2 live offline-SLM validation, and real-failure catalog rules are
-complete; next is RAN/device config reconciliation. Long-term decisions behind I1–I4 are recorded in
+complete; RAN/device config reconciliation is shipped. The next critical path is workflow
+adoption, starting with scenario authoring. Long-term decisions behind I1–I4 are recorded in
 `docs/audit-v1.0.md` §4 (D-1…D-4).
 
 Latest P1.1 measurement, 2026-06-13 (`measurements/latest.json`): cold compose start to

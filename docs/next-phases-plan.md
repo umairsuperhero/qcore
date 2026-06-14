@@ -11,11 +11,11 @@
 > (living audit), `docs/3gpp-tracking.md` (interop status), `docs/ueransim-compat.md`
 > (T10 evidence).
 >
-> Last updated: 2026-06-13.
+> Last updated: 2026-06-14.
 
 ## Current verified baseline (read before starting)
 
-As of 2026-06-13, `main` is green: `go build ./...`, `go vet ./...`, `go test -race ./...`
+As of 2026-06-14, `main` is green: `go build ./...`, `go vet ./...`, `go test -race ./...`
 pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub Actions
 `CI` **and** `ueransim-interop` are green on `main`. Shipped and validated:
 
@@ -31,9 +31,13 @@ pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub 
 - **Dashboard C2/C3 credibility gate runtime-proven** (audit v1.16): hero 4G/5G selector,
   backend-driven simulator happy/failure runs, real `/api/events/stream` SSE in Live
   Trace, real Diagnostic AI report on `wrong_ki`. ✅.
+- **RAN/device config reconciliation (P2.2)**: `POST /api/ran-config/reconcile` and the
+  dashboard "Check my RAN config" panel compare UERANSIM gNB/UE YAML against QCore
+  AMF/subscriber config and report PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki,
+  OPc/OP, DNN, and SUCI-scheme mismatches before attach. ✅.
 
 **The v1 5G-SA-leading thesis is achieved.** What remains is: prove the promised numbers,
-deepen the AI moat, drive workflow adoption, and broaden real-RAN demand-first.
+drive workflow adoption, and broaden real-RAN demand-first.
 
 ## Guardrails (non-negotiable — same as CLAUDE.md/AGENTS.md)
 
@@ -148,6 +152,12 @@ symptom → cause → fix, grounded in observable events.
 **Verify.** Docker `go test -race ./pkg/ai/...`; `make verify-fast`.
 
 ### P2.2 — RAN/device config reconciliation (E1) · branch `codex/e1-ran-reconciliation` · effort **M**
+**Status.** ✅ Complete on 2026-06-14 for the dashboard/API credibility slice. Added
+`pkg/diag/reconcile.go`, `POST /api/ran-config/reconcile`, and the dashboard "Check my
+RAN config" panel. The runtime check deliberately changed the gNB PLMN to `001/02`; the
+dashboard reported `gnb.plmn` / `plmn_mismatch`, showed QCore's expected `001/01`, and
+gave a before-attach fix.
+
 **Why.** Most real failures are config mismatches — PLMN, TAC, S-NSSAI, Ki/OPc, SUCI
 scheme — exactly what bit us repeatedly. Comparing the gNB/UE config against the core and
 explaining the mismatch is the single highest-value diagnostic feature.
@@ -213,10 +223,10 @@ NOW (parallel):
 
 THEN (the moat):
   ├─ P2.1 Catalog ← real failures codex/catalog-real-failures ✅
-  └─ P2.2 E1 reconciliation       codex/e1-ran-reconciliation ⭐ next highest-value diag feature
+  └─ P2.2 E1 reconciliation       codex/e1-ran-reconciliation ✅
 
 THEN (adoption, by user pull):
-  └─ P3.1 E2 → P3.2 E3 → P3.3 Learning Mode
+  └─ P3.1 E2 scenario authoring ⭐ next → P3.2 E3 → P3.3 Learning Mode
 
 DEMAND-DRIVEN (only when a target needs it):
   └─ P4.1 SUCI Profile A/B → P4.2 per-target replay
@@ -226,8 +236,8 @@ DEMAND-DRIVEN (only when a target needs it):
 
 1. **Phase 1:** TTFC/TTRC measured + in README (targets met or gap documented); B2 offline
    + air-gapped explanation proven. Every AI/metric ✅ is evidence-backed.
-2. **Phase 2:** real interop failures are diagnosable catalog rules; next, config reconciliation
-   reports a deliberately-mismatched gNB/UE config with the fix.
+2. **Phase 2:** real interop failures are diagnosable catalog rules, and config
+   reconciliation reports a deliberately-mismatched gNB/UE config with the fix.
 3. **Phase 3:** a user can author + replay a scenario and wire it into CI.
 4. **Phase 4:** at least one real-device (Profile A/B) or non-UERANSIM target validated,
    with per-target evidence — not a blanket claim.

@@ -12,6 +12,7 @@ import {
   Play
 } from "lucide-react";
 import { useConnectionStore } from "../stores/connectionStore";
+import RANConfigCheckPanel from "./RANConfigCheckPanel";
 
 interface GNBHeroScreenProps {
   onRegisterUE: () => void;
@@ -29,6 +30,7 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
   const connection = useConnectionStore((s) => s.connection);
   const loading = useConnectionStore((s) => s.loading);
   const mode = useConnectionStore((s) => s.mode);
+  const config = useConnectionStore((s) => s.config);
   const setMode = useConnectionStore((s) => s.setMode);
   const startSimulator = useConnectionStore((s) => s.startSimulator);
   const streaming = useConnectionStore((s) => s.traceState.streaming);
@@ -379,6 +381,7 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
           ))}
         </div>
       </div>
+      <RANConfigCheckPanel config={config} />
     </div>
   );
 }
