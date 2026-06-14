@@ -124,6 +124,7 @@ services:
       QCORE_AMF_SCTP_MODE: ${QCORE_AMF_SCTP_MODE:-sctp}
       QCORE_DASHBOARD_SPGW_URL: http://spgw:8082
       QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
+      QCORE_DASHBOARD_SCENARIO_DIR: /var/lib/qcore/scenarios
       QCORE_LOGGING_FORMAT: json
       # Diagnostic AI backend. Default is the offline SLM sidecar (no key); it
       # only escalates to a model after the deterministic catalog misses, and if

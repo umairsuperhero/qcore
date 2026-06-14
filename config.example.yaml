@@ -110,3 +110,4 @@ dashboard:
   amf_ngap_addr: "localhost:38412"   # built-in 5G simulator target
   spgw_url: "http://localhost:8082"
   collector_url: "http://localhost:9099"
+  scenario_dir: "scenarios"          # file-backed authored scenario store

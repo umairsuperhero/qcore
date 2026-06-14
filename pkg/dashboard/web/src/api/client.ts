@@ -6,6 +6,9 @@ import type {
   RANReconcileResult,
   SimulatorStatus,
   DiagnosticResult,
+  ScenarioRecord,
+  ScenarioRunResult,
+  ScenarioSummary,
 } from "./types";
 
 async function jsonGet<T>(path: string): Promise<T> {
@@ -63,6 +66,21 @@ export const api = {
       if (!r.ok) throw new Error("Failed to run custom scenario");
       return r.json() as Promise<SimulatorStatus>;
     }),
+  listScenarios: () => jsonGet<ScenarioSummary[]>("/api/scenarios"),
+  getScenario: (name: string) => jsonGet<ScenarioRecord>(`/api/scenarios/${encodeURIComponent(name)}`),
+  saveScenario: (yamlContent: string) =>
+    fetch("/api/scenarios", {
+      method: "POST",
+      headers: { "Content-Type": "application/yaml" },
+      body: yamlContent,
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(await r.text());
+      return r.json() as Promise<ScenarioRecord>;
+    }),
+  deleteScenario: (name: string) =>
+    jsonSend<unknown>("DELETE", `/api/scenarios/${encodeURIComponent(name)}`),
+  runScenario: (name: string) =>
+    jsonSend<ScenarioRunResult>("POST", `/api/scenarios/${encodeURIComponent(name)}/run`),
 
   diagnoseJourney: (journeyID: string) =>
     jsonGet<DiagnosticResult>(`/api/diagnostics/journey/${journeyID}`),

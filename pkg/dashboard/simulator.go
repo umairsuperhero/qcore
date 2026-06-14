@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -30,12 +31,15 @@ type SimulatorStatus struct {
 	State        SimulatorState `json:"state"`
 	LastJourney  string         `json:"last_journey,omitempty"`
 	LastScenario string         `json:"last_scenario,omitempty"` // empty for normal start
+	LastCause    string         `json:"last_cause,omitempty"`
 	LastError    string         `json:"last_error,omitempty"`
 	FailedStep   string         `json:"failed_step,omitempty"`
 	Mode         string         `json:"mode,omitempty"`
 	StartedAt    *time.Time     `json:"started_at,omitempty"`
 	EndedAt      *time.Time     `json:"ended_at,omitempty"`
 }
+
+var ErrSimulatorBusy = errors.New("simulator is already running")
 
 // SimulatorController owns the built-in simulator. It serializes Start /
 // Inject calls (one attach at a time) and updates SimulatorStatus from the
@@ -75,17 +79,36 @@ func (c *SimulatorController) Status() SimulatorStatus {
 
 // Start kicks off a happy-path attach.
 func (c *SimulatorController) Start(mode string) {
-	c.run(mode, "", nil)
+	_ = c.run(mode, "", nil)
 }
 
 // Inject kicks off an attach with the named error-injection scenario.
 func (c *SimulatorController) Inject(mode, scenario string) {
-	c.run(mode, scenario, nil)
+	_ = c.run(mode, scenario, nil)
 }
 
 // RunCustom kicks off an attach with a custom YAML scenario definition.
 func (c *SimulatorController) RunCustom(def *simulator.ScenarioDefinition) {
-	c.run(def.Mode, "custom", def)
+	_ = c.run(def.Mode, def.Scenario, def)
+}
+
+func (c *SimulatorController) RunCustomAndWait(ctx context.Context, def *simulator.ScenarioDefinition) (SimulatorStatus, error) {
+	if !c.run(def.Mode, def.Scenario, def) {
+		return c.Status(), ErrSimulatorBusy
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		status := c.Status()
+		if status.State == SimulatorSuccess || status.State == SimulatorFailed {
+			return status, nil
+		}
+		select {
+		case <-ctx.Done():
+			return c.Status(), ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // Stop is a no-op in B4: each attach runs to completion in seconds. We keep
@@ -110,7 +133,7 @@ func (c *SimulatorController) templateForMode(mode string) simulator.Options {
 	return c.template4G
 }
 
-func (c *SimulatorController) run(mode, scenario string, customDef *simulator.ScenarioDefinition) {
+func (c *SimulatorController) run(mode, scenario string, customDef *simulator.ScenarioDefinition) bool {
 	selectedMode := mode
 	if selectedMode == "" {
 		selectedMode = "4g"
@@ -119,7 +142,7 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 	c.mu.Lock()
 	if c.status.State == SimulatorRunning {
 		c.mu.Unlock()
-		return
+		return false
 	}
 	now := time.Now().UTC()
 	scenarioName := scenario
@@ -129,6 +152,7 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 	c.status = SimulatorStatus{
 		State:        SimulatorRunning,
 		LastScenario: scenarioName,
+		LastCause:    "",
 		Mode:         selectedMode,
 		StartedAt:    &now,
 	}
@@ -144,7 +168,10 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 				c.mu.Lock()
 				defer c.mu.Unlock()
 				c.status.State = SimulatorFailed
+				c.status.LastCause = "scenario_validation"
 				c.status.LastError = err.Error()
+				ended := time.Now().UTC()
+				c.status.EndedAt = &ended
 				return
 			}
 			if opts.Mode != "" {
@@ -168,11 +195,16 @@ func (c *SimulatorController) run(mode, scenario string, customDef *simulator.Sc
 		} else {
 			c.status.State = SimulatorFailed
 			c.status.FailedStep = res.FailedStep
+			c.status.LastCause = opts.Scenario
+			if c.status.LastCause == "" {
+				c.status.LastCause = res.FailedStep
+			}
 			if res.Err != nil {
 				c.status.LastError = res.Err.Error()
 			}
 		}
 	}()
+	return true
 }
 
 // --- HTTP handlers ---
