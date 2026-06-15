@@ -190,6 +190,8 @@ Author + replay failure/feature scenarios. Users save/list/run scenarios via
 vet + `test -race` + frontend `tsc`/`vite build` green. See audit v1.22.
 
 ### P3.2 — CI hooks (E3) · branch `codex/e3-ci-hooks` · effort **M**
+**Status.** ✅ Complete on 2026-06-15. Added `POST /api/scenarios/run` for direct, stateless scenario execution that fully evaluates `Expect` contracts. Updated `qcore-cli test run` to use this endpoint synchronously, properly exiting with `0` for passing scenarios and `1` for failing ones. Added `--json` flag to emit machine-readable results.
+
 Productize the `ueransim-interop` pattern so users run QCore scenarios in *their* CI
 (a documented GitHub Action / CLI exit-code contract). Acceptance: a scenario run returns
 a CI-usable exit code + machine-readable result; documented.
@@ -230,7 +232,7 @@ THEN (the moat):
   └─ P2.2 E1 reconciliation       codex/e1-ran-reconciliation ✅
 
 THEN (adoption, by user pull):
-  └─ P3.1 E2 scenario authoring ⭐ next → P3.2 E3 → P3.3 Learning Mode
+  └─ P3.1 E2 scenario authoring ✅ → P3.2 E3 CI hooks ✅ → P3.3 Learning Mode
 
 DEMAND-DRIVEN (only when a target needs it):
   └─ P4.1 SUCI Profile A/B → P4.2 per-target replay

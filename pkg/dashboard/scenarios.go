@@ -95,6 +95,30 @@ func (s *Server) handleScenarioRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, CompareScenarioOutcome(rec.Definition, status))
 }
 
+func (s *Server) handleScenarioRunDirect(w http.ResponseWriter, r *http.Request) {
+	def, err := readScenarioDefinition(w, r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	status, err := s.runScenario(ctx, def)
+	if err != nil {
+		code := http.StatusInternalServerError
+		if errors.Is(err, ErrSimulatorBusy) {
+			code = http.StatusConflict
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			code = http.StatusGatewayTimeout
+		}
+		writeJSON(w, code, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, CompareScenarioOutcome(def, status))
+}
+
 func readScenarioDefinition(w http.ResponseWriter, r *http.Request) (*simulator.ScenarioDefinition, error) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {

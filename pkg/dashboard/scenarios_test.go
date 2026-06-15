@@ -114,3 +114,39 @@ expect:
 		t.Fatalf("delete status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestScenarioHTTPRunDirect(t *testing.T) {
+	srv := &Server{
+		scenarioRunHook: func(ctx context.Context, def *simulator.ScenarioDefinition) (SimulatorStatus, error) {
+			return SimulatorStatus{
+				State:       SimulatorFailed,
+				LastJourney: "j-direct",
+				LastCause:   def.Scenario,
+				FailedStep:  "security_mode_command",
+			}, nil
+		},
+	}
+
+	body := []byte(`
+name: direct_check
+mode: 5g
+scenario: wrong_ki
+expect:
+  result: failure
+  cause: wrong_ki
+  failed_step: security_mode_command
+`)
+	req := httptest.NewRequest(http.MethodPost, "/api/scenarios/run", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.handleScenarioRunDirect(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("run status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var result ScenarioRunResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if result.Pass == nil || !*result.Pass || result.JourneyID != "j-direct" {
+		t.Fatalf("unexpected run result: %+v", result)
+	}
+}
