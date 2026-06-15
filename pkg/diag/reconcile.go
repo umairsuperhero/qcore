@@ -208,9 +208,9 @@ func ReconcileConfig(in ReconcileInput, core ReconcileCore) ReconcileResult {
 			"Set the UE session APN/DNN to "+core.DefaultDNN+", which is QCore's default served DNN.", "warn")
 	}
 
-	if scheme := normalizeScheme(in.SUCIProtectionScheme); scheme != "" && scheme != "0" && scheme != "null" {
-		add("ue.suci_protection_scheme", in.SUCIProtectionScheme, "0/null-scheme", CauseSUCIDecodeFailure,
-			"QCore supports null-scheme SUCI only today. Set UERANSIM protectionScheme to 0, or track SUCI Profile A/B as a separate roadmap item.", "error")
+	if scheme := normalizeScheme(in.SUCIProtectionScheme); scheme != "" && scheme != "0" && scheme != "null" && scheme != "1" && scheme != "2" {
+		add("ue.suci_protection_scheme", in.SUCIProtectionScheme, "0/null-scheme, 1/Profile A, or 2/Profile B", CauseSUCIDecodeFailure,
+			"Set UERANSIM protectionScheme to 0, 1, or 2. For Profile A/B, make sure homeNetworkPublicKeyId matches a configured UDM sidf_keys entry.", "error")
 	}
 
 	if len(mismatches) == 0 {

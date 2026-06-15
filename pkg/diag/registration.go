@@ -276,16 +276,14 @@ func applyRegistrationRule(cause, supi, suci, detail string) RegistrationResult 
 			Explanation: fmt.Sprintf(
 				"QCore could not decode the UE's mobile identity (SUCI)%s. "+
 					"Raw identity: %s. "+
-					"QCore currently supports only null-scheme SUCI (protection scheme 0). "+
-					"ECIES-protected SUCI (schemes 1 and 2) is not yet implemented.",
+					"QCore supports null-scheme SUCI plus ECIES Profile A/B for IMSI-based SUCI, "+
+					"but de-concealment requires a matching UDM SIDF private key and a valid MAC.",
 				scheme, identity,
 			),
-			FixUESide: "Configure the UE or SIM to use null-scheme SUCI (protection scheme 0). " +
-				"On UERANSIM: set protectionScheme: 0 in ue.yaml. " +
-				"On a real SIM, the protection scheme is programmed at SIM personalisation time.",
-			FixQCoreSide: "SUCI with ECIES protection (schemes 1+2) is a planned feature. " +
-				"For now, all test SIMs must be provisioned with null-scheme SUCI. " +
-				"See docs/v1-gap-closure-plan.md item D-3 for the ECIES roadmap.",
+			FixUESide: "Use protectionScheme 0, 1, or 2. For UERANSIM Profile A/B, set homeNetworkPublicKey " +
+				"and homeNetworkPublicKeyId to the public key and ID that QCore is configured to de-conceal.",
+			FixQCoreSide: "Configure udm.sidf_keys with the matching Home Network private key and key ID. " +
+				"If the MAC failed, verify the UE public key, key ID, protection scheme, and SIM/SUPI values.",
 		}
 
 	default:

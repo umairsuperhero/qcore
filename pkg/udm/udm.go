@@ -12,6 +12,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/sbi/common"
 	"github.com/qcore-project/qcore/pkg/subscriber"
+	"github.com/qcore-project/qcore/pkg/suci"
 )
 
 // AmDataSource is what UDM needs to serve Nudm_SDM am-data. Two impls
@@ -87,6 +88,7 @@ type Service struct {
 	log     logger.Logger
 	mux     *http.ServeMux
 	emitter events.Emitter
+	sidf    *suci.Resolver
 }
 
 // NewService wires a UDM over the given AmDataSource. For direct mode
@@ -105,6 +107,12 @@ func NewService(source AmDataSource, log logger.Logger) *Service {
 // SetEmitter attaches a structured event emitter.
 func (s *Service) SetEmitter(e events.Emitter) { s.emitter = e }
 
+// WithSIDFResolver attaches SUCI Profile A/B de-concealment keys.
+func (s *Service) WithSIDFResolver(resolver *suci.Resolver) *Service {
+	s.sidf = resolver
+	return s
+}
+
 // Handler returns the raw mux so pkg/sbi (or a test harness) can wrap it
 // with its own middleware chain.
 func (s *Service) Handler() http.Handler {
@@ -120,7 +128,12 @@ func (s *Service) registerRoutes() {
 // for a UE identified by SUPI. Delegates to the configured AmDataSource
 // and maps typed errors to RFC 7807 responses.
 func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
-	supi := r.PathValue("supi")
+	rawSupi := r.PathValue("supi")
+	supi, err := s.resolveSupi(rawSupi)
+	if err != nil {
+		writeSupiProblem(w, err)
+		return
+	}
 	resp, err := s.source.GetAmData(r.Context(), supi)
 	if err != nil {
 		switch {
@@ -147,6 +160,47 @@ func (s *Service) getAmData(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Service) resolveSupi(supiOrSuci string) (string, error) {
+	if strings.HasPrefix(supiOrSuci, "imsi-") {
+		if _, err := parseIMSISupi(supiOrSuci); err != nil {
+			return "", err
+		}
+		return supiOrSuci, nil
+	}
+	if strings.HasPrefix(supiOrSuci, "suci-") {
+		return s.sidf.ResolveSUCIHex(supiOrSuci)
+	}
+	return "", badSupi("only imsi-<IMSI> SUPIs or suci-<hex> identifiers are supported; got " + supiOrSuci)
+}
+
+func writeSupiProblem(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, suci.ErrMACVerification):
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusForbidden,
+			Title:  "Forbidden",
+			Detail: err.Error(),
+			Cause:  "MAC_S_FAILURE",
+		})
+	case errors.Is(err, suci.ErrUnknownKey):
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusForbidden,
+			Title:  "Forbidden",
+			Detail: err.Error(),
+			Cause:  "UNKNOWN_HN_PUBLIC_KEY_ID",
+		})
+	case errors.Is(err, suci.ErrUnsupported), errors.Is(err, suci.ErrMalformed), errors.Is(err, ErrBadSupi):
+		sbi.WriteProblem(w, &sbi.ProblemDetails{
+			Status: http.StatusBadRequest,
+			Title:  "Bad Request",
+			Detail: err.Error(),
+			Cause:  "MANDATORY_IE_INCORRECT",
+		})
+	default:
+		sbi.WriteProblem(w, sbi.InternalError("SUPI/SUCI resolution failed"))
+	}
 }
 
 // parseIMSISupi accepts a SUPI in the "imsi-<15 digits>" form and returns

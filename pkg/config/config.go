@@ -44,11 +44,21 @@ type UDRConfig struct {
 // UDMConfig is the 5G Unified Data Management (TS 29.503).
 // Reads from UDR for network-mode deployments; direct-DB for dev.
 type UDMConfig struct {
-	BindAddress string `mapstructure:"bind_address"`
-	Port        int    `mapstructure:"port"`
-	NRFURL      string `mapstructure:"nrf_url"`
-	UDRURL      string `mapstructure:"udr_url"` // empty = direct-DB mode
-	PLMN        string `mapstructure:"plmn"`    // serving PLMN for UDR URL construction
+	BindAddress string          `mapstructure:"bind_address"`
+	Port        int             `mapstructure:"port"`
+	NRFURL      string          `mapstructure:"nrf_url"`
+	UDRURL      string          `mapstructure:"udr_url"` // empty = direct-DB mode
+	PLMN        string          `mapstructure:"plmn"`    // serving PLMN for UDR URL construction
+	SIDFKeys    []SIDFKeyConfig `mapstructure:"sidf_keys"`
+}
+
+// SIDFKeyConfig configures a Home Network private key for SUCI de-concealment.
+// These are demo/dev keys by default; production deployments should override
+// them with operator-owned material and never log or expose the private key.
+type SIDFKeyConfig struct {
+	ID            uint8  `mapstructure:"id"`
+	Scheme        uint8  `mapstructure:"scheme"`
+	PrivateKeyHex string `mapstructure:"private_key_hex"`
 }
 
 // AUSFConfig is the 5G Authentication Server Function (TS 29.509).
@@ -245,6 +255,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("udm.nrf_url", "http://localhost:8083")
 	v.SetDefault("udm.udr_url", "")
 	v.SetDefault("udm.plmn", "00101")
+	v.SetDefault("udm.sidf_keys", []map[string]interface{}{
+		{
+			"id":              1,
+			"scheme":          1,
+			"private_key_hex": "c53c22208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d",
+		},
+	})
 
 	v.SetDefault("ausf.bind_address", "0.0.0.0")
 	v.SetDefault("ausf.port", 8086)

@@ -66,6 +66,23 @@ func TestValidate_DefaultsPass(t *testing.T) {
 	}
 }
 
+func TestLoad_DefaultSIDFKey(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load defaults: %v", err)
+	}
+	if len(cfg.UDM.SIDFKeys) != 1 {
+		t.Fatalf("default UDM SIDF keys: got %d, want 1", len(cfg.UDM.SIDFKeys))
+	}
+	key := cfg.UDM.SIDFKeys[0]
+	if key.ID != 1 || key.Scheme != 1 {
+		t.Fatalf("default SIDF key metadata: got id=%d scheme=%d, want id=1 scheme=1", key.ID, key.Scheme)
+	}
+	if key.PrivateKeyHex == "" {
+		t.Fatal("default SIDF private key hex must not be empty")
+	}
+}
+
 func TestValidate_FieldErrors(t *testing.T) {
 	type tc struct {
 		name   string

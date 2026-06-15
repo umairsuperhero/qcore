@@ -15,6 +15,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/sbi"
 	nrfclient "github.com/qcore-project/qcore/pkg/sbi/nrf"
 	"github.com/qcore-project/qcore/pkg/subscriber"
+	"github.com/qcore-project/qcore/pkg/suci"
 	"github.com/qcore-project/qcore/pkg/udm"
 	"github.com/qcore-project/qcore/pkg/udr"
 	"github.com/spf13/cobra"
@@ -72,13 +73,17 @@ func runServer() error {
 	log.Info("Starting QCore UDM")
 
 	var udmSvc *udm.Service
+	sidfResolver, err := buildSIDFResolver(cfg.UDM.SIDFKeys)
+	if err != nil {
+		return err
+	}
 
 	if cfg.UDM.UDRURL != "" {
 		// Network mode: fetch subscriber data from UDR over SBI.
 		udrCli := udr.NewClient(cfg.UDM.UDRURL, "UDM", false)
 		amSrc := udm.NewUDRSource(udrCli, cfg.UDM.PLMN)
 		authSrc := udm.NewUDRAuthSource(udrCli)
-		udmSvc = udm.NewService(amSrc, log).WithAuthSource(authSrc)
+		udmSvc = udm.NewService(amSrc, log).WithSIDFResolver(sidfResolver).WithAuthSource(authSrc)
 		log.Infof("UDM using UDR backend at %s", cfg.UDM.UDRURL)
 	} else {
 		// Direct mode: read subscriber database directly (dev/single-node).
@@ -95,9 +100,10 @@ func runServer() error {
 		}
 		amSrc := udm.NewStoreSource(subsvc)
 		authSrc := udm.NewStoreAuthSource(subsvc)
-		udmSvc = udm.NewService(amSrc, log).WithAuthSource(authSrc)
+		udmSvc = udm.NewService(amSrc, log).WithSIDFResolver(sidfResolver).WithAuthSource(authSrc)
 		log.Info("UDM using direct database backend")
 	}
+	udmSvc.SetEmitter(events.New(cfg.Telemetry.CollectorURL, "udm", log))
 
 	mux := http.NewServeMux()
 	mux.Handle("/", udmSvc.Handler())
@@ -179,4 +185,24 @@ func resetDemoSubscriberIfRequested(ctx context.Context, service *subscriber.Ser
 	}
 	log.Infof("Reset demo subscriber (IMSI=%s) for UDM direct-mode auth.", demo.IMSI)
 	return nil
+}
+
+func buildSIDFResolver(cfgKeys []config.SIDFKeyConfig) (*suci.Resolver, error) {
+	keys := make([]suci.HomeNetworkPrivateKey, 0, len(cfgKeys))
+	for _, cfgKey := range cfgKeys {
+		priv, err := suci.ParsePrivateKeyHex(cfgKey.Scheme, cfgKey.PrivateKeyHex)
+		if err != nil {
+			return nil, fmt.Errorf("loading UDM SIDF key id %d scheme %d: %w", cfgKey.ID, cfgKey.Scheme, err)
+		}
+		keys = append(keys, suci.HomeNetworkPrivateKey{
+			ID:         cfgKey.ID,
+			Scheme:     cfgKey.Scheme,
+			PrivateKey: priv,
+		})
+	}
+	resolver, err := suci.NewResolver(keys)
+	if err != nil {
+		return nil, fmt.Errorf("building UDM SIDF resolver: %w", err)
+	}
+	return resolver, nil
 }

@@ -203,6 +203,10 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 				Detail: "UDM rejected SUPI",
 				Cause:  "MANDATORY_IE_INCORRECT",
 			})
+		case isProblemStatus(err, http.StatusForbidden):
+			var pd *sbi.ProblemDetails
+			_ = errors.As(err, &pd)
+			sbi.WriteProblem(w, pd)
 		default:
 			s.log.WithError(err).Error("ausf: UDM call failed")
 			sbi.WriteProblem(w, sbi.InternalError("UDM generate-auth-data failed"))
@@ -278,6 +282,14 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Location", href)
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func isProblemStatus(err error, status int) bool {
+	var pd *sbi.ProblemDetails
+	if errors.As(err, &pd) {
+		return pd.Status == status
+	}
+	return false
 }
 
 // putConfirm — TS 29.509 §5.2.2.2.3. Compares RES* from the UE (via AMF)

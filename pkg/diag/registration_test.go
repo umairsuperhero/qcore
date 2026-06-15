@@ -250,12 +250,11 @@ func TestDiagnoseRegistration_SUCIDecodeFailure(t *testing.T) {
 	if res.Cause != CauseSUCIDecodeFailure {
 		t.Errorf("cause: got %q, want %q", res.Cause, CauseSUCIDecodeFailure)
 	}
-	// Must mention null-scheme as the fix.
-	if !strings.Contains(strings.ToLower(res.FixUESide), "null") {
-		t.Errorf("UE fix should mention null-scheme: %s", res.FixUESide)
+	if !strings.Contains(strings.ToLower(res.Explanation), "profile a/b") {
+		t.Errorf("explanation should mention Profile A/B support: %s", res.Explanation)
 	}
-	if !strings.Contains(strings.ToLower(res.FixUESide), "0") {
-		t.Errorf("UE fix should mention scheme 0: %s", res.FixUESide)
+	if !strings.Contains(strings.ToLower(res.FixQCoreSide), "sidf") {
+		t.Errorf("QCore fix should mention SIDF key configuration: %s", res.FixQCoreSide)
 	}
 }
 

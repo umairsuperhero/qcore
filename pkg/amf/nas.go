@@ -87,50 +87,9 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	ue.SUCI = req.MobileIdentity
 	ue.UESecCaps = req.UESecurityCapability
 
-	// Detect and reject non-null-scheme SUCI (unsupported protection scheme).
-	// The byte layout is: [identity-type(1)] [PLMN(3)] [RI(2)] [scheme(1)] [PKID(1)] [MSIN...]
-	// A zero protection scheme byte means null-scheme.
-	if len(req.MobileIdentity) >= 7 && (req.MobileIdentity[0]&0x07) == 0x01 {
-		scheme := req.MobileIdentity[6] & 0x0F
-		if scheme != 0x00 {
-			rawHex := hex.EncodeToString(req.MobileIdentity)
-			s.log.WithField("scheme", scheme).Warn("amf: unsupported SUCI protection scheme")
-			s.emitter.Emit(events.Event{
-				JourneyID: ue.JourneyID,
-				NF:        "amf",
-				Category:  events.ErrorEvent,
-				Severity:  events.SeverityError,
-				Protocol:  "nas5g",
-				Message:   "Registration Reject: unsupported SUCI protection scheme",
-				Payload: events.SUCIDecodeFailurePayload{
-					RawIdentity: rawHex,
-					Reason:      "unsupported_protection_scheme",
-					Scheme:      scheme,
-				},
-			})
-			// Also emit RegistrationFailurePayload so diag layer can match on it.
-			s.emitter.Emit(events.Event{
-				JourneyID: ue.JourneyID,
-				NF:        "amf",
-				Category:  events.ErrorEvent,
-				Severity:  events.SeverityError,
-				Protocol:  "nas5g",
-				Message:   "Registration failed",
-				Payload: events.RegistrationFailurePayload{
-					SUCI:   rawHex,
-					Cause:  diag.CauseSUCIDecodeFailure,
-					Detail: fmt.Sprintf("protection scheme %d not supported", scheme),
-				},
-			})
-			reject := nas5g.EncodeRegistrationReject(nas5g.Cause5GMM5GSServicesNotAllowed)
-			_ = ue.gNB.sendDownlinkNAS(ue, reject)
-			return nil
-		}
-	}
-
 	// Build a SUPI or SUCI string for AUSF.
 	// For null-scheme SUCI (protection scheme=0), the SUPI is recoverable as "imsi-<MSIN>".
-	// For real deployments, SUCI would be sent as-is to AUSF which resolves it via SIDF.
+	// For concealed SUCI, pass the full SUCI IE to AUSF/UDM; the SIDF lives in UDM.
 	supiOrSuci := s.suciToString(ue.SUCI)
 	if supiOrSuci == "" && ue.SUPI != "" {
 		// UERANSIM re-registers with the 5G-GUTI QCore assigned during the
