@@ -255,6 +255,8 @@ services:
         condition: service_healthy
       nrf:
         condition: service_healthy
+      collector:
+        condition: service_healthy
     environment:
       QCORE_AMF_BIND_ADDRESS: 0.0.0.0
       QCORE_AMF_NGAP_PORT: "38412"
@@ -267,6 +269,7 @@ services:
       QCORE_AMF_SMF_URL: http://smf:8002
       QCORE_AMF_AMF_INSTANCE_ID: "00000000-0000-0000-0000-000000000001"
       QCORE_AMF_TRACE_NGAP_HEX: ${QCORE_AMF_TRACE_NGAP_HEX:-false}
+      QCORE_TELEMETRY_COLLECTOR_URL: http://collector:9099
       QCORE_LOGGING_FORMAT: json
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8087/health"]

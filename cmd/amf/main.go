@@ -141,6 +141,7 @@ func runServer() error {
 
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := amf.NewService(amfCfg, ausfCli, log)
+	amfSvc.SetEmitter(events.New(cfg.Telemetry.CollectorURL, "amf", log))
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

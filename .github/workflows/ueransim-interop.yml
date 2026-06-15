@@ -158,6 +158,9 @@ jobs:
             exit 1
           fi
 
+      - name: Validate — SQN resync recovers a live UERANSIM UE
+        run: bash scripts/ci/ueransim-sqn-resync.sh
+
       - name: Capture logs and crash evidence (always)
         if: always()
         run: |
@@ -183,7 +186,7 @@ jobs:
           $COMPOSE logs --no-color ueransim-ue 2>&1 | tee artifacts/ueransim/ueransim-ue.log | tail -240 || true
           {
             echo "===== key lines ====="
-            grep -RInE "reached_smc=|pdu_accept=|pdu_session=|ping_ok=|T10 DATA PLANE PASS|PDU SESSION ESTABLISHED BUT DATA PLANE FAILED|InitialContextSetup confirmed|PDU Session Resource Setup confirmed|Updated UPF remote gNB tunnel|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|PDU Session Establishment Accept|PDU Session establishment is successful|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|uesimtun|Failed to create Linux TUN|DummyEgress|Session missing remote gNB|Received uplink GTP-U for unknown TEID|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
+            grep -RInE "reached_smc=|pdu_accept=|pdu_session=|ping_ok=|T10 DATA PLANE PASS|T10 SQN RESYNC PASS|sqn_failure=|amf: attempting SQN resynchronization|Authentication Request sent \\(Resync\\)|Authentication Failure.*SQN|SQN out of range|Synch|AUTS|PDU SESSION ESTABLISHED BUT DATA PLANE FAILED|InitialContextSetup confirmed|PDU Session Resource Setup confirmed|Updated UPF remote gNB tunnel|Initial Context Setup Request received|Initial Registration is successful|MM-REGISTERED|Sending PDU Session Establishment Request|PDU Session Establishment Accept|PDU Session establishment is successful|SMF created PDU session|nsmf-pdusession/v1/sm-contexts|uesimtun|Failed to create Linux TUN|DummyEgress|Session missing remote gNB|Received uplink GTP-U for unknown TEID|UERANSIM_NR_UE_EXIT_CODE|Exited \\(139\\)|signal lost|APER decoding failed|transfer-syntax-error|Security Mode Command integrity" artifacts/ueransim || true
           } | tee artifacts/ueransim/key-lines.txt
 
       - name: Upload T10 evidence artifact
