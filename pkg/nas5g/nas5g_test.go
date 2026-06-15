@@ -92,10 +92,10 @@ func TestRegistrationRequestRoundTrip(t *testing.T) {
 	})
 
 	req := &RegistrationRequest{
-		RegistrationType: RegistrationTypeInitialRegistration,
-		FollowOnRequest:  true,
-		NASKeySetID:      0x07,
-		MobileIdentity:   suci,
+		RegistrationType:     RegistrationTypeInitialRegistration,
+		FollowOnRequest:      true,
+		NASKeySetID:          0x07,
+		MobileIdentity:       suci,
 		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00},
 		RequestedNSSAI: []NSSAIEntry{
 			{SST: 0x01},
@@ -137,6 +137,27 @@ func TestRegistrationRequest_NoOptionals(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, req.RegistrationType, msg.RegistrationRequest.RegistrationType)
 	assert.Nil(t, msg.RegistrationRequest.UESecurityCapability)
+}
+
+func TestDeregistrationRequestUEOrigDecodeAndAcceptEncode(t *testing.T) {
+	raw, err := hex.DecodeString("7e004501000bf200f11001004000000001")
+	require.NoError(t, err)
+
+	msg, err := Decode(raw)
+	require.NoError(t, err)
+	require.NotNil(t, msg.DeregistrationRequest)
+
+	assert.Equal(t, MsgTypeDeregistrationRequestUEOrig, msg.Header.MessageType)
+	assert.Equal(t,
+		[]byte{0x01, 0x00, 0x0b, 0xf2, 0x00, 0xf1, 0x10, 0x01, 0x00, 0x40, 0x00, 0x00, 0x00, 0x01},
+		msg.DeregistrationRequest.Raw,
+	)
+
+	accept := EncodeDeregistrationAcceptUEOrig()
+	require.Len(t, accept, 3)
+	hdr, err := DecodeHeader(accept)
+	require.NoError(t, err)
+	assert.Equal(t, MsgTypeDeregistrationAcceptUEOrig, hdr.MessageType)
 }
 
 // --- Authentication Request -------------------------------------------------

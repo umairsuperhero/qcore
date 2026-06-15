@@ -69,6 +69,8 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 		return s.handleAuthenticationFailure(ctx, ue, msg.AuthenticationFailure)
 	case msg.SecurityModeComplete != nil:
 		return s.handleSecurityModeComplete(ctx, ue, msg.SecurityModeComplete)
+	case msg.DeregistrationRequest != nil:
+		return s.handleDeregistrationRequestUEOrig(ctx, ue, msg.DeregistrationRequest)
 	case msg.Header.MessageType == nas5g.MsgTypeRegistrationComplete:
 		return s.handleRegistrationComplete(ctx, ue)
 	case msg.Header.MessageType == nas5g.MsgTypeULNASTransport:
@@ -130,6 +132,12 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	// For null-scheme SUCI (protection scheme=0), the SUPI is recoverable as "imsi-<MSIN>".
 	// For real deployments, SUCI would be sent as-is to AUSF which resolves it via SIDF.
 	supiOrSuci := s.suciToString(ue.SUCI)
+	if supiOrSuci == "" && ue.SUPI != "" {
+		// UERANSIM re-registers with the 5G-GUTI QCore assigned during the
+		// same live UE context. Until QCore has a global GUTI/TMSI index, use
+		// the known SUPI from this context rather than sending an empty AUSF key.
+		supiOrSuci = ue.SUPI
+	}
 
 	s.emitter.Emit(events.Event{
 		JourneyID: ue.JourneyID,
@@ -499,6 +507,26 @@ func (s *Service) handleSecurityModeComplete(ctx context.Context, ue *UEContext,
 func (s *Service) handleRegistrationComplete(ctx context.Context, ue *UEContext) error {
 	s.log.WithField("supi", ue.SUPI).Info("amf: Registration Complete — UE fully registered")
 	return nil
+}
+
+// handleDeregistrationRequestUEOrig accepts a UE-originated deregistration.
+// This is intentionally small: it supports the UERANSIM CLI-driven re-auth
+// trigger used by the SQN-resync interop gate without broad deregistration
+// cleanup semantics.
+func (s *Service) handleDeregistrationRequestUEOrig(ctx context.Context, ue *UEContext, req *nas5g.DeregistrationRequestUEOrig) error {
+	s.log.WithField("supi", ue.SUPI).Info("amf: UE-originated Deregistration Request received")
+
+	accept := nas5g.EncodeDeregistrationAcceptUEOrig()
+	if len(ue.KNASint) == 16 {
+		protected, err := WrapNAS5G(ue.KNASint, ue.DLCount, SecHdrIntegrityProtected, accept)
+		if err != nil {
+			return err
+		}
+		ue.DLCount++
+		accept = protected
+	}
+	ue.State = StateIdle
+	return ue.gNB.sendDownlinkNAS(ue, accept)
 }
 
 // handleULNASTransport processes a UL NAS Transport carrying a PDU Session

@@ -12,18 +12,21 @@ import (
 // Layout: octet1=0xF2 | AMFRegionID | AMFSetID(high) | AMFSetID(low,4b)+AMFPointer(4b... wait
 //
 // Actually per spec:
-//   Octet 3: spare(1) + odd/even(1) + type(3 bits), but for non-SUCI formats:
-//   Identity type is in bits 3-1 of octet 1 (after length). Let me use the correct layout.
+//
+//	Octet 3: spare(1) + odd/even(1) + type(3 bits), but for non-SUCI formats:
+//	Identity type is in bits 3-1 of octet 1 (after length). Let me use the correct layout.
 //
 // TS 24.501 Table 9.11.3.4.1:
-//   Octet 1 (after L): spare(4) | identity type(3) | odd/even(1) -- NO, that's for IMEI
+//
+//	Octet 1 (after L): spare(4) | identity type(3) | odd/even(1) -- NO, that's for IMEI
 //
 // For 5G-GUTI (Table 9.11.3.4.3):
-//   Octet 1: Spare(b8-b5) = 1111 | identity-type = 010 | Odd/even = 0  => 0xF2
-//   Octet 2-4: MCC+MNC (BCD, 3 bytes)
-//   Octet 5: AMF Region ID
-//   Octet 6-7: AMF Set ID (10 bits, bits 15-6) | AMF Pointer (6 bits, bits 5-0)
-//   Octet 8-11: 5G-TMSI (4 bytes)
+//
+//	Octet 1: Spare(b8-b5) = 1111 | identity-type = 010 | Odd/even = 0  => 0xF2
+//	Octet 2-4: MCC+MNC (BCD, 3 bytes)
+//	Octet 5: AMF Region ID
+//	Octet 6-7: AMF Set ID (10 bits, bits 15-6) | AMF Pointer (6 bits, bits 5-0)
+//	Octet 8-11: 5G-TMSI (4 bytes)
 func Encode5GGUTI(g GUTI5G) []byte {
 	b := make([]byte, 11)
 	b[0] = 0xF2 // spare(1111) + type(010) + odd/even(0)
@@ -117,7 +120,7 @@ type RegistrationRequest struct {
 	// Mandatory
 	RegistrationType RegistrationTypeValue
 	FollowOnRequest  bool
-	NASKeySetID      uint8 // 4 bits (ngKSI)
+	NASKeySetID      uint8  // 4 bits (ngKSI)
 	MobileIdentity   []byte // encoded identity IE value (SUCI or 5G-GUTI)
 	// Optional
 	UESecurityCapability []byte // if present, raw 2-4 bytes (TS 24.501 §9.11.3.54)
@@ -234,8 +237,8 @@ func decodeNSSAIEntries(data []byte) []NSSAIEntry {
 // AuthenticationRequest carries RAND + AUTN to the UE.
 // TS 24.501 §8.2.1
 type AuthenticationRequest struct {
-	NASKeySetID uint8    // ngKSI (bits 3-0)
-	ABBA        []byte   // at least 2 bytes (TS 24.501 §9.11.3.10)
+	NASKeySetID uint8  // ngKSI (bits 3-0)
+	ABBA        []byte // at least 2 bytes (TS 24.501 §9.11.3.10)
 	RAND        [16]byte
 	AUTN        [16]byte
 }
@@ -362,11 +365,11 @@ func DecodeAuthenticationResponse(data []byte) (*AuthenticationResponse, error) 
 // SecurityModeCommand is sent by the AMF to activate NAS security.
 // TS 24.501 §8.2.22
 type SecurityModeCommand struct {
-	NASSecAlgos        uint8  // ciphering(bits 7-4) | integrity(bits 3-0)
-	NASKeySetID        uint8  // ngKSI (bits 3-0)
-	ReplayedUESecCaps  []byte // UE 5G security capability
-	IMEISV_Requested   bool
-	EPSNASSecAlgos     *uint8 // optional
+	NASSecAlgos       uint8  // ciphering(bits 7-4) | integrity(bits 3-0)
+	NASKeySetID       uint8  // ngKSI (bits 3-0)
+	ReplayedUESecCaps []byte // UE 5G security capability
+	IMEISV_Requested  bool
+	EPSNASSecAlgos    *uint8 // optional
 }
 
 // EncodeSecurityModeCommand encodes a Security Mode Command NAS PDU.
@@ -438,7 +441,7 @@ func DecodeSecurityModeCommand(data []byte) (*SecurityModeCommand, error) {
 // SecurityModeComplete is sent by the UE to confirm NAS security activation.
 // TS 24.501 §8.2.23
 type SecurityModeComplete struct {
-	IMEISV   []byte // optional: IMEISV (TLV, IEI=0x77)
+	IMEISV          []byte // optional: IMEISV (TLV, IEI=0x77)
 	NASPDUContainer []byte // optional: replayed NAS message (IEI=0x71)
 }
 
@@ -624,6 +627,30 @@ func EncodeRegistrationComplete() []byte {
 	return EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeRegistrationComplete})
 }
 
+// DeregistrationRequestUEOrig is a UE-originated 5GMM Deregistration Request.
+// QCore only needs the raw body for now: the AMF accepts normal UE-originated
+// deregistration so UERANSIM can trigger a clean re-registration during tests.
+type DeregistrationRequestUEOrig struct {
+	Raw []byte
+}
+
+// DecodeDeregistrationRequestUEOrig decodes enough of TS 24.501 §8.2.16 to
+// distinguish a real request from an empty malformed body.
+func DecodeDeregistrationRequestUEOrig(data []byte) (*DeregistrationRequestUEOrig, error) {
+	if len(data) < 1 {
+		return nil, fmt.Errorf("nas5g: DeregistrationRequest body too short")
+	}
+	req := &DeregistrationRequestUEOrig{Raw: make([]byte, len(data))}
+	copy(req.Raw, data)
+	return req, nil
+}
+
+// EncodeDeregistrationAcceptUEOrig encodes a UE-originated Deregistration
+// Accept. The message has no mandatory IEs.
+func EncodeDeregistrationAcceptUEOrig() []byte {
+	return EncodeHeader(Header{EPD5GMM, SecurityHeaderPlainNAS, MsgTypeDeregistrationAcceptUEOrig})
+}
+
 // EncodeRegistrationReject encodes a plain (unprotected) Registration Reject
 // NAS PDU. TS 24.501 §8.2.4: mandatory IE is the 5GMM cause (1 byte).
 func EncodeRegistrationReject(cause Cause5GMM) []byte {
@@ -663,6 +690,7 @@ type Message struct {
 	AuthenticationFailure  *AuthenticationFailure
 	SecurityModeCommand    *SecurityModeCommand
 	SecurityModeComplete   *SecurityModeComplete
+	DeregistrationRequest  *DeregistrationRequestUEOrig
 }
 
 // Decode decodes a plain (unprotected) 5G NAS PDU.
@@ -706,6 +734,8 @@ func Decode(data []byte) (*Message, error) {
 			}
 		}
 		msg.AuthenticationFailure = af
+	case MsgTypeDeregistrationRequestUEOrig:
+		msg.DeregistrationRequest, err = DecodeDeregistrationRequestUEOrig(body)
 	case MsgTypeSecurityModeCommand:
 		msg.SecurityModeCommand, err = DecodeSecurityModeCommand(body)
 	case MsgTypeSecurityModeComplete:
@@ -762,11 +792,11 @@ func EncodePDUSessionEstablishmentRequest(pduSessionID, pti uint8) []byte {
 // address IE. Bytes are pinned by TestEncodePDUSessionEstablishmentAcceptGolden.
 func EncodePDUSessionEstablishmentAccept(pduSessionID, pti uint8, ueIPv4 [4]byte) []byte {
 	b := []byte{
-		uint8(EPD5GSM),                              // Extended protocol discriminator (0x2E)
-		pduSessionID,                                // PDU session ID
-		pti,                                         // Procedure transaction identity
+		uint8(EPD5GSM), // Extended protocol discriminator (0x2E)
+		pduSessionID,   // PDU session ID
+		pti,            // Procedure transaction identity
 		uint8(MsgTypePDUSessionEstablishmentAccept), // Message type (0xC2)
-		0x11,                                        // Selected PDU session type IPv4(1) | Selected SSC mode 1 (<<4)
+		0x11, // Selected PDU session type IPv4(1) | Selected SSC mode 1 (<<4)
 	}
 
 	// Authorized QoS rules (IE 9.11.4.13, LV-E): one default QoS rule —
