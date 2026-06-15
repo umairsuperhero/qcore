@@ -322,6 +322,12 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, authMsg.AuthenticationRequest, "expected AuthenticationRequest")
 	t.Logf("Auth Request received: RAND=%x", authMsg.AuthenticationRequest.RAND)
+	amfSvc.mu.RLock()
+	ueCtx := amfSvc.ues[amfID]
+	amfSvc.mu.RUnlock()
+	require.NotNil(t, ueCtx)
+	assert.Equal(t, "imsi-"+imsi, ueCtx.SUPI, "SUPI must remain subscriber identity during auth challenge")
+	assert.Contains(t, ueCtx.AuthCtxURL, "/5g-aka-confirmation", "AUSF confirmation URL belongs in AuthCtxURL, not SUPI")
 
 	// Step 4: Simulate UE computing RES* using the RAND received in the Auth Request.
 	// Must use Generate5GAuthVectorWithRAND so the same RAND feeds Milenage,

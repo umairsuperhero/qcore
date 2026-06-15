@@ -188,8 +188,12 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 		return err
 	}
 
-	ue.AuthCtxURL = stripBaseURL(confirmURL)
-	ue.SUPI = authCtx.Links["5g-aka"].Href // real SUPI comes in ConfirmationDataResponse; store URL for now
+	if strings.HasPrefix(supiOrSuci, "imsi-") {
+		// Keep SUPI as subscriber identity. The AUSF confirmation endpoint is
+		// tracked separately in AuthCtxURL; mixing the two breaks AUTS/SQN
+		// resync because it happens before RES* confirmation can return SUPI.
+		ue.SUPI = supiOrSuci
+	}
 
 	// Decode RAND and AUTN from AUSF response
 	randBytes, err := hex.DecodeString(authCtx.Av5gAuthData.RAND)
@@ -268,6 +272,9 @@ func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext
 			s.log.WithField("supi", ue.SUPI).Info("amf: attempting SQN resynchronization")
 
 			supiOrSuci := s.suciToString(ue.SUCI)
+			if supiOrSuci == "" && ue.SUPI != "" {
+				supiOrSuci = ue.SUPI
+			}
 			ausfReq := &ausf.AuthenticationInfo{
 				SupiOrSuci:         supiOrSuci,
 				ServingNetworkName: s.cfg.ServingNetworkName,
@@ -282,8 +289,9 @@ func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext
 			if err != nil {
 				s.log.WithError(err).Error("amf: AUSF resync auth failed")
 			} else {
-				ue.AuthCtxURL = stripBaseURL(confirmURL)
-				ue.SUPI = authCtx.Links["5g-aka"].Href
+				if strings.HasPrefix(supiOrSuci, "imsi-") {
+					ue.SUPI = supiOrSuci
+				}
 
 				randBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.RAND)
 				autnBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.AUTN)
@@ -819,24 +827,6 @@ func nullSchemeSUCItoSUPI(mobileID []byte) string {
 	}
 
 	return "imsi-" + mcc + mnc + msin.String()
-}
-
-// stripBaseURL extracts the path portion from a full URL (e.g. from Location header).
-// AUSF returns a full URL; the client needs just the path for relative requests.
-func stripBaseURL(u string) string {
-	// Find path after scheme://host
-	for i := 0; i < len(u)-1; i++ {
-		if u[i] == '/' && u[i+1] == '/' {
-			// skip scheme://host
-			rest := u[i+2:]
-			idx := strings.IndexByte(rest, '/')
-			if idx >= 0 {
-				return rest[idx:]
-			}
-			return "/"
-		}
-	}
-	return u // already a path
 }
 
 func tmsiFromID(id uint64) [4]byte {
