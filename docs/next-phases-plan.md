@@ -11,7 +11,7 @@
 > (living audit), `docs/3gpp-tracking.md` (interop status), `docs/ueransim-compat.md`
 > (T10 evidence).
 >
-> Last updated: 2026-06-14.
+> Last updated: 2026-06-15.
 
 ## Current verified baseline (read before starting)
 
@@ -35,6 +35,11 @@ pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub 
   dashboard "Check my RAN config" panel compare UERANSIM gNB/UE YAML against QCore
   AMF/subscriber config and report PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki,
   OPc/OP, DNN, and SUCI-scheme mismatches before attach. ✅.
+- **5G AUTS/SQN resynchronization (TS 33.102 §6.3.5): interop-validated** (audit v1.22).
+  Real reverse-Milenage (f1\*/f5\*, TS 35.208-vector-validated) recovers SQN_MS from AUTS
+  across UDM/AUSF/AMF; a real UERANSIM UE forced a Synch failure and completed registration
+  after resync (`ueransim-interop` run `27529970131`, `T10 SQN RESYNC PASS`). Crypto slice
+  merged as PR #41; interop on `codex/auts-sqn-interop`. ✅.
 
 **The v1 5G-SA-leading thesis is achieved.** What remains is: prove the promised numbers,
 drive workflow adoption, and broaden real-RAN demand-first.

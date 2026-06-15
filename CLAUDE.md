@@ -42,7 +42,7 @@ observability, and AI that explains failures. UX is the product.
 - For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
   language is caught before summary or commit.
 
-## Current baseline (2026-06-14)
+## Current baseline (2026-06-15)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -91,6 +91,18 @@ Lanes 1–4 + the T10 progress branch are integrated to main; full Go build/vet/
     panel compare UERANSIM gNB/UE YAML against QCore AMF/subscriber config and report
     PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki, OPc/OP, DNN, and SUCI-scheme
     mismatches before attach without exposing raw secrets.
+
+**5G AUTS/SQN resynchronization (TS 33.102 §6.3.5) is interop-validated (2026-06-15).**
+When a UE's SQN is ahead of a restarted/reseeded core, QCore now recovers SQN_MS from the
+AUTS (reverse-Milenage f1\*/f5\*, vector-validated against TS 35.208 in
+`TestResyncAUTSRoundTrip`), advances its SQN, and re-issues the challenge instead of
+returning 501. UDM/AUSF/AMF wired; AMF runs a one-attempt resync with a `ResyncAttempted`
+loop guard. Proven end-to-end against a real UERANSIM UE: a forced Synch failure →
+collector `Authentication Request sent (Resync)` → registration complete. Evidence:
+`ueransim-interop` run `27529970131` (`T10 SQN RESYNC PASS`, with `T10 DATA PLANE PASS`
+intact); full `go build`/`vet`/`test -race` green in `golang:1.23`. Branch
+`codex/auts-sqn-interop` (crypto slice merged as PR #41). SQN is integer-based with a +32
+advance (not the TS 33.102 array scheme); 4G AUTS resync is a follow-up.
 
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize

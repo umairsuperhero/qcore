@@ -223,3 +223,34 @@ docker compose -f deployments/docker/docker-compose.yml --profile 5g up --build
 - On macOS Docker, UPF may fall back to dummy egress if `/dev/net/tun` is unavailable.
   The GitHub replay uses a Linux runtime with `/dev/net/tun`, real TUN configuration, and
   NAT; that is the authoritative T10 data-plane evidence.
+
+## AUTS/SQN resynchronization (interop-validated 2026-06-15)
+
+QCore handles the 5G-AKA resync path (TS 33.102 §6.3.5) against a real UERANSIM UE, not
+just in unit tests. The `ueransim-interop` workflow runs `scripts/ci/ueransim-sqn-resync.sh`
+after the data-plane check:
+
+1. The UE registers normally, advancing its internal `SQN-MS` past the core's seed.
+2. The script forces the core's SQN **behind** the live UE via the UDR PATCH endpoint
+   `PATCH /nudr-dr/v2/subscription-data/<imsi>/authentication-data/authentication-subscription`
+   (JSON-Patch `replace /sequenceNumber/sqn` → `000000000020`; HTTP 204 required).
+3. It triggers a fresh authentication **without restarting the UE** via
+   `nr-cli <imsi> --exec "deregister normal"` (so the UE keeps its advanced `SQN-MS`).
+4. The core issues a challenge with the now-behind SQN; the UE returns
+   `Authentication Failure (SQN out of range)` with AUTS; QCore recovers `SQN_MS`
+   (reverse-Milenage f1\*/f5\*), advances its SQN, and re-issues the challenge; the UE
+   accepts and completes registration.
+
+The gate asserts the **ordered** sequence (UE SQN failure → AMF `attempting SQN
+resynchronization` → collector `Authentication Request sent (Resync)` → UE registration
+success *after* the failure line) and prints `T10 SQN RESYNC PASS`. Authoritative evidence:
+`ueransim-interop` run `27529970131` (with `T10 DATA PLANE PASS` intact). The crypto is
+vector-validated against 3GPP TS 35.208 in `pkg/subscriber/milenage_test.go`
+(`TestResyncAUTSRoundTrip`).
+
+Reaching this required three real AMF fixes the replay exposed: accepting UE-originated
+deregistration, keeping SUPI separate from the AUSF auth-context URL, and resetting NAS
+security counters after deregistration so the post-resync Security Mode Command verifies.
+
+Scope: 5G only; integer SQN with a +32 advance (not the TS 33.102 array scheme); 4G AUTS
+resync is a follow-up. This does not broaden T10 beyond the bundled UERANSIM profile.
