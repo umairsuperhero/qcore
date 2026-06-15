@@ -11,17 +11,17 @@ import (
 
 // AttachRequest represents a NAS Attach Request (TS 24.301 Section 8.2.4).
 type AttachRequest struct {
-	AttachType           uint8  // 4 bits
-	NASKeySetIdentifier  uint8  // 4 bits
-	EPSMobileIdentity    []byte // variable length
-	IMSI                 string // decoded from EPSMobileIdentity
-	UENetworkCapability  []byte
-	ESMMessageContainer  []byte
+	AttachType          uint8  // 4 bits
+	NASKeySetIdentifier uint8  // 4 bits
+	EPSMobileIdentity   []byte // variable length
+	IMSI                string // decoded from EPSMobileIdentity
+	UENetworkCapability []byte
+	ESMMessageContainer []byte
 }
 
 // AuthenticationRequest represents a NAS Authentication Request (TS 24.301 Section 8.2.7).
 type AuthenticationRequest struct {
-	NASKeySetIdentifier uint8    // 4 bits (TSC + key set ID)
+	NASKeySetIdentifier uint8 // 4 bits (TSC + key set ID)
 	RAND                [16]byte
 	AUTN                [16]byte
 }
@@ -353,8 +353,8 @@ func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn n
 
 	// ESM header: [bearerID|PD=0x02][PTI=0x01][msg_type=0xC1]
 	msg = append(msg, (bearerID<<4)|uint8(EPSSessionManagement))
-	msg = append(msg, 0x01)   // PTI = 1 (arbitrary, network-initiated)
-	msg = append(msg, 0xC1)   // Activate Default EPS Bearer Context Request
+	msg = append(msg, 0x01) // PTI = 1 (arbitrary, network-initiated)
+	msg = append(msg, 0xC1) // Activate Default EPS Bearer Context Request
 
 	// EPS QoS (mandatory LV): QCI=9 (internet, non-GBR default)
 	msg = append(msg, 0x01, 0x09) // length=1, QCI=9
@@ -376,9 +376,9 @@ func encodeActivateDefaultBearerContextRequest(bearerID uint8, apn string, pdn n
 // This is a special format: [0x67 sec-hdr][KSI&SeqNum][short-MAC 2B].
 // The UE sends this when transitioning from ECM-IDLE to ECM-CONNECTED.
 type ServiceRequest struct {
-	KSI     uint8  // NAS key set identifier (3 bits)
-	SeqNum  uint8  // NAS SN low 5 bits
-	MTMSI   uint32 // extracted from EUTRAN CGI or InitialUEMessage S-TMSI (if present)
+	KSI    uint8  // NAS key set identifier (3 bits)
+	SeqNum uint8  // NAS SN low 5 bits
+	MTMSI  uint32 // extracted from EUTRAN CGI or InitialUEMessage S-TMSI (if present)
 }
 
 // DecodeServiceRequest decodes a NAS Service Request body.

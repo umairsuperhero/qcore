@@ -145,12 +145,12 @@ func TestParseHeaderSecurityProtected(t *testing.T) {
 	// Layout: [sec_type|PD] [MAC 4 bytes] [SN] [inner plain NAS: PD msg_type]
 	inner := []byte{
 		uint8(SecurityHeaderPlainNAS<<4) | uint8(EPSMobilityManagement), // 0x07
-		uint8(MsgTypeSecurityModeComplete),                               // 0x5E
+		uint8(MsgTypeSecurityModeComplete),                              // 0x5E
 	}
 	pdu := make([]byte, 0, 8)
 	pdu = append(pdu, uint8(SecurityHeaderIntegrityProtectedNewCtx<<4)|uint8(EPSMobilityManagement)) // 0x37
-	pdu = append(pdu, 0x01, 0x02, 0x03, 0x04) // MAC (fake)
-	pdu = append(pdu, 0x00)                    // SN
+	pdu = append(pdu, 0x01, 0x02, 0x03, 0x04)                                                        // MAC (fake)
+	pdu = append(pdu, 0x00)                                                                          // SN
 	pdu = append(pdu, inner...)
 
 	h, off, err := ParseHeader(pdu)

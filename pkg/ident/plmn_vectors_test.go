@@ -14,9 +14,10 @@ import (
 // that a round-trip test cannot detect.
 //
 // TS 24.008 §10.5.1.13 wire layout reminder:
-//   Byte 0: MCC digit 2 (high) | MCC digit 1 (low)
-//   Byte 1: MNC digit 3 (high) | MCC digit 3 (low)   [MNC3=0xF for 2-digit MNC]
-//   Byte 2: MNC digit 2 (high) | MNC digit 1 (low)
+//
+//	Byte 0: MCC digit 2 (high) | MCC digit 1 (low)
+//	Byte 1: MNC digit 3 (high) | MCC digit 3 (low)   [MNC3=0xF for 2-digit MNC]
+//	Byte 2: MNC digit 2 (high) | MNC digit 1 (low)
 func TestPLMNGoldenVectors(t *testing.T) {
 	cases := []struct {
 		name string

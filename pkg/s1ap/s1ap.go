@@ -12,9 +12,9 @@ import "fmt"
 type PDUType int
 
 const (
-	PDUInitiatingMessage    PDUType = 0
-	PDUSuccessfulOutcome    PDUType = 1
-	PDUUnsuccessfulOutcome  PDUType = 2
+	PDUInitiatingMessage   PDUType = 0
+	PDUSuccessfulOutcome   PDUType = 1
+	PDUUnsuccessfulOutcome PDUType = 2
 )
 
 func (t PDUType) String() string {
@@ -34,24 +34,24 @@ func (t PDUType) String() string {
 type ProcedureCode uint8
 
 const (
-	ProcHandoverPreparation       ProcedureCode = 0
-	ProcHandoverResourceAlloc     ProcedureCode = 1
-	ProcPathSwitchRequest         ProcedureCode = 3
-	ProcE_RABSetup                ProcedureCode = 5
-	ProcE_RABModify               ProcedureCode = 6
-	ProcE_RABRelease              ProcedureCode = 7
-	ProcInitialContextSetup       ProcedureCode = 9
-	ProcPaging                    ProcedureCode = 10
-	ProcDownlinkNASTransport      ProcedureCode = 11
-	ProcInitialUEMessage          ProcedureCode = 12
-	ProcUplinkNASTransport        ProcedureCode = 13
-	ProcReset                     ProcedureCode = 14
-	ProcErrorIndication           ProcedureCode = 15
-	ProcNASNonDeliveryIndication  ProcedureCode = 16
-	ProcS1Setup                   ProcedureCode = 17
-	ProcUEContextRelease          ProcedureCode = 23
-	ProcUEContextReleaseRequest   ProcedureCode = 18
-	ProcUEContextModification     ProcedureCode = 21
+	ProcHandoverPreparation      ProcedureCode = 0
+	ProcHandoverResourceAlloc    ProcedureCode = 1
+	ProcPathSwitchRequest        ProcedureCode = 3
+	ProcE_RABSetup               ProcedureCode = 5
+	ProcE_RABModify              ProcedureCode = 6
+	ProcE_RABRelease             ProcedureCode = 7
+	ProcInitialContextSetup      ProcedureCode = 9
+	ProcPaging                   ProcedureCode = 10
+	ProcDownlinkNASTransport     ProcedureCode = 11
+	ProcInitialUEMessage         ProcedureCode = 12
+	ProcUplinkNASTransport       ProcedureCode = 13
+	ProcReset                    ProcedureCode = 14
+	ProcErrorIndication          ProcedureCode = 15
+	ProcNASNonDeliveryIndication ProcedureCode = 16
+	ProcS1Setup                  ProcedureCode = 17
+	ProcUEContextRelease         ProcedureCode = 23
+	ProcUEContextReleaseRequest  ProcedureCode = 18
+	ProcUEContextModification    ProcedureCode = 21
 )
 
 func (p ProcedureCode) String() string {
@@ -90,20 +90,20 @@ const (
 type ProtocolIEID uint16
 
 const (
-	IEID_MME_UE_S1AP_ID           ProtocolIEID = 0
-	IEID_ENB_UE_S1AP_ID           ProtocolIEID = 8
-	IEID_NAS_PDU                  ProtocolIEID = 26
-	IEID_TAI                      ProtocolIEID = 67
-	IEID_EUTRAN_CGI               ProtocolIEID = 100
-	IEID_RRC_Establishment_Cause  ProtocolIEID = 134
-	IEID_Global_ENB_ID            ProtocolIEID = 59
-	IEID_ENBname                  ProtocolIEID = 60
-	IEID_SupportedTAs             ProtocolIEID = 64
-	IEID_DefaultPagingDRX         ProtocolIEID = 137
-	IEID_MMEname                  ProtocolIEID = 61
-	IEID_ServedGUMMEIs            ProtocolIEID = 105
-	IEID_RelativeMMECapacity      ProtocolIEID = 87
-	IEID_Cause                    ProtocolIEID = 2
+	IEID_MME_UE_S1AP_ID              ProtocolIEID = 0
+	IEID_ENB_UE_S1AP_ID              ProtocolIEID = 8
+	IEID_NAS_PDU                     ProtocolIEID = 26
+	IEID_TAI                         ProtocolIEID = 67
+	IEID_EUTRAN_CGI                  ProtocolIEID = 100
+	IEID_RRC_Establishment_Cause     ProtocolIEID = 134
+	IEID_Global_ENB_ID               ProtocolIEID = 59
+	IEID_ENBname                     ProtocolIEID = 60
+	IEID_SupportedTAs                ProtocolIEID = 64
+	IEID_DefaultPagingDRX            ProtocolIEID = 137
+	IEID_MMEname                     ProtocolIEID = 61
+	IEID_ServedGUMMEIs               ProtocolIEID = 105
+	IEID_RelativeMMECapacity         ProtocolIEID = 87
+	IEID_Cause                       ProtocolIEID = 2
 	IEID_UESecurityCapabilities      ProtocolIEID = 107
 	IEID_SecurityKey                 ProtocolIEID = 73
 	IEID_E_RABToBeSetupListCtxtSUReq ProtocolIEID = 24
@@ -134,12 +134,12 @@ const (
 type RRCEstablishmentCause uint8
 
 const (
-	RRCEmergency            RRCEstablishmentCause = 0
-	RRCHighPriorityAccess   RRCEstablishmentCause = 1
-	RRCMtAccess             RRCEstablishmentCause = 2
-	RRCMoSignalling         RRCEstablishmentCause = 3
-	RRCMoData               RRCEstablishmentCause = 4
-	RRCDelayTolerantAccess  RRCEstablishmentCause = 5
+	RRCEmergency           RRCEstablishmentCause = 0
+	RRCHighPriorityAccess  RRCEstablishmentCause = 1
+	RRCMtAccess            RRCEstablishmentCause = 2
+	RRCMoSignalling        RRCEstablishmentCause = 3
+	RRCMoData              RRCEstablishmentCause = 4
+	RRCDelayTolerantAccess RRCEstablishmentCause = 5
 )
 
 // PDU is the top-level S1AP message container.

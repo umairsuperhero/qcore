@@ -255,7 +255,9 @@ func encodeERABSetupResultList(items []ERABSetupResult) ([]byte, error) {
 }
 
 // encodeERABSetupResultItem encodes E-RABSetupItemCtxtSURes:
-//   SEQUENCE { e-RAB-ID, transportLayerAddress, gTP-TEID, iE-Extensions OPTIONAL, ... }
+//
+//	SEQUENCE { e-RAB-ID, transportLayerAddress, gTP-TEID, iE-Extensions OPTIONAL, ... }
+//
 // Extensible, one OPTIONAL field (iE-Extensions), not present.
 func encodeERABSetupResultItem(it ERABSetupResult) ([]byte, error) {
 	enc := NewPEREncoder()

@@ -10,16 +10,16 @@ import (
 // TS 36.413 Section 9.1.7.1
 type S1SetupRequest struct {
 	GlobalENBID  GlobalENBID
-	ENBName      string       // optional
+	ENBName      string // optional
 	SupportedTAs []SupportedTA
-	PagingDRX    uint8        // DefaultPagingDRX: ENUMERATED { v32, v64, v128, v256 }
+	PagingDRX    uint8 // DefaultPagingDRX: ENUMERATED { v32, v64, v128, v256 }
 }
 
 // S1SetupResponse represents the S1 SETUP RESPONSE from MME to eNB.
 // TS 36.413 Section 9.1.7.2
 type S1SetupResponse struct {
-	MMEName         string // optional
-	ServedGUMMEIs   []ServedGUMMEI
+	MMEName          string // optional
+	ServedGUMMEIs    []ServedGUMMEI
 	RelativeCapacity uint8 // 0-255
 }
 
@@ -606,8 +606,8 @@ type PagingRequest struct {
 	UEIdentityIndex uint16
 	// IMSI BCD bytes (TS 24.008 §10.5.1.4): odd/even indicator + digits
 	// If we have an S-TMSI, prefer that; otherwise page by IMSI.
-	IMSI    []byte  // raw BCD identity bytes (from mobile identity IE)
-	TAIList []TAI   // list of TAIs to page in (from UE's registered TAI)
+	IMSI     []byte // raw BCD identity bytes (from mobile identity IE)
+	TAIList  []TAI  // list of TAIs to page in (from UE's registered TAI)
 	CNDomain uint8  // 0 = PS (packet-switched, always for LTE)
 }
 
@@ -794,8 +794,9 @@ func decodeERABSetupResultList(value []byte) ([]ERABSetupResult, error) {
 }
 
 // decodeERABSetupResultItem parses an E-RABSetupItemCtxtSURes:
-//   SEQUENCE { e-RAB-ID INTEGER(0..15), transportLayerAddress BIT STRING(1..160),
-//              gTP-TEID OCTET STRING(4), iE-Extensions OPTIONAL, ... }
+//
+//	SEQUENCE { e-RAB-ID INTEGER(0..15), transportLayerAddress BIT STRING(1..160),
+//	           gTP-TEID OCTET STRING(4), iE-Extensions OPTIONAL, ... }
 func decodeERABSetupResultItem(buf []byte) (*ERABSetupResult, error) {
 	dec := NewPERDecoder(buf)
 	// Extensible SEQUENCE with one OPTIONAL field (iE-Extensions). Preamble:

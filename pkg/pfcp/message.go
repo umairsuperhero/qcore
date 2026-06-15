@@ -12,7 +12,7 @@ func (m *Message) Encode() []byte {
 	for _, ie := range m.IEs {
 		payload = append(payload, ie.Encode()...)
 	}
-	
+
 	m.Header.MessageLength = uint16(len(payload))
 	// If SEID is present, header has 8 extra bytes. Sequence number is always 4 bytes.
 	if m.Header.SEIDPresent {
@@ -20,7 +20,7 @@ func (m *Message) Encode() []byte {
 	} else {
 		m.Header.MessageLength += 4
 	}
-	
+
 	b := EncodeHeader(m.Header)
 	b = append(b, payload...)
 	return b
@@ -32,23 +32,23 @@ func DecodeMessage(b []byte) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	expectedPayloadLen := int(h.MessageLength)
 	if h.SEIDPresent {
 		expectedPayloadLen -= 12
 	} else {
 		expectedPayloadLen -= 4
 	}
-	
+
 	if len(b[offset:]) < expectedPayloadLen {
 		return nil, ErrBufferTooSmall
 	}
-	
+
 	ies, err := DecodeIEs(b[offset : offset+expectedPayloadLen])
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Message{
 		Header: h,
 		IEs:    ies,

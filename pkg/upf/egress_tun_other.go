@@ -8,7 +8,7 @@ import (
 
 // TunEgress is a stub for non-Linux platforms (e.g. macOS).
 type TunEgress struct {
-	name string
+	name   string
 	closed bool
 }
 

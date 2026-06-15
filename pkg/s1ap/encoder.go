@@ -9,8 +9,8 @@ import (
 // S1AP uses a subset of PER: no unaligned, no real/enumerated extensions.
 // We implement exactly what S1AP needs, nothing more.
 type PEREncoder struct {
-	buf     []byte
-	bitOff  uint // current bit offset within current byte (0-7)
+	buf    []byte
+	bitOff uint // current bit offset within current byte (0-7)
 }
 
 // NewPEREncoder creates a new PER encoder.

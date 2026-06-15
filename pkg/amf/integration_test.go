@@ -185,9 +185,9 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	// ========================================================================
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	log := logger.New("error", "text")
-	
+
 	// Create subscriber
 	imsi := "001010000000001"
 	sub := &subscriber.Subscriber{
@@ -198,14 +198,14 @@ func TestEndToEnd5GFlow(t *testing.T) {
 		SQN:  "000000000001",
 	}
 	subs := map[string]*subscriber.Subscriber{sub.IMSI: sub}
-	
+
 	// UDM
 	udmSvc := udm.NewService(udm.NewStoreSource(&fakeSubscriberStore{subs}), log).
 		WithAuthSource(udm.NewStoreAuthSource(&fakeAuthStore{subs}))
 	udmPort := pickPort(t)
 	udmSrv := sbi.NewServer(sbi.ServerConfig{BindAddress: "127.0.0.1", Port: udmPort, NFType: "UDM"}, log, udmSvc.Handler())
 	go func() { _ = udmSrv.Serve() }()
-	
+
 	// AUSF
 	udmCli := udm.NewClient("http://127.0.0.1:"+strconv.Itoa(udmPort), "AUSF", false)
 	ausfSvc := ausf.NewService(udmCli, log)
@@ -213,7 +213,7 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	ausfSrv := sbi.NewServer(sbi.ServerConfig{BindAddress: "127.0.0.1", Port: ausfPort, NFType: "AUSF"}, log, ausfSvc.Handler())
 	go func() { _ = ausfSrv.Serve() }()
 	ausfURL := "http://127.0.0.1:" + strconv.Itoa(ausfPort)
-	
+
 	// UPF
 	upfPfcpPort := pickPort(t)
 	upfGtpuPort := pickPort(t)
@@ -225,7 +225,7 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	upfSvc, err := upf.NewService(upfCfg, log)
 	require.NoError(t, err)
 	go func() { _ = upfSvc.Start(ctx) }()
-	
+
 	// SMF
 	smfPort := pickPort(t)
 	smfCfg := smf.Config{
@@ -240,7 +240,7 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	smfSrv := sbi.NewServer(sbi.ServerConfig{BindAddress: "127.0.0.1", Port: smfPort, NFType: "SMF"}, log, smfSvc.Handler())
 	go func() { _ = smfSrv.Serve() }()
 	smfURL := "http://127.0.0.1:" + strconv.Itoa(smfPort)
-	
+
 	// AMF
 	amfPort := pickPort(t)
 	plmn := ngap.PLMNFromMCCMNC("001", "01")
@@ -260,9 +260,9 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	ausfCli := ausf.NewClient(ausfURL, "AMF", false)
 	amfSvc := amf.NewService(amfCfg, ausfCli, log)
 	go func() { _ = amfSvc.Serve(ctx) }()
-	
+
 	time.Sleep(200 * time.Millisecond) // Let servers boot
-	
+
 	t.Cleanup(func() {
 		_ = ausfSrv.Shutdown(ctx)
 		_ = udmSrv.Shutdown(ctx)
@@ -289,10 +289,10 @@ func TestEndToEnd5GFlow(t *testing.T) {
 		MSIN:             hd("0000000010"),
 	})
 	regReq := nas5g.EncodeRegistrationRequest(&nas5g.RegistrationRequest{
-		RegistrationType: nas5g.RegistrationTypeInitialRegistration,
-		FollowOnRequest:  false,
-		NASKeySetID:      7,
-		MobileIdentity:   suci,
+		RegistrationType:     nas5g.RegistrationTypeInitialRegistration,
+		FollowOnRequest:      false,
+		NASKeySetID:          7,
+		MobileIdentity:       suci,
 		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00},
 	})
 
@@ -363,37 +363,37 @@ func TestEndToEnd5GFlow(t *testing.T) {
 	// (The AMF does not yet return a DL NAS response for PDU sessions in this phase;
 	// the verification is the PFCP session + GTP-U plane below.)
 	t.Log("✓ PDU Session Establishment sent via UE → AMF → SMF (no direct SMF REST call)")
-	
+
 	// ========================================================================
 	// 4. DATA PLANE (GTP-U) VERIFICATION
 	// ========================================================================
 	// The SMF should have allocated a UPF TEID, though our simplified SMResp doesn't expose it yet.
 	// For testing, we know our UPF SessionStore allocates TEIDs sequentially starting at 1001.
 	localTeid := uint32(1001)
-	
+
 	// Construct a dummy IP packet
 	ipPkt := []byte{
 		0x45, 0x00, 0x00, 0x14, // Version/IHL, ToS, Length
 		0x00, 0x00, 0x40, 0x00, // ID, Flags/Frag
 		0x40, 0x01, 0x00, 0x00, // TTL, Proto (ICMP), Checksum
-		10, 45, 0, 1,           // Src IP (UE)
-		8, 8, 8, 8,             // Dst IP (Google DNS)
+		10, 45, 0, 1, // Src IP (UE)
+		8, 8, 8, 8, // Dst IP (Google DNS)
 	}
-	
+
 	encapPkt, err := gtp.EncodeTPDU(localTeid, ipPkt)
 	require.NoError(t, err)
-	
+
 	// Send to UPF's GTP-U port
 	upfAddr, _ := net.ResolveUDPAddr("udp", "127.0.0.1:"+strconv.Itoa(upfGtpuPort))
 	gtpConn, err := net.DialUDP("udp", nil, upfAddr)
 	require.NoError(t, err)
-	
+
 	_, err = gtpConn.Write(encapPkt)
 	require.NoError(t, err)
-	
+
 	// Since UPF is using DummyEgress, it just drops the packet and logs it.
 	// But getting here without crashing proves the PFCP session was created and TEID is valid!
 	time.Sleep(100 * time.Millisecond) // Give UPF time to process
-	
+
 	t.Log("✓ GTP-U packet sent to UPF successfully")
 }

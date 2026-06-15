@@ -19,17 +19,17 @@ import (
 
 // AmfRegistration holds the serving AMF binding per TS 29.503 §6.3.4.2.3.
 type AmfRegistration struct {
-	AMFInstanceID   string `json:"amfInstanceId"`
-	SupportedFeatures string `json:"supportedFeatures,omitempty"`
-	PEI             string `json:"pei,omitempty"` // IMEISV or IMEI
-	GUAMI           *GUAMIWire `json:"guami,omitempty"`
+	AMFInstanceID     string     `json:"amfInstanceId"`
+	SupportedFeatures string     `json:"supportedFeatures,omitempty"`
+	PEI               string     `json:"pei,omitempty"` // IMEISV or IMEI
+	GUAMI             *GUAMIWire `json:"guami,omitempty"`
 	// Rat-Type, access-type etc. are optional in v0.6 scope; add as needed.
 }
 
 // GUAMIWire is the SBI JSON form of GUAMI (TS 29.571 §5.4.4).
 type GUAMIWire struct {
-	PLMNId   PLMNIdWire `json:"plmnId"`
-	AmfId    string     `json:"amfId"` // hex: regionID(2) + setID(3) + pointer(2)
+	PLMNId PLMNIdWire `json:"plmnId"`
+	AmfId  string     `json:"amfId"` // hex: regionID(2) + setID(3) + pointer(2)
 }
 
 // PLMNIdWire — TS 29.571 §5.4.2

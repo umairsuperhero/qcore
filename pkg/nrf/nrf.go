@@ -26,12 +26,12 @@ import (
 // HeartbeatTimer maps to/from seconds (JSON integer) rather than
 // time.Duration, which has no standard JSON form.
 type wireNFProfile struct {
-	NFInstanceID   string               `json:"nfInstanceId"`
-	NFType         nrfclient.NFType     `json:"nfType"`
-	NFStatus       nrfclient.NFStatus   `json:"nfStatus,omitempty"`
+	NFInstanceID   string                `json:"nfInstanceId"`
+	NFType         nrfclient.NFType      `json:"nfType"`
+	NFStatus       nrfclient.NFStatus    `json:"nfStatus,omitempty"`
 	Services       []nrfclient.NFService `json:"nfServices,omitempty"`
-	PLMN           string               `json:"plmn,omitempty"`
-	HeartbeatTimer int                  `json:"heartBeatTimer,omitempty"` // seconds
+	PLMN           string                `json:"plmn,omitempty"`
+	HeartbeatTimer int                   `json:"heartBeatTimer,omitempty"` // seconds
 }
 
 func toWire(p nrfclient.NFProfile) wireNFProfile {

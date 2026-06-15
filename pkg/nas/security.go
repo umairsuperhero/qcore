@@ -41,7 +41,7 @@ func DeriveKeNB(kasme []byte, ulNASCount uint32) ([]byte, error) {
 	countBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(countBytes, ulNASCount)
 	s = append(s, countBytes...) // P0
-	s = append(s, 0x00, 0x04)   // L0 = 4
+	s = append(s, 0x00, 0x04)    // L0 = 4
 
 	return kdf(kasme, s), nil
 }
@@ -57,11 +57,11 @@ func deriveNASKey(kasme []byte, algTypeDist, algID uint8) ([]byte, error) {
 	// P0 = algorithm type distinguisher (1 byte), L0 = 0x0001
 	// P1 = algorithm identity (1 byte), L1 = 0x0001
 	s := make([]byte, 0, 7)
-	s = append(s, 0x15)               // FC
-	s = append(s, algTypeDist)         // P0
-	s = append(s, 0x00, 0x01)         // L0
-	s = append(s, algID)              // P1
-	s = append(s, 0x00, 0x01)         // L1
+	s = append(s, 0x15)        // FC
+	s = append(s, algTypeDist) // P0
+	s = append(s, 0x00, 0x01)  // L0
+	s = append(s, algID)       // P1
+	s = append(s, 0x00, 0x01)  // L1
 
 	derived := kdf(kasme, s)
 	// Return last 16 bytes as the key

@@ -49,12 +49,12 @@ func TestEncodeDecodeHeader(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := EncodeHeader(tt.h)
-			
+
 			decoded, offset, err := DecodeHeader(b)
 			if err != nil {
 				t.Fatalf("DecodeHeader failed: %v", err)
 			}
-			
+
 			expectedOffset := 8
 			if tt.h.SEIDPresent {
 				expectedOffset = 16
@@ -62,16 +62,16 @@ func TestEncodeDecodeHeader(t *testing.T) {
 			if offset != expectedOffset {
 				t.Errorf("Expected offset %d, got %d", expectedOffset, offset)
 			}
-			
+
 			if decoded != tt.h {
 				t.Errorf("Decoded header doesn't match original.\nGot:  %+v\nWant: %+v", decoded, tt.h)
 			}
-			
+
 			// Verify exact bytes for the first case
 			if tt.name == "Heartbeat Request (No SEID)" {
 				expectedBytes := []byte{
-					0x20, // Version 1, Spare 0, FO 0, MP 0, S 0
-					0x01, // MsgTypeHeartbeatRequest
+					0x20,       // Version 1, Spare 0, FO 0, MP 0, S 0
+					0x01,       // MsgTypeHeartbeatRequest
 					0x00, 0x0c, // Length 12
 					0x00, 0x30, 0x39, // Seq 12345
 					0x00, // Spare + MP
@@ -102,11 +102,11 @@ func TestDecodeHeaderErrors(t *testing.T) {
 	if err != ErrInvalidVersion {
 		t.Errorf("Expected ErrInvalidVersion, got %v", err)
 	}
-	
+
 	// Truncated with SEID
 	b := []byte{
-		0x21, // Version 1, SEID present
-		0x32, // Session Estab Req
+		0x21,       // Version 1, SEID present
+		0x32,       // Session Estab Req
 		0x00, 0x14, // Length 20
 		0x11, 0x22, 0x33, 0x44, // Only 4 bytes of SEID
 	}

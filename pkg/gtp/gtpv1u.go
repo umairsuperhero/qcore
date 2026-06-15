@@ -16,12 +16,12 @@ const PortU = 2152
 
 // GTPv1-U message types (TS 29.281 §6.1).
 const (
-	MsgEchoRequest                        uint8 = 1
-	MsgEchoResponse                       uint8 = 2
-	MsgErrorIndication                    uint8 = 26
-	MsgSupportedExtensionHeadersNotify    uint8 = 31
-	MsgEndMarker                          uint8 = 254
-	MsgTPDU                               uint8 = 255 // G-PDU (user plane IP)
+	MsgEchoRequest                     uint8 = 1
+	MsgEchoResponse                    uint8 = 2
+	MsgErrorIndication                 uint8 = 26
+	MsgSupportedExtensionHeadersNotify uint8 = 31
+	MsgEndMarker                       uint8 = 254
+	MsgTPDU                            uint8 = 255 // G-PDU (user plane IP)
 )
 
 // Flags byte layout (TS 29.281 §5.1):
@@ -42,14 +42,14 @@ const (
 
 // Header is a decoded GTPv1-U header.
 type Header struct {
-	Flags           uint8
-	MessageType     uint8
-	Length          uint16 // bytes that follow the mandatory 8-byte header
-	TEID            uint32
-	Sequence        uint16 // present if Flags&flagS
-	NPDUNumber      uint8  // present if Flags&flagPN
-	NextExtHdrType  uint8  // present if Flags&flagE
-	HeaderLen       int    // total header length including optional fields
+	Flags          uint8
+	MessageType    uint8
+	Length         uint16 // bytes that follow the mandatory 8-byte header
+	TEID           uint32
+	Sequence       uint16 // present if Flags&flagS
+	NPDUNumber     uint8  // present if Flags&flagPN
+	NextExtHdrType uint8  // present if Flags&flagE
+	HeaderLen      int    // total header length including optional fields
 }
 
 // Version returns the protocol version (should be 1 for GTPv1-U).

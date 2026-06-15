@@ -114,10 +114,10 @@ func TestEndToEndAttachOverWire(t *testing.T) {
 	nasBody := append([]byte{
 		uint8(nas.SecurityHeaderPlainNAS<<4) | uint8(nas.EPSMobilityManagement),
 		uint8(nas.MsgTypeAttachRequest),
-		0x71,                       // KSI=7 | attach type=1
-		uint8(len(encodedIMSI)),    // mobile identity LV length
+		0x71,                    // KSI=7 | attach type=1
+		uint8(len(encodedIMSI)), // mobile identity LV length
 	}, encodedIMSI...)
-	nasBody = append(nasBody, 0x02, 0xE0, 0xE0)                   // UE network capability LV
+	nasBody = append(nasBody, 0x02, 0xE0, 0xE0)                         // UE network capability LV
 	nasBody = append(nasBody, 0x00, 0x05, 0xD0, 0x11, 0x27, 0x1D, 0x31) // ESM container LV-E
 
 	initUE := &s1ap.InitialUEMessage{

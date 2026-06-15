@@ -149,14 +149,14 @@ func RegisterSPGWMetrics(m *Metrics) *SPGWMetrics {
 }
 
 type MMEMetrics struct {
-	S1SetupRequests   *prometheus.CounterVec
-	AttachRequests    *prometheus.CounterVec
-	AttachSuccess     *prometheus.CounterVec
-	AttachFailures    *prometheus.CounterVec
-	AuthRequests      *prometheus.CounterVec
-	ActiveUEs         *prometheus.GaugeVec
-	ConnectedENBs     *prometheus.GaugeVec
-	S1APLatency       *prometheus.HistogramVec
+	S1SetupRequests *prometheus.CounterVec
+	AttachRequests  *prometheus.CounterVec
+	AttachSuccess   *prometheus.CounterVec
+	AttachFailures  *prometheus.CounterVec
+	AuthRequests    *prometheus.CounterVec
+	ActiveUEs       *prometheus.GaugeVec
+	ConnectedENBs   *prometheus.GaugeVec
+	S1APLatency     *prometheus.HistogramVec
 }
 
 func RegisterMMEMetrics(m *Metrics) *MMEMetrics {

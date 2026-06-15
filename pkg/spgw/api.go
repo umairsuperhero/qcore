@@ -222,7 +222,7 @@ func (a *API) handleStats(w http.ResponseWriter, _ *http.Request) {
 		uplink, downlink, drops = a.svc.dp.Stats()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"sessions": a.svc.sessions.Count(),
+		"sessions":         a.svc.sessions.Count(),
 		"uplink_packets":   uplink,
 		"downlink_packets": downlink,
 		"drops":            drops,

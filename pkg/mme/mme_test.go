@@ -51,7 +51,9 @@ func (f *fakeAssoc) Write(data []byte, streamID uint16) error {
 func (f *fakeAssoc) Close() error { return nil }
 
 func (f *fakeAssoc) RemoteAddr() net.Addr { return f.remote }
-func (f *fakeAssoc) LocalAddr() net.Addr  { return &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 36412} }
+func (f *fakeAssoc) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 36412}
+}
 
 func (f *fakeAssoc) writtenCount() int {
 	f.mu.Lock()
@@ -78,20 +80,20 @@ func (noopListener) Addr() net.Addr                    { return &net.TCPAddr{} }
 // noopLogger discards all log output.
 type noopLogger struct{}
 
-func (noopLogger) Debug(...interface{})                {}
-func (noopLogger) Info(...interface{})                 {}
-func (noopLogger) Warn(...interface{})                 {}
-func (noopLogger) Error(...interface{})                {}
-func (noopLogger) Fatal(...interface{})                {}
-func (noopLogger) Debugf(string, ...interface{})       {}
-func (noopLogger) Infof(string, ...interface{})        {}
-func (noopLogger) Warnf(string, ...interface{})        {}
-func (noopLogger) Errorf(string, ...interface{})       {}
-func (noopLogger) Fatalf(string, ...interface{})       {}
-func (noopLogger) WithField(string, interface{}) logger.Logger        { return noopLogger{} }
-func (noopLogger) WithFields(map[string]interface{}) logger.Logger    { return noopLogger{} }
-func (noopLogger) WithError(error) logger.Logger                      { return noopLogger{} }
-func (noopLogger) Writer() io.Writer                                  { return io.Discard }
+func (noopLogger) Debug(...interface{})                            {}
+func (noopLogger) Info(...interface{})                             {}
+func (noopLogger) Warn(...interface{})                             {}
+func (noopLogger) Error(...interface{})                            {}
+func (noopLogger) Fatal(...interface{})                            {}
+func (noopLogger) Debugf(string, ...interface{})                   {}
+func (noopLogger) Infof(string, ...interface{})                    {}
+func (noopLogger) Warnf(string, ...interface{})                    {}
+func (noopLogger) Errorf(string, ...interface{})                   {}
+func (noopLogger) Fatalf(string, ...interface{})                   {}
+func (noopLogger) WithField(string, interface{}) logger.Logger     { return noopLogger{} }
+func (noopLogger) WithFields(map[string]interface{}) logger.Logger { return noopLogger{} }
+func (noopLogger) WithError(error) logger.Logger                   { return noopLogger{} }
+func (noopLogger) Writer() io.Writer                               { return io.Discard }
 
 // newTestMME creates a minimal MME for unit testing. No SCTP listener is started.
 func newTestMME(t *testing.T, hssURL string) (*MME, *fakeAssoc) {

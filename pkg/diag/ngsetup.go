@@ -203,9 +203,9 @@ func DiagnoseNoConnection(amfAddr, amfPLMN string) NGSetupResult {
 				"Also check that no firewall or NAT is blocking SCTP/TCP port 38412.",
 			amfAddr,
 		),
-		FixQCoreSide: "Confirm the AMF is listening: the QCore dashboard shows 'Waiting for gNB' "+
-			"with the correct bind address. If the address shown is 0.0.0.0, "+
-			"find the host's actual IP and provide that to the gNB operator. "+
+		FixQCoreSide: "Confirm the AMF is listening: the QCore dashboard shows 'Waiting for gNB' " +
+			"with the correct bind address. If the address shown is 0.0.0.0, " +
+			"find the host's actual IP and provide that to the gNB operator. " +
 			"PLMN configured: " + amfPLMN + ".",
 	}
 }

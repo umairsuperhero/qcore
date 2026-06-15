@@ -16,7 +16,7 @@ type Egress interface {
 
 	// Close releases the egress resources.
 	Close() error
-	
+
 	// Name returns an identifier for this egress.
 	Name() string
 }

@@ -6,12 +6,12 @@
 // builds every 5G NF on top of this package so we get a single consistent
 // dev + production posture:
 //
-//	- HTTP/2 native (h2 over TLS in prod; h2c plaintext in dev for loopback DX)
-//	- Structured ProblemDetails responses
-//	- Request-ID correlation across services
-//	- Panic recovery + access logging middleware
-//	- NRF-based service discovery (see pkg/sbi/nrf)
-//	- OpenAPI validation hook (wire a spec into Server.OpenAPIValidator to turn on)
+//   - HTTP/2 native (h2 over TLS in prod; h2c plaintext in dev for loopback DX)
+//   - Structured ProblemDetails responses
+//   - Request-ID correlation across services
+//   - Panic recovery + access logging middleware
+//   - NRF-based service discovery (see pkg/sbi/nrf)
+//   - OpenAPI validation hook (wire a spec into Server.OpenAPIValidator to turn on)
 //
 // This package is deliberately thin — it does NOT define 5G wire types
 // (AuthenticationInfoRequest, SmContextCreateData, etc.); those live in each

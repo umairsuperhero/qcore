@@ -255,17 +255,17 @@ func incSQN(sqn *[6]byte) {
 // pkg/mme because it's unexported there.
 type noopLogger struct{}
 
-func (noopLogger) Debug(...interface{})                                {}
-func (noopLogger) Info(...interface{})                                 {}
-func (noopLogger) Warn(...interface{})                                 {}
-func (noopLogger) Error(...interface{})                                {}
-func (noopLogger) Fatal(...interface{})                                {}
-func (noopLogger) Debugf(string, ...interface{})                       {}
-func (noopLogger) Infof(string, ...interface{})                        {}
-func (noopLogger) Warnf(string, ...interface{})                        {}
-func (noopLogger) Errorf(string, ...interface{})                       {}
-func (noopLogger) Fatalf(string, ...interface{})                       {}
-func (noopLogger) WithField(string, interface{}) logger.Logger         { return noopLogger{} }
-func (noopLogger) WithFields(map[string]interface{}) logger.Logger     { return noopLogger{} }
-func (noopLogger) WithError(error) logger.Logger                       { return noopLogger{} }
-func (noopLogger) Writer() io.Writer                                   { return io.Discard }
+func (noopLogger) Debug(...interface{})                            {}
+func (noopLogger) Info(...interface{})                             {}
+func (noopLogger) Warn(...interface{})                             {}
+func (noopLogger) Error(...interface{})                            {}
+func (noopLogger) Fatal(...interface{})                            {}
+func (noopLogger) Debugf(string, ...interface{})                   {}
+func (noopLogger) Infof(string, ...interface{})                    {}
+func (noopLogger) Warnf(string, ...interface{})                    {}
+func (noopLogger) Errorf(string, ...interface{})                   {}
+func (noopLogger) Fatalf(string, ...interface{})                   {}
+func (noopLogger) WithField(string, interface{}) logger.Logger     { return noopLogger{} }
+func (noopLogger) WithFields(map[string]interface{}) logger.Logger { return noopLogger{} }
+func (noopLogger) WithError(error) logger.Logger                   { return noopLogger{} }
+func (noopLogger) Writer() io.Writer                               { return io.Discard }
