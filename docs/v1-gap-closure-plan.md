@@ -360,7 +360,7 @@ validation are complete. Active execution moved to `docs/next-phases-plan.md`.
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ✅ bundled UERANSIM profile validated (`27115478758`) |
 | E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ✅ P2.2 — dashboard/API reconciliation shipped |
 | E2 scenario authoring | §7 Step 7 | S–M | ✅ P3.1 — save/list/run + deterministic PASS/FAIL shipped (audit v1.22) |
-| E3 CI hooks | §7 Step 8 | M | ☐ |
+| E3 CI hooks | §7 Step 8 | M | ✅ P3.2 — `qcore-cli test run --scenario <file> [--json]` CI exit-code contract shipped (audit v1.23) |
 
 > Executing agent: flip a box to ✅ only after that task's Verify passes, then update
 > `docs/audit-v1.0.md` and `docs/wiki.md` (cadence in `CLAUDE.md`).

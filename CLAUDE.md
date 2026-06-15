@@ -104,13 +104,23 @@ intact); full `go build`/`vet`/`test -race` green in `golang:1.23`. Branch
 `codex/auts-sqn-interop` (crypto slice merged as PR #41). SQN is integer-based with a +32
 advance (not the TS 33.102 array scheme); 4G AUTS resync is a follow-up.
 
+**SUCI Profile A/B (ECIES) de-concealment is interop-validated for the bundled
+UERANSIM Profile-A path (2026-06-15).** `pkg/suci` implements TS 33.501 Annex C
+de-concealment with stdlib-only crypto (X25519 Profile A, P-256 Profile B, ANSI X9.63
+KDF/SHA-256, AES-128-CTR, HMAC-SHA-256 8-byte tag) and tests reproduce the Annex C.4
+Profile A+B vectors. UDM owns SIDF de-concealment via configured HN private keys; AMF
+passes concealed `suci-<hex>` through to AUSF/UDM. Proven end-to-end against real
+UERANSIM: run `27545087715` prints `SUCI PROFILE A PASS`, with `T10 DATA PLANE PASS` and
+`T10 SQN RESYNC PASS` intact. Scope: Profiles A/B only, demo/local key management only;
+broader real-device compatibility still needs per-target replay evidence.
+
 **Phase D adoption — P3.1 scenario authoring + P3.2 CI hooks are SHIPPED (2026-06-15,
 PR #43, audit v1.23).** Author/save/list/re-run simulator scenarios with a deterministic
 PASS/FAIL + trace (`pkg/dashboard/scenario_store.go`, `ScenarioAuthoringPanel`,
 `CompareScenarioOutcome`); a stateless `POST /api/scenarios/run` plus
 `qcore-cli test run --scenario <f> [--json]` give a CI exit-code contract (exit 0 on PASS,
 1 on FAIL), proven against the built CLI. Next in Phase D: P3.3 Learning Mode (low
-priority); the demand-driven protocol gap is P4.1 SUCI Profile A/B (ECIES).
+priority); the next demand-driven interop track is P4.2 per-target real-RAN replay.
 
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
@@ -122,8 +132,9 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 (tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
 (`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
 3.556s. P1.2 B2 live offline-SLM serving is validated. P2.1 real-failure catalog
-rules and P2.2 RAN/device config reconciliation are complete; the next critical path is
-Phase 3 workflow adoption, starting with P3.1 scenario authoring.
+rules, P2.2 RAN/device config reconciliation, P3.1 scenario authoring, P3.2 CI hooks,
+and P4.1 SUCI Profile A/B are complete; the next critical path is demand-driven
+per-target real-RAN replay, with P3.3 Learning Mode as a lower-priority adoption slice.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

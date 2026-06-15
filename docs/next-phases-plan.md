@@ -40,6 +40,11 @@ pass in `golang:1.23`; the dashboard `tsc --noEmit` + `vite build` pass; GitHub 
   across UDM/AUSF/AMF; a real UERANSIM UE forced a Synch failure and completed registration
   after resync (`ueransim-interop` run `27529970131`, `T10 SQN RESYNC PASS`). Crypto slice
   merged as PR #41; interop on `codex/auts-sqn-interop`. ✅.
+- **SUCI Profile A/B (ECIES): interop-validated for bundled UERANSIM Profile A**
+  (audit v1.24). `pkg/suci` reproduces TS 33.501 Annex C.4 Profile A+B vectors; UDM
+  de-conceals concealed `suci-<hex>` via configured SIDF HN private keys; real UERANSIM
+  Profile-A registration prints `SUCI PROFILE A PASS` in run `27545087715`, with data
+  plane and SQN resync still green. ✅.
 
 **The v1 5G-SA-leading thesis is achieved.** What remains is: prove the promised numbers,
 drive workflow adoption, and broaden real-RAN demand-first.
@@ -213,6 +218,12 @@ Only build these when a concrete target needs them. The quarterly 3GPP/interop c
 (`qcore-3gpp-interop-checkin`) watches for triggers.
 
 ### P4.1 — SUCI Profile A/B (ECIES) · branch `codex/suci-profile-ab` · effort **M–L**
+**Status.** ✅ Complete on 2026-06-15 for the bundled UERANSIM Profile-A path. Crypto is
+Annex C.4 Profile A+B vector-pinned; UDM/SIDF de-concealment is wired; `ueransim-interop`
+run `27545087715` prints `SUCI PROFILE A PASS` with `T10 DATA PLANE PASS` and
+`T10 SQN RESYNC PASS` intact. Broader device/baseband compatibility still needs P4.2
+per-target replay.
+
 **Why.** Real devices encrypt the SUCI (Profile A/B ECIES); QCore supports only
 null-scheme today, which is the easy simulator case. This is the #1 gap before testing
 against **real** UEs/basebands. Acceptance: a Profile-A SUCI from a real UE (or a
@@ -242,7 +253,7 @@ THEN (adoption, by user pull):
   └─ P3.1 E2 scenario authoring ✅ → P3.2 E3 CI hooks ✅ → P3.3 Learning Mode
 
 DEMAND-DRIVEN (only when a target needs it):
-  └─ P4.1 SUCI Profile A/B → P4.2 per-target replay
+  └─ P4.1 SUCI Profile A/B ✅ → P4.2 per-target replay
 ```
 
 ## Definition of done (per phase)

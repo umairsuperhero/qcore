@@ -1,19 +1,30 @@
 # UERANSIM Compatibility (5G SA)
 
 **Status: UERANSIM registration + PDU session + data-plane ping pass. T10 is shipped
-for the bundled UERANSIM Docker/cloud-Linux profile.**
+for the bundled UERANSIM Docker/cloud-Linux profile, including Profile-A concealed SUCI
+and AUTS/SQN resync gates.**
 
 As of 2026-06-08, QCore has been replayed against UERANSIM v3.2.8 in Docker
 Compose over native SCTP on GitHub Actions cloud Linux. The replay completes the 5G
 flow end-to-end for this profile: full initial registration, the UE's PDU Session
 Establishment Request, SMF `201 Created`, protected PDU Session Establishment Accept,
 NGAP PDU Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and
-`ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE container.
+`ping -c 3 -I uesimtun0 8.8.8.8` from the UERANSIM UE container. As of 2026-06-15,
+the same workflow also proves the bundled UE registers with SUCI Profile A concealment:
+UDM de-conceals the `suci-<hex>` identity to `imsi-001010000000001`.
 
 Confirmed by GitHub Actions `ueransim-interop` run `27115478758`:
 
 ```text
 T10 DATA PLANE PASS — UERANSIM completed PDU session establishment and ping over uesimtun0 succeeded.
+```
+
+Confirmed by GitHub Actions `ueransim-interop` run `27545087715`:
+
+```text
+SUCI PROFILE A PASS — UERANSIM sent concealed SUCI (106 hex chars), UDM de-concealed it to imsi-001010000000001, journey=j-bb82e83f-ce87-4e63-9de9-31095b0d53d7.
+T10 DATA PLANE PASS — UERANSIM completed PDU session establishment and ping over uesimtun0 succeeded.
+T10 SQN RESYNC PASS — UERANSIM forced a Synch failure; QCore recovered SQN_MS, re-issued the challenge, and the UE completed registration.
 ```
 
 ## Verified In Replay
@@ -49,6 +60,8 @@ T10 DATA PLANE PASS — UERANSIM completed PDU session establishment and ping ov
 - SMF sends PFCP Session Modification to UPF.
 - UPF updates the remote gNB tunnel and uses a real Linux TUN/NAT egress.
 - UERANSIM UE pings through `uesimtun0`.
+- Bundled UERANSIM UE sends a concealed SUCI (Profile A, key ID 1), and UDM SIDF
+  de-conceals it before subscriber lookup.
 
 ## Confirmed: PDU Session Establishment Accept (control plane)
 
@@ -91,6 +104,10 @@ This is a real T10 ship claim for the bundled UERANSIM v3.2.8 Docker profile on 
 Linux/TUN-capable runtime. It is **not** a broad 3GPP conformance matrix or a claim that
 every external gNB/UE behaves identically. Additional RAN/device targets should get their
 own replay evidence before being marked compatible.
+
+SUCI Profile A/B support is intentionally scoped to de-concealment for IMSI-based SUCI
+using configured HN private keys. It does not add carrier-scale key lifecycle management,
+and Profile B is vector-tested but not yet separately replayed against an external UE.
 
 Docker Desktop on macOS is still not the validation environment for native SCTP + TUN;
 use GitHub Actions/Linux or a Linux host.
@@ -254,3 +271,26 @@ security counters after deregistration so the post-resync Security Mode Command 
 
 Scope: 5G only; integer SQN with a +32 advance (not the TS 33.102 array scheme); 4G AUTS
 resync is a follow-up. This does not broaden T10 beyond the bundled UERANSIM profile.
+
+## SUCI Profile A concealment (interop-validated 2026-06-15)
+
+QCore handles IMSI-based SUCI Profile A/B de-concealment in UDM/SIDF, not AMF. AMF passes
+the concealed mobile identity through as `suci-<hex>`; UDM uses `udm.sidf_keys` to select
+the HN private key, verify the ECIES MAC, decrypt the concealed MSIN, and continue the
+existing subscriber lookup as `imsi-...`.
+
+The crypto is pinned before wiring by TS 33.501 Annex C.4 vectors in `pkg/suci`: Profile A
+(X25519) and Profile B (P-256) both reproduce the published plaintext MSIN and reject a
+tampered MAC. The shipped UERANSIM replay covers Profile A because UERANSIM exposes
+Profile-A configuration (`protectionScheme: 1`, `homeNetworkPublicKeyId: 1`,
+`homeNetworkPublicKey`).
+
+The workflow gate runs `scripts/ci/ueransim-suci-profile-a.sh` after the data-plane check.
+It reads collector events and requires both:
+
+- AMF received a concealed `suci-<hex>` Registration Request from the UE.
+- UDM generated the authentication vector for that same concealed SUCI after resolving it
+  to `imsi-001010000000001`.
+
+Authoritative evidence: `ueransim-interop` run `27545087715` prints `SUCI PROFILE A PASS`,
+with `T10 DATA PLANE PASS` and `T10 SQN RESYNC PASS` intact.

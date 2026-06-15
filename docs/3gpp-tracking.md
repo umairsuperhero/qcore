@@ -2,7 +2,7 @@
 
 > Living reference. Maintained on the quarterly interop check-in cadence (see bottom)
 > and updated whenever a real-RAN interop finding lands.
-> Last updated: 2026-06-13
+> Last updated: 2026-06-15
 
 ## Principle: relevance, not parity
 
@@ -34,7 +34,7 @@ This is not a claim of Release completeness.
 | **5G-AKA** (TS 33.501) | Full AKA: AUSF/UDM vector generation, RES* verify, K_AUSF/K_SEAF/K_AMF chain | ✅ in-process |
 | **Key derivation** (TS 33.501 Annex A) | K_AMF (A.7), K_NASint/K_NASenc (A.8), K_gNB (A.9). **K_AMF P0 = bare IMSI** (fixed; see Findings) | ✅ in-process |
 | **NAS security algorithms** | 128-NIA2 (AES-CMAC) integrity; NEA0 (null) ciphering | ✅ in-process |
-| **SUCI** (TS 33.501 / 23.003) | Null-scheme (protection scheme 0) decode + genuine reject of unsupported schemes | ✅ in-process · ❌ Profile A/B (ECIES) |
+| **SUCI** (TS 33.501 / 23.003) | Null-scheme (protection scheme 0) decode; ECIES Profile A/B de-concealment in UDM/SIDF with configured HN private keys; Annex C.4 vector-pinned | ✅ in-process · ✅ bundled UERANSIM Profile A validated |
 | **SBI** (TS 29.5xx) | N8/N12/N13 (AUSF↔UDM↔UDR), N11 (AMF↔SMF), NRF register/discover (Nnrf) — HTTP/JSON | ✅ in-process · ➖ simplified service set |
 | **PFCP / N4** (TS 29.244) | Association Setup, Session Establishment, Session Modification for gNB remote tunnel update | ✅ in-process · ✅ bundled UERANSIM profile validated |
 | **GTP-U / N3** (TS 29.281) | Tunnel establishment + egress (Linux TUN/NAT) | ✅ in-process · ✅ bundled UERANSIM profile data-plane ping |
@@ -78,6 +78,7 @@ As of 2026-06-13, the diagnostic catalog recognizes these findings through stabl
 | 2026-06-07 | QCore created the SMF context but did not send PDU Session Establishment Accept back to UERANSIM. | TS 24.501 §8.3.2 / §8.2.11 | **Fixed.** AMF now relays a protected DL NAS Transport carrying a spec-complete 5GSM Accept (Authorized QoS rules + Session-AMBR + PDU address). Replay run `27108387027`: UERANSIM logs `PDU Session establishment is successful PSI[1]`. Pinned by `TestEncodePDUSessionEstablishmentAcceptGolden`. |
 | 2026-06-07 | PDU session establishes (control plane), but no external data-plane packet through UPF is proven; the CI UPF uses DummyEgress. | TS 29.281 / TS 29.244 | **Fixed.** UPF now runs with `/dev/net/tun`, configures TUN/NAT, and participates in PFCP remote tunnel update. |
 | 2026-06-08 | Final T10 data-plane gap: QCore needed NGAP PDU Session Resource Setup, PFCP Session Modification with the gNB N3 tunnel, and real UPF TUN/NAT before UE packets could flow. | TS 38.413 / TS 29.244 / TS 29.281 | **Fixed.** GitHub Actions `ueransim-interop` run `27115478758` records `T10 DATA PLANE PASS`; UERANSIM UE ping over `uesimtun0` succeeds through UPF. |
+| 2026-06-15 | UERANSIM Profile-A concealed SUCI needed UDM/SIDF ECIES de-concealment instead of AMF-side rejection of non-null schemes. | TS 33.501 Annex C / TS 23.003 | **Fixed.** `pkg/suci` reproduces Annex C.4 Profile A+B vectors; UDM de-conceals configured Profile A/B SUCIs; `ueransim-interop` run `27545087715` records `SUCI PROFILE A PASS` with data-plane and SQN-resync gates intact. |
 
 ## How this doc is maintained
 
