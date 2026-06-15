@@ -8,6 +8,7 @@
 package dashboard
 
 import (
+	"context"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -34,8 +35,10 @@ type Server struct {
 	spgwURL      *url.URL
 	collectorURL *url.URL
 
-	sim      *SimulatorController
-	aiEngine *ai.Engine
+	sim             *SimulatorController
+	aiEngine        *ai.Engine
+	scenarios       *ScenarioStore
+	scenarioRunHook func(context.Context, *simulator.ScenarioDefinition) (SimulatorStatus, error)
 }
 
 // New constructs a Server. URL fields are parsed once; bad URLs return an
@@ -67,6 +70,11 @@ func New(cfg *config.Config, log logger.Logger) (*Server, error) {
 		collectorURL: collectorURL,
 		aiEngine:     ai.NewEngine(cfg.AI, log),
 	}
+	scenarios, err := NewScenarioStore(cfg.Dashboard.ScenarioDir)
+	if err != nil {
+		return nil, err
+	}
+	s.scenarios = scenarios
 
 	// Build simulator templates from config + the demo subscriber.
 	// The demo subscriber's credentials are the 3GPP TS 35.208 Test Set 1
@@ -137,6 +145,12 @@ func (s *Server) routes() {
 	api.HandleFunc("/simulator/stop", s.handleSimulatorStop).Methods(http.MethodPost)
 	api.HandleFunc("/simulator/inject/{scenario}", s.handleSimulatorInject).Methods(http.MethodPost)
 	api.HandleFunc("/simulator/custom", s.handleSimulatorCustom).Methods(http.MethodPost)
+	api.HandleFunc("/scenarios", s.handleScenarioList).Methods(http.MethodGet)
+	api.HandleFunc("/scenarios", s.handleScenarioSave).Methods(http.MethodPost)
+	api.HandleFunc("/scenarios/run", s.handleScenarioRunDirect).Methods(http.MethodPost)
+	api.HandleFunc("/scenarios/{name}", s.handleScenarioGet).Methods(http.MethodGet)
+	api.HandleFunc("/scenarios/{name}", s.handleScenarioDelete).Methods(http.MethodDelete)
+	api.HandleFunc("/scenarios/{name}/run", s.handleScenarioRun).Methods(http.MethodPost)
 
 	// Diagnostics
 	api.HandleFunc("/diagnostics/journey/{id}", s.handleDiagnoseJourney).Methods(http.MethodGet)

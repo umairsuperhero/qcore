@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useConnectionStore } from "../stores/connectionStore";
 import RANConfigCheckPanel from "./RANConfigCheckPanel";
+import ScenarioAuthoringPanel from "./ScenarioAuthoringPanel";
 
 interface GNBHeroScreenProps {
   onRegisterUE: () => void;
@@ -381,6 +382,7 @@ export default function GNBHeroScreen({ onRegisterUE, onStartTrace }: GNBHeroScr
           ))}
         </div>
       </div>
+      <ScenarioAuthoringPanel onStartTrace={onStartTrace} />
       <RANConfigCheckPanel config={config} />
     </div>
   );

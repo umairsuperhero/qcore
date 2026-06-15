@@ -359,7 +359,7 @@ validation are complete. Active execution moved to `docs/next-phases-plan.md`.
 | C3 dashboard 5G (T9) | §7, §8 | M | ✅ credibility-gate slice runtime-proven and merged; broader UDR/operator detail deferred |
 | D  UERANSIM (T10) | D11, §4 TTFC | M | ✅ bundled UERANSIM profile validated (`27115478758`) |
 | E1 RAN reconcile | §7 Step 4, Pillar 3 | M | ✅ P2.2 — dashboard/API reconciliation shipped |
-| E2 scenario authoring | §7 Step 7 | S–M | ☐ |
+| E2 scenario authoring | §7 Step 7 | S–M | ✅ P3.1 — save/list/run + deterministic PASS/FAIL shipped (audit v1.22) |
 | E3 CI hooks | §7 Step 8 | M | ☐ |
 
 > Executing agent: flip a box to ✅ only after that task's Verify passes, then update

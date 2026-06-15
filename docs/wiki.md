@@ -54,7 +54,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 5G telemetry (T7 / C1) | Journey-correlated events across AMF/AUSF/UDM/SMF/UPF; one correlated trace per 5G registration (`TestC1_RegistrationEventTrace`, PR #25). | ✅ Shipped |
 | 5G simulator UX + dashboard 5G mode (T8/T9 / C2/C3) | Credibility-gate slice: protocol selector, correct 4G/5G RAN endpoint, backend simulator happy paths, failure injection, real SSE Live Trace, and real Diagnostic AI output. Broader UDR/operator detail remains a later product slice. | ✅ Credibility gate runtime-proven |
 | UERANSIM real-RAN validation (T10) | Native SCTP + NGSetup + InitialUEMessage + Authentication Request/Response + Security Mode Control + InitialContextSetup + Registration Complete + PDU session + NGAP PDU Session Resource Setup + PFCP remote tunnel update + UPF real TUN/NAT + UE ping over `uesimtun0`. Evidence: `ueransim-interop` run `27115478758`. | ✅ Shipped for bundled profile |
-| Phase D — Workflow adoption | Scenario authoring, CI hooks, Learning Mode. | 🔭 Planned |
+| Phase D — Workflow adoption | **Scenario authoring shipped** (P3.1): save/list/run named scenarios (`/api/scenarios`, dashboard authoring panel) with deterministic PASS/FAIL + trace. **CI hooks shipped** (P3.2): `qcore-cli` exit-code contract and `--json` for CI pipeline integration. Learning Mode next. | ◑ In progress |
 
 > **Verification note:** as of 2026-06-08 every package compiles, `go vet` is clean,
 > `go test ./...` and `go test -race ./...` pass (verified in `golang:1.23`). As of the
@@ -391,3 +391,40 @@ The demo subscriber (3GPP TS 35.208 Test Set 1) is seeded automatically on first
 | UDR | Unified Data Repository (5G) |
 | UPF | User Plane Function (5G, evolves from SPGW) |
 | UERANSIM | Open-source gNB+UE simulator used for 5G testing |
+
+## CI Integration (P3.2)
+
+QCore scenarios can be executed as part of your CI/CD pipeline using the `qcore-cli`. The CLI provides a synchronous exit-code contract: `0` if the scenario's `Expect` contract is met (or if it completes successfully without an explicit `Expect`), and `1` otherwise.
+
+### Example: GitHub Actions
+
+You can use the CLI to test your scenarios against a running QCore instance in CI. Add the `--json` flag to capture a machine-readable result.
+
+```yaml
+jobs:
+  test-scenarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Start QCore
+        run: docker compose -f deployments/docker/docker-compose.yml up -d
+
+      - name: Wait for QCore Dashboard
+        run: |
+          until curl -s http://localhost:3000/api/health; do
+            echo "Waiting for dashboard..."
+            sleep 2
+          done
+
+      - name: Run Passing Scenario
+        run: go run cmd/qcore-cli/main.go test run --scenario scenarios/test-pass.yaml
+
+      - name: Run Failing Scenario (Expecting Exit 1)
+        run: |
+          if go run cmd/qcore-cli/main.go test run --scenario scenarios/test-fail.yaml --json; then
+            echo "Expected failure but got success"
+            exit 1
+          fi
+          echo "Scenario correctly failed"
+```

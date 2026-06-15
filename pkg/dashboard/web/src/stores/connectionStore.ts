@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api } from "../api/client";
-import type { QEvent, DiagnosticResult, RANConfig } from "../api/types";
+import type { QEvent, DiagnosticResult, RANConfig, ScenarioRunResult } from "../api/types";
 
 export type GNBState = "waiting" | "connected" | "failed";
 export type ProtocolMode = "4g" | "5g";
@@ -46,6 +46,7 @@ interface ConnectionStore {
   closeEventSource: () => void;
   resetToLive: () => void;
   startSimulator: (scenario?: string) => Promise<void>;
+  runSavedScenario: (name: string) => Promise<ScenarioRunResult>;
   clearTrace: () => void;
   setMode: (mode: ProtocolMode) => void;
 }
@@ -318,6 +319,54 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
           error: (e as Error).message,
         },
       }));
+    }
+  },
+
+  runSavedScenario: async (name: string) => {
+    get().clearTrace();
+    const mode = get().mode;
+    set((state) => ({
+      traceState: {
+        ...state.traceState,
+        streaming: true,
+        activeScenario: name,
+        mode,
+        events: [],
+        diagnostic: null,
+        journeyId: null,
+        error: null,
+      },
+    }));
+
+    try {
+      const result = await api.runScenario(name);
+      let diagnostic: DiagnosticResult | null = null;
+      if (result.journey_id && result.actual.result === "failure") {
+        try {
+          diagnostic = await api.diagnoseJourney(result.journey_id);
+        } catch (e) {
+          console.error("Failed to fetch scenario diagnostics", e);
+        }
+      }
+      set((state) => ({
+        traceState: {
+          ...state.traceState,
+          streaming: false,
+          journeyId: result.journey_id || state.traceState.journeyId,
+          diagnostic: diagnostic || state.traceState.diagnostic,
+          error: result.error || result.actual.error || null,
+        },
+      }));
+      return result;
+    } catch (e) {
+      set((state) => ({
+        traceState: {
+          ...state.traceState,
+          streaming: false,
+          error: (e as Error).message,
+        },
+      }));
+      throw e;
     }
   },
 

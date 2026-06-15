@@ -61,6 +61,7 @@ export interface SimulatorStatus {
   state: SimulatorState;
   last_journey?: string;
   last_scenario?: string;
+  last_cause?: string;
   last_error?: string;
   failed_step?: string;
   mode?: string;
@@ -115,4 +116,39 @@ export interface DiagnosticResult {
   Explanation: string;
   RootCause: string;
   Fix: string;
+}
+
+export interface ScenarioExpect {
+  result: "success" | "failure" | string;
+  cause?: string;
+  failed_step?: string;
+}
+
+export interface ScenarioSummary {
+  name: string;
+  description?: string;
+  mode?: "4g" | "5g" | string;
+  scenario?: string;
+  expect?: ScenarioExpect;
+}
+
+export interface ScenarioRecord extends ScenarioSummary {
+  yaml: string;
+}
+
+export interface ScenarioActualOutcome {
+  result: string;
+  cause?: string;
+  failed_step?: string;
+  error?: string;
+}
+
+export interface ScenarioRunResult {
+  scenario: string;
+  pass: boolean | null;
+  expected?: ScenarioExpect;
+  actual: ScenarioActualOutcome;
+  journey_id?: string;
+  failed_step?: string;
+  error?: string;
 }

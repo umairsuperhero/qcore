@@ -10,20 +10,28 @@ import (
 
 // ScenarioDefinition defines a declarative test scenario for the simulator.
 type ScenarioDefinition struct {
-	Name        string            `yaml:"name"`
-	Description string            `yaml:"description"`
-	Mode        string            `yaml:"mode"` // "4g" or "5g"
-	Overrides   ScenarioOverrides `yaml:"overrides"`
+	Name        string            `yaml:"name" json:"name"`
+	Description string            `yaml:"description" json:"description"`
+	Mode        string            `yaml:"mode" json:"mode"`                               // "4g" or "5g"
+	Scenario    string            `yaml:"scenario,omitempty" json:"scenario,omitempty"`   // optional built-in fault hook
+	Overrides   ScenarioOverrides `yaml:"overrides,omitempty" json:"overrides,omitempty"` // optional direct option overrides
+	Expect      *ScenarioExpect   `yaml:"expect,omitempty" json:"expect,omitempty"`       // optional deterministic PASS/FAIL contract
 }
 
 // ScenarioOverrides defines fields to override during the attach.
 type ScenarioOverrides struct {
-	MMEAddr string `yaml:"mme_address,omitempty"`
-	PLMN    string `yaml:"plmn,omitempty"` // e.g. "00101"
-	TAC     uint16 `yaml:"tac,omitempty"`
-	IMSI    string `yaml:"imsi,omitempty"`
-	Ki      string `yaml:"ki,omitempty"`
-	OPc     string `yaml:"opc,omitempty"`
+	MMEAddr string `yaml:"mme_address,omitempty" json:"mme_address,omitempty"`
+	PLMN    string `yaml:"plmn,omitempty" json:"plmn,omitempty"` // e.g. "00101"
+	TAC     uint16 `yaml:"tac,omitempty" json:"tac,omitempty"`
+	IMSI    string `yaml:"imsi,omitempty" json:"imsi,omitempty"`
+	Ki      string `yaml:"ki,omitempty" json:"ki,omitempty"`
+	OPc     string `yaml:"opc,omitempty" json:"opc,omitempty"`
+}
+
+type ScenarioExpect struct {
+	Result     string `yaml:"result" json:"result"`                               // "success" or "failure"
+	Cause      string `yaml:"cause,omitempty" json:"cause,omitempty"`             // optional diagnostic/fault cause tag
+	FailedStep string `yaml:"failed_step,omitempty" json:"failed_step,omitempty"` // optional simulator step
 }
 
 // LoadScenario parses a YAML scenario definition from an io.Reader.
@@ -51,6 +59,9 @@ func (sd *ScenarioDefinition) Apply(opts *Options) error {
 	if sd.Mode != "" {
 		opts.Mode = sd.Mode
 	}
+	if sd.Scenario != "" {
+		opts.Scenario = sd.Scenario
+	}
 	if sd.Overrides.MMEAddr != "" {
 		opts.MMEAddr = sd.Overrides.MMEAddr
 	}
@@ -73,7 +84,7 @@ func (sd *ScenarioDefinition) Apply(opts *Options) error {
 	if sd.Overrides.OPc != "" {
 		opts.OPc = sd.Overrides.OPc
 	}
-	// Note: We don't override opts.Scenario here because the declarative overrides
-	// themselves drive the failure, so opts.Scenario (the hardcoded hook) isn't needed.
+	// Declarative overrides can drive failures on their own, while Scenario lets
+	// authored scenarios reuse the small built-in fault hooks.
 	return nil
 }
