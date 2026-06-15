@@ -217,6 +217,8 @@ Only build these when a concrete target needs them. The quarterly 3GPP/interop c
 null-scheme today, which is the easy simulator case. This is the #1 gap before testing
 against **real** UEs/basebands. Acceptance: a Profile-A SUCI from a real UE (or a
 conformance vector) is de-concealed and registration completes; tests pin the crypto.
+**Executable brief: `docs/briefs/p4.1-suci-profile-ab-ecies.md`** (SIDF de-concealment
+at UDM; TS 33.501 Annex C, vector-gated; stdlib-only, zero CGO).
 
 ### P4.2 — Per-target real-RAN replay · effort **M** each (Linux host)
 srsRAN, other UERANSIM versions, real gNBs/UEs — one replay + evidence per target. Update
