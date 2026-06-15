@@ -42,7 +42,7 @@ observability, and AI that explains failures. UX is the product.
 - For docs/status edits, run `make fact-check` or `make verify-fast` so stale T10/status
   language is caught before summary or commit.
 
-## Current baseline (2026-06-14)
+## Current baseline (2026-06-15)
 Phase A (event model), Phase B (dashboard, simulator, one-command launch), and the
 diagnostic-AI **catalog** are **shipped**. The 4G EPC is complete and end-to-end verified.
 For 5G SA: AMF, AUSF, UDM, UDR are integrated, and NRF discovery works using Docker bridge networking (FQDNs). The 5G SA control plane **and** user plane (SMF/UPF/PFCP) build and pass an in-process
@@ -96,6 +96,30 @@ Lanes 1–4 + the T10 progress branch are integrated to main; full Go build/vet/
     PLMN, TAC, S-NSSAI, serving-network-name, IMSI, Ki, OPc/OP, DNN, and SUCI-scheme
     mismatches before attach without exposing raw secrets.
 
+**5G AUTS/SQN resynchronization (TS 33.102 §6.3.5) is interop-validated (2026-06-15).**
+When a UE's SQN is ahead of a restarted/reseeded core, QCore now recovers SQN_MS from the
+AUTS (reverse-Milenage f1\*/f5\*, vector-validated against TS 35.208 in
+`TestResyncAUTSRoundTrip`), advances its SQN, and re-issues the challenge instead of
+returning 501. Proven end-to-end against a real UERANSIM UE in `ueransim-interop` run
+`27529970131` (`T10 SQN RESYNC PASS`, with `T10 DATA PLANE PASS` intact).
+
+**SUCI Profile A/B (ECIES) de-concealment is interop-validated for the bundled
+UERANSIM Profile-A path (2026-06-15).** `pkg/suci` implements TS 33.501 Annex C
+de-concealment with stdlib-only crypto (X25519 Profile A, P-256 Profile B, ANSI X9.63
+KDF/SHA-256, AES-128-CTR, HMAC-SHA-256 8-byte tag) and tests reproduce the Annex C.4
+Profile A+B vectors. UDM owns SIDF de-concealment via configured HN private keys; AMF
+passes concealed `suci-<hex>` through to AUSF/UDM. Proven end-to-end against real
+UERANSIM: run `27545087715` prints `SUCI PROFILE A PASS`, with `T10 DATA PLANE PASS` and
+`T10 SQN RESYNC PASS` intact. Scope: Profiles A/B only, demo/local key management only;
+broader real-device compatibility still needs per-target replay evidence.
+
+**Phase D adoption — P3.1 scenario authoring + P3.2 CI hooks are SHIPPED (2026-06-15).**
+Author/save/list/re-run simulator scenarios with a deterministic PASS/FAIL + trace
+(`pkg/dashboard/scenario_store.go`, `ScenarioAuthoringPanel`, `CompareScenarioOutcome`);
+a stateless `POST /api/scenarios/run` plus `qcore-cli test run --scenario <f> [--json]`
+give a CI exit-code contract. Next in Phase D: P3.3 Learning Mode (low priority); the
+next demand-driven interop track is P4.2 per-target real-RAN replay.
+
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
 this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living audit;
@@ -106,8 +130,9 @@ this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living au
 (tracks A–E). P1.1 TTFC/TTRC is measured from a cold compose/current-checkout run
 (`measurements/latest.json`): cold start + 5G TTFC 77.498s; worst known-failure TTRC
 3.556s. P1.2 B2 live offline-SLM serving is validated. P2.1 real-failure catalog
-rules and P2.2 RAN/device config reconciliation are complete; the next critical path is
-Phase 3 workflow adoption, starting with P3.1 scenario authoring.
+rules, P2.2 RAN/device config reconciliation, P3.1 scenario authoring, P3.2 CI hooks,
+and P4.1 SUCI Profile A/B are complete; the next critical path is demand-driven
+per-target real-RAN replay, with P3.3 Learning Mode as a lower-priority adoption slice.
 
 ## Build order — the re-sequenced roadmap
 The pre-charter roadmap optimized for protocol coverage and parked zero-config,

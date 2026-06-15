@@ -4,7 +4,7 @@
 
 **The open-source 4G/5G core network that's actually easy to use.**
 
-> Updated: 2026-06-14
+> Updated: 2026-06-15
 
 QCore is a development and test environment for cellular networks — **not** a 5G core competing on protocol features. Primary user: the RAN/device developer who needs a core to test against. QCore wins on experience: fast start, deep observability, and AI that explains failures.
 
@@ -19,10 +19,10 @@ See the [Product Experience Charter](docs/experience-charter.md) for the full vi
 | 4G EPC | HSS (subscriber management + Milenage), MME (S1AP/NAS attach, auth, security mode), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured event schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. All 4G NFs instrumented. | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Web dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in S1AP/NAS simulator with 4 error-injection scenarios. | ✅ Shipped |
-| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening, 5G Phase-A telemetry, and **T10/UERANSIM real-RAN validation for the bundled Docker/cloud-Linux profile are shipped**: native SCTP, registration, PDU session establishment, NGAP PDU Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and UE ping over `uesimtun0` all pass against real UERANSIM. **5G AUTS/SQN resynchronization is interop-validated**: a real UERANSIM UE forced a Synch failure (SQN out of range), QCore recovered SQN_MS via reverse-Milenage (f1\*/f5\*, validated against 3GPP TS 35.208 vectors), re-issued the challenge, and the UE completed registration — `ueransim-interop` run `27529970131` records `T10 SQN RESYNC PASS`. Evidence: `ueransim-interop` runs `27115478758` (data plane) + `27529970131` (SQN resync); docs: `docs/ueransim-compat.md`. | ✅ Shipped |
+| 5G SA Track | AMF/AUSF/UDM/UDR/NRF/SMF/UPF + PFCP/N4 codec all built. Control **and** user plane pass an in-process E2E test (Registration → PDU session → GTP-U tunnel). Interop hardening, 5G Phase-A telemetry, and **T10/UERANSIM real-RAN validation for the bundled Docker/cloud-Linux profile are shipped**: native SCTP, registration, PDU session establishment, NGAP PDU Session Resource Setup, PFCP remote tunnel update, UPF real TUN/NAT, and UE ping over `uesimtun0` all pass against real UERANSIM. **5G AUTS/SQN resynchronization is interop-validated**: a real UERANSIM UE forced a Synch failure (SQN out of range), QCore recovered SQN_MS via reverse-Milenage (f1\*/f5\*, validated against 3GPP TS 35.208 vectors), re-issued the challenge, and the UE completed registration. **SUCI Profile A/B de-concealment is implemented and vector-pinned** (TS 33.501 Annex C.4 Profile A+B); the bundled UERANSIM profile now registers with concealed Profile-A SUCI and UDM de-conceals it to the seeded IMSI. Evidence: `ueransim-interop` runs `27115478758` (data plane), `27529970131` (SQN resync), and `27545087715` (`SUCI PROFILE A PASS` with data plane + SQN intact); docs: `docs/ueransim-compat.md`. | ✅ Shipped |
 | Phase C — Diagnostic AI | Symptom→cause catalog now has 28 rules, including 9 UERANSIM/T10 interop-finding rules, across ≥9 cause categories (4G + 5G); AI Level 1 (explain) + Level 2 (root-cause + fix); optional cloud (Gemini) escalation. **Offline embedded SLM (B2) is live-validated**: `make up-ai` builds/runs the llama.cpp sidecar with baked Qwen2.5-1.5B GGUF, `pkg/ai` reaches it through the local provider, dashboard diagnostics explain a catalog-miss trace through the same grounded prompt, and an internal-network air-gap smoke test succeeds. **RAN/device config reconciliation (P2.2) is shipped**: `/api/ran-config/reconcile` and the dashboard compare UERANSIM gNB/UE YAML against QCore AMF/subscriber settings and name PLMN, TAC, S-NSSAI, SNN, IMSI, Ki, OPc, DNN, and SUCI-scheme mismatches before attach. Catalog still runs first; SLM handles misses only. | ✅ Shipped |
 | Dashboard experience layer | gNB-connection hero screen ("is your gNB connected?", dark-first, latch-flip animation) + animated live signaling-trace view with progressive disclosure. **Now runs on real `/api/events/stream` data (un-mocked); 4G/5G simulator launches route through the backend API; live injected failures are decoded by the real diagnostic engine. Build migrated esbuild→Vite.** | ✅ Shipped |
-| Phase D — Workflow adoption | **Scenario authoring shipped** — save/list/run named scenarios (`/api/scenarios`, dashboard authoring panel) with a deterministic PASS/FAIL + trace (`ScenarioDefinition.Expect`); runtime-proven on the 4G stack (happy → pass, `wrong_ki` → expected-failure pass). CI hooks + Learning Mode next. | ◑ In progress |
+| Phase D — Workflow adoption | **Scenario authoring shipped** — save/list/run named scenarios (`/api/scenarios`, dashboard authoring panel) with a deterministic PASS/FAIL + trace (`ScenarioDefinition.Expect`); runtime-proven on the 4G stack (happy → pass, `wrong_ki` → expected-failure pass). **CI hooks shipped** — `qcore-cli test run --scenario <file> [--json]` provides a CI exit-code contract. Learning Mode next. | ◑ In progress |
 
 ---
 
@@ -36,8 +36,9 @@ observable, and explains its own failures. The full vision is in the
 
 **Where we are now:** the 4G EPC is end-to-end verified; the 5G SA control + user plane
 pass an in-process E2E test over native SCTP; T10 passes against the bundled UERANSIM
-Docker/cloud-Linux profile with UE ping through UPF; the diagnostic catalog and
-RAN/device config reconciliation are shipped; the live dashboard runs on real backend
+Docker/cloud-Linux profile with UE ping through UPF; AUTS/SQN resync and concealed
+Profile-A SUCI registration are interop-proven for that profile; the diagnostic catalog
+and RAN/device config reconciliation are shipped; the live dashboard runs on real backend
 simulator/SSE/diagnostic data.
 
 **The post-v1 path now shifts from protocol build-out to proof and adoption:**

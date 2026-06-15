@@ -99,7 +99,7 @@ var catalogRuleTests = []struct {
 			Reason:      "unsupported_protection_scheme",
 			Scheme:      1,
 		}),
-		wantRootCauseContains: "protection scheme",
+		wantRootCauseContains: "SIDF",
 	},
 	{
 		name:   "5G slice not subscribed",

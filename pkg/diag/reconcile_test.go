@@ -140,13 +140,13 @@ func TestReconcileConfig_MismatchCases(t *testing.T) {
 			wantFix:   "internet",
 		},
 		{
-			name: "SUCI scheme mismatch",
+			name: "unsupported SUCI scheme",
 			mutate: func(in *ReconcileInput) {
-				in.SUCIProtectionScheme = "1"
+				in.SUCIProtectionScheme = "3"
 			},
 			wantField: "ue.suci_protection_scheme",
 			wantCause: CauseSUCIDecodeFailure,
-			wantFix:   "null-scheme",
+			wantFix:   "0, 1, or 2",
 		},
 	}
 

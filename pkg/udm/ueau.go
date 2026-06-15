@@ -155,7 +155,7 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	supi := r.PathValue("supi")
+	rawSupi := r.PathValue("supi")
 
 	var req AuthenticationInfoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -179,6 +179,24 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 	var av *Av5gHeAka
 	var err error
 	journeyID := events.JourneyIDFromContext(r.Context())
+	supi, err := s.resolveSupi(rawSupi)
+	if err != nil {
+		s.emitter.Emit(events.Event{
+			JourneyID: journeyID,
+			NF:        "udm",
+			Category:  events.ErrorEvent,
+			Severity:  events.SeverityError,
+			Protocol:  "sbi",
+			Message:   "SUCI de-concealment failed",
+			Payload: events.UDMAuthDataPayload{
+				SupiOrSuci: rawSupi,
+				Success:    false,
+				Reason:     err.Error(),
+			},
+		})
+		writeSupiProblem(w, err)
+		return
+	}
 
 	if req.ResynchronizationInfo != nil {
 		av, err = s.auth.ResyncAndGenerateAv(r.Context(), supi, req.ServingNetworkName, req.ResynchronizationInfo.RAND, req.ResynchronizationInfo.AUTS)
@@ -195,7 +213,8 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 			Protocol:  "sbi",
 			Message:   "Authentication vector generation failed",
 			Payload: events.UDMAuthDataPayload{
-				SupiOrSuci: supi,
+				SupiOrSuci: rawSupi,
+				SUPI:       supi,
 				Success:    false,
 				Reason:     err.Error(),
 			},
@@ -237,7 +256,7 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 		Protocol:  "sbi",
 		Message:   "Authentication vector generated",
 		Payload: events.UDMAuthDataPayload{
-			SupiOrSuci: supi,
+			SupiOrSuci: rawSupi,
 			SUPI:       supi,
 			Success:    true,
 		},

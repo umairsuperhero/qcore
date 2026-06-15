@@ -119,7 +119,7 @@ var catalog = []rule{
 					return DiagnosticResult{
 						Matched:     true,
 						Explanation: res.Explanation,
-						RootCause:   "Malformed SUCI or unsupported protection scheme (only null-scheme/scheme-0 is supported).",
+						RootCause:   "Malformed SUCI, unsupported protection scheme, missing SIDF key, or SUCI MAC verification failure.",
 						Fix:         res.FixUESide + " QCore side: " + res.FixQCoreSide,
 					}, true
 				}
@@ -129,7 +129,7 @@ var catalog = []rule{
 					return DiagnosticResult{
 						Matched:     true,
 						Explanation: res.Explanation,
-						RootCause:   "Malformed SUCI or unsupported protection scheme.",
+						RootCause:   "Malformed SUCI, unsupported protection scheme, missing SIDF key, or SUCI MAC verification failure.",
 						Fix:         res.FixUESide,
 					}, true
 				}

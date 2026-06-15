@@ -1,6 +1,10 @@
 supi: 'imsi-001010000000001'
 mcc: '001'
 mnc: '01'
+protectionScheme: 1
+homeNetworkPublicKey: '5a8d38864820197c3394b92613b20b91633cbd897119273bf8e4a6f4eec0a650'
+homeNetworkPublicKeyId: 1
+routingIndicator: '0000'
 key: '465b5ce8b199b49faa5f0a2ee238a6bc'
 op: 'cd63cb71954a9f4e48a5994e37a02baf'
 opType: 'OPC'

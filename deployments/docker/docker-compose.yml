@@ -202,12 +202,15 @@ services:
         condition: service_healthy
       nrf:
         condition: service_healthy
+      collector:
+        condition: service_healthy
     environment:
       QCORE_UDM_BIND_ADDRESS: 0.0.0.0
       QCORE_UDM_PORT: "8085"
       QCORE_UDM_NRF_URL: http://nrf:8083
       QCORE_UDM_UDR_URL: ""
       QCORE_UDM_PLMN: "00101"
+      QCORE_TELEMETRY_COLLECTOR_URL: http://collector:9099
       QCORE_DATABASE_HOST: postgres
       QCORE_DATABASE_PORT: "5432"
       QCORE_DATABASE_USER: qcore

@@ -79,6 +79,13 @@ udm:
   nrf_url: "http://localhost:8083"
   udr_url: ""         # empty = direct-DB mode (dev); set to UDR URL for network mode
   plmn: "00101"
+  # Demo SIDF HN private key for SUCI Profile A de-concealment. This matches
+  # the public key in deployments/docker/ueransim-config/ue.yaml. Replace in
+  # real labs; never publish or log production HN private keys.
+  sidf_keys:
+    - id: 1
+      scheme: 1       # 1 = Profile A (X25519), 2 = Profile B (P-256)
+      private_key_hex: "c53c22208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d"
 
 ausf:
   bind_address: "0.0.0.0"

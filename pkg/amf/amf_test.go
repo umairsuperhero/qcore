@@ -22,6 +22,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/sctp"
 	"github.com/qcore-project/qcore/pkg/subscriber"
+	"github.com/qcore-project/qcore/pkg/suci"
 	"github.com/qcore-project/qcore/pkg/udm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,7 @@ func startAUSFandUDM(t *testing.T, sub *subscriber.Subscriber) (ausfURL string) 
 
 	// UDM
 	udmSvc := udm.NewService(udm.NewStoreSource(&fakeSubscriberStore{subs}), log).
+		WithSIDFResolver(testSIDFResolver(t)).
 		WithAuthSource(udm.NewStoreAuthSource(&fakeAuthStore{subs}))
 	udmPort := pickPort(t)
 	udmSrv := sbi.NewServer(sbi.ServerConfig{BindAddress: "127.0.0.1", Port: udmPort, NFType: "UDM"}, log, udmSvc.Handler())
@@ -112,6 +114,19 @@ func startAUSFandUDM(t *testing.T, sub *subscriber.Subscriber) (ausfURL string) 
 		_ = udmSrv.Shutdown(ctx)
 	})
 	return "http://127.0.0.1:" + strconv.Itoa(ausfPort)
+}
+
+func testSIDFResolver(t *testing.T) *suci.Resolver {
+	t.Helper()
+	priv, err := suci.ParsePrivateKeyHex(suci.SchemeProfileA, "c53c22208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d")
+	require.NoError(t, err)
+	resolver, err := suci.NewResolver([]suci.HomeNetworkPrivateKey{{
+		ID:         1,
+		Scheme:     suci.SchemeProfileA,
+		PrivateKey: priv,
+	}})
+	require.NoError(t, err)
+	return resolver
 }
 
 // ─── mock gNB ──────────────────────────────────────────────────────────────
@@ -401,6 +416,97 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	t.Log("PDU Session Establishment Accept received over protected DL NAS Transport")
 
 	t.Log("✓ Full 5G registration + PDU session accept flow complete")
+}
+
+func TestAMF_RegistrationFlow_ConcealedProfileASUCI(t *testing.T) {
+	const (
+		imsi   = "274012001002086"
+		snName = "5G:mnc001.mcc001.3gppnetwork.org"
+	)
+
+	sub := &subscriber.Subscriber{
+		IMSI: imsi,
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+
+	ausfURL := startAUSFandUDM(t, sub)
+	log := logger.New("error", "text")
+	plmn := ngap.PLMNFromMCCMNC("001", "01")
+	amfPort := pickPort(t)
+	cfg := Config{
+		NGAPAddr: "127.0.0.1:" + strconv.Itoa(amfPort),
+		NGAPMode: sctp.ModeTCP,
+		AMFName:  "QCore-AMF-test",
+		GUAMI:    ngap.GUAMI{PLMN: plmn, AMFRegionID: 0x01, AMFSetID: 0x001, AMFPointer: 0x00},
+		PLMNSupportList: []ngap.PLMNSupportItem{
+			{PLMN: plmn, SNSSAIs: []ngap.SNSSAI{{SST: 1}}},
+		},
+		ServingNetworkName: snName,
+	}
+	amfSvc := NewService(cfg, ausf.NewClient(ausfURL, "AMF", false), log)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = amfSvc.Serve(ctx) }()
+	time.Sleep(80 * time.Millisecond)
+
+	conn, err := sctp.Dial(sctp.ModeTCP, "127.0.0.1:"+strconv.Itoa(amfPort))
+	require.NoError(t, err)
+	defer conn.Close()
+	gNB := &mockGNB{conn: conn}
+	gNB.ngSetup(t)
+
+	const ranID = uint64(0x1001)
+	regReq := nas5g.EncodeRegistrationRequest(&nas5g.RegistrationRequest{
+		RegistrationType:     nas5g.RegistrationTypeInitialRegistration,
+		NASKeySetID:          7,
+		MobileIdentity:       annexC4ProfileASUCI(),
+		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00},
+	})
+	gNB.sendInitialUE(t, ranID, regReq)
+
+	amfID, authReqRaw := gNB.recvDownlinkNAS(t)
+	authMsg, err := nas5g.Decode(authReqRaw)
+	require.NoError(t, err)
+	require.NotNil(t, authMsg.AuthenticationRequest, "expected AuthenticationRequest")
+
+	ki := hd(sub.Ki)
+	opc := hd(sub.OPc)
+	sqn := hd("000000000001")
+	amfParam := hd(sub.AMF)
+
+	var kiArr, opcArr, randArr [16]byte
+	copy(kiArr[:], ki)
+	copy(opcArr[:], opc)
+	copy(randArr[:], authMsg.AuthenticationRequest.RAND[:])
+	var sqnArr [6]byte
+	copy(sqnArr[:], sqn)
+	var amfArr [2]byte
+	copy(amfArr[:], amfParam)
+
+	av, err := subscriber.Generate5GAuthVectorWithRAND(kiArr, opcArr, randArr, sqnArr, amfArr, snName)
+	require.NoError(t, err)
+	gNB.sendUplinkNAS(t, amfID, ranID, nas5g.EncodeAuthenticationResponse(&nas5g.AuthenticationResponse{
+		ResStar: hd(av.XRESStar),
+	}))
+
+	_, smcRaw := gNB.recvDownlinkNAS(t)
+	require.Equal(t, uint8(0x7E), smcRaw[0], "expected 5GMM EPD")
+	require.Equal(t, uint8(0x03), smcRaw[1], "expected protected Security Mode Command")
+
+	gNB.sendUplinkNAS(t, amfID, ranID, nas5g.EncodeSecurityModeComplete(&nas5g.SecurityModeComplete{}))
+	_, regAcceptRaw := gNB.recvInitialContextSetup(t)
+	require.Equal(t, uint8(0x7E), regAcceptRaw[0])
+	require.Equal(t, uint8(0x01), regAcceptRaw[1], "expected protected Registration Accept")
+
+	amfSvc.mu.RLock()
+	ueCtx := amfSvc.ues[amfID]
+	amfSvc.mu.RUnlock()
+	require.NotNil(t, ueCtx)
+	assert.Equal(t, "imsi-"+imsi, ueCtx.SUPI)
 }
 
 // TestAMF_UnprovisionedIMSI verifies that when the AUSF cannot find a
@@ -926,6 +1032,13 @@ func makeSUCI(imsi string) []byte {
 	})
 }
 
+func annexC4ProfileASUCI() []byte {
+	return hd("f172241000000101" +
+		"b2e92f836055a255837debf850b528997ce0201cb82adfe4be1f587d07d8457d" +
+		"cb02352410" +
+		"cddd9e730ef3fa87")
+}
+
 // assertRegistrationReject waits for a DownlinkNASTransport and asserts it
 // carries a NAS Registration Reject (message type 0x44).
 func assertRegistrationReject(t *testing.T, gNB *mockGNB) {
@@ -1028,9 +1141,11 @@ func TestRegistration_AuthMACFailure(t *testing.T) {
 	assert.NotEmpty(t, result.FixQCoreSide)
 }
 
-// TestRegistration_SUCIDecodeFailure drives a UE sending a SUCI with an
-// unsupported protection scheme (non-zero) and asserts the correct rejection.
-func TestRegistration_SUCIDecodeFailure(t *testing.T) {
+// TestRegistration_ConcealedSUCIPassesToUDM drives a UE sending a concealed
+// SUCI and asserts the AMF forwards it to AUSF/UDM instead of rejecting the
+// protection scheme locally. This helper UDM has no SIDF key configured, so
+// the final UE-visible result is still a Registration Reject.
+func TestRegistration_ConcealedSUCIPassesToUDM(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test skipped in -short mode")
 	}
@@ -1045,32 +1160,38 @@ func TestRegistration_SUCIDecodeFailure(t *testing.T) {
 	defer cancel()
 	gNB := connectGNB(t, port)
 
-	// Build a SUCI with protection scheme = 1 (ECIES Profile A — not supported).
+	// Build a SUCI with protection scheme = 1 (ECIES Profile A).
 	plmn := [3]byte(ngap.PLMNFromMCCMNC("001", "01"))
 	eciesSUCI := nas5g.EncodeSUCI(nas5g.SUCI{
 		PLMN:             plmn,
 		RoutingIndicator: [2]byte{0xFF, 0xFF},
-		ProtectionScheme: 0x01, // ECIES — NOT null scheme
+		ProtectionScheme: 0x01,
 		HomeNetworkPKID:  0x00,
 		MSIN:             []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00},
 	})
 	_ = sendRegistrationRequest(t, gNB, eciesSUCI)
 
-	// AMF must send a Registration Reject immediately (before any AUSF call).
 	assertRegistrationReject(t, gNB)
 	time.Sleep(40 * time.Millisecond)
 
-	// Assert SUCIDecodeFailurePayload was emitted.
+	rawHex := hex.EncodeToString(eciesSUCI)
 	_, ok := rec.findPayload(func(e events.Event) bool {
-		p, is := e.Payload.(events.SUCIDecodeFailurePayload)
-		return is && p.Scheme == 1
+		p, is := e.Payload.(events.RegistrationRequestPayload)
+		return is && p.SUCI == "suci-"+rawHex
 	})
-	require.True(t, ok, "expected SUCIDecodeFailurePayload with scheme=1; events: %v", rec.all())
+	require.True(t, ok, "expected RegistrationRequestPayload with raw SUCI forwarded; events: %v", rec.all())
 
-	// Assert the diagnostic result.
-	result := diag.DiagnoseRegistration(rec.all())
-	assert.False(t, result.OK)
-	assert.Equal(t, diag.CauseSUCIDecodeFailure, result.Cause)
+	_, ok = rec.findPayload(func(e events.Event) bool {
+		_, is := e.Payload.(events.SUCIDecodeFailurePayload)
+		return is
+	})
+	assert.False(t, ok, "AMF should not emit SUCIDecodeFailurePayload for pass-through SUCI")
+
+	_, ok = rec.findPayload(func(e events.Event) bool {
+		p, is := e.Payload.(events.RegistrationFailurePayload)
+		return is && p.SUCI == "suci-"+rawHex && p.Cause == "ausf_error"
+	})
+	require.True(t, ok, "expected AUSF/UDM failure after SUCI pass-through; events: %v", rec.all())
 }
 
 // TestRegistration_DistinguishUnknownVsMAC ensures the two most easily confused

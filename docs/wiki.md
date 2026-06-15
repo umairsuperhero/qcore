@@ -2,7 +2,7 @@
 
 > Living reference. Refreshed at the end of each build session, on every milestone,
 > and on the recurring audit cadence (see `docs/audit-v1.0.md` §7).
-> Last updated: 2026-06-14
+> Last updated: 2026-06-15
 >
 > **Authoritative docs:** `docs/experience-charter.md` (vision + scope) · `CLAUDE.md` / `AGENTS.md` (build order) · `docs/audit-v1.0.md` (living baseline audit + long-term decisions D-1…D-4) · `docs/next-phases-plan.md` (active post-v1 executable plan). `docs/v1-gap-closure-plan.md` is retained as the historical v1 plan.
 
@@ -44,7 +44,7 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 | 4G EPC | HSS, MME (S1AP, NAS, Milenage, KASME), SPGW (GTP-U, S11, Linux TUN egress). End-to-end attach + uplink verified. | ✅ Shipped |
 | Phase A — Event model | `pkg/events` structured schema, journey-ID correlation, HTTP emitter. `cmd/qcore-collector` SSE stream + journey store. 4G and 5G NFs instrumented (5G via C1/T7). | ✅ Shipped |
 | Phase B — Golden Path | `make up` one-command launch. Dashboard (port 3000): health view, subscriber management, live event trace, RAN-connect config panel. Built-in simulator with error-injection scenarios. | ✅ Shipped |
-| 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test and the bundled UERANSIM Docker/cloud-Linux T10 replay. | ✅ Shipped for bundled UERANSIM profile |
+| 5G SA control plane | AMF/AUSF/UDM/UDR/NRF with binary entrypoints, Dockerfiles, compose entries. Registration flow passes in the in-process E2E test and the bundled UERANSIM Docker/cloud-Linux T10 replay. AUTS/SQN resync and Profile-A concealed SUCI registration are interop-proven for the bundled profile. | ✅ Shipped for bundled UERANSIM profile |
 | 5G SA user plane | `pkg/pfcp` codec, `pkg/smf` + `cmd/smf`, `pkg/upf` + `cmd/upf`. Builds, unit-tested, exercised by the E2E test (Registration → PDU session → GTP-U tunnel), and validated by UERANSIM UE ping over `uesimtun0` through UPF. | ✅ Shipped for bundled UERANSIM profile |
 | Phase C — Diagnostic AI (catalog) | `pkg/ai/catalog.go`: 28 symptom→cause rules, including 9 UERANSIM/T10 interop-finding rules, across ≥9 cause categories (4G + 5G) + optional Gemini escalation; wired to the dashboard diagnose endpoint. | ✅ Shipped (catalog) |
 | Phase C — Diagnostic AI (offline SLM) | `pkg/ai` local provider + `make up-ai` llama.cpp sidecar (baked Qwen2.5-1.5B GGUF); catalog runs first, SLM handles misses over the same grounded prompt. Live-validated with real GGUF, dashboard diagnostics API replay, and an internal-network air-gap smoke test. | ✅ Shipped |
@@ -64,7 +64,8 @@ QCore is **not** trying to be open5GS or free5GC. Those optimize for spec covera
 > passes. GitHub CI remains the ongoing merge gate for future PRs. T10 is validated for the bundled
 > UERANSIM Docker/cloud-Linux profile by GitHub Actions run `27115478758`. Broader
 > RAN/device compatibility still needs target-specific replay evidence before being
-> claimed.
+> claimed. Run `27545087715` proves bundled Profile-A concealed SUCI registration and
+> preserves `T10 DATA PLANE PASS` + `T10 SQN RESYNC PASS`.
 > 2026-06-14 P2.2 replay proves the dashboard/API can catch a deliberate gNB PLMN
 > mismatch before attach through the real reconciliation endpoint.
 
@@ -358,7 +359,7 @@ The demo subscriber (3GPP TS 35.208 Test Set 1) is seeded automatically on first
 | TCP fallback for SCTP in dev | Real gNBs speak NGAP over SCTP; macOS has no native SCTP. Linux uses native kernel SCTP; macOS/other keep TCP fallback with a dev-mode warning |
 | **D-1: one standards-correct identifier codec** | The wedge is real-RAN interop. Two private PLMN encoders that agree only with each other pass CI and fail the first real device. Consolidate PLMN/TAC/S-NSSAI/GUAMI on a TS-correct codec validated by golden vectors from real stacks |
 | **D-2: NRF is the discovery backbone, static config is the fallback** | SBA discovery is the standards-correct design *and* a diagnostic-AI observability surface ("SMF never registered"). But zero-config fast-start must never be gated on a discovery race — so discovery is layered, not mandatory |
-| **D-3: real SUCI, null-scheme first** | A simulator scenario that silently doesn't test what it claims erodes trust in the simulator — and the simulator's credibility is the product. Null-scheme covers UERANSIM test defaults; ECIES A/B layer in behind the same interface later |
+| **D-3: real SUCI, null-scheme first** | A simulator scenario that silently doesn't test what it claims erodes trust in the simulator — and the simulator's credibility is the product. Null-scheme covers easy simulator defaults; ECIES Profile A/B is now layered behind the same interface in UDM/SIDF and Profile A is validated by the bundled UERANSIM replay |
 | **D-4: implement N11 (AMF→SMF)** | The data plane is half of "test against a core." A 5G core that can't carry a PDU session through the real control flow isn't credible by 2030 |
 
 ---

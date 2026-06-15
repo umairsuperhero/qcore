@@ -14,6 +14,7 @@ import (
 	"github.com/qcore-project/qcore/pkg/logger"
 	"github.com/qcore-project/qcore/pkg/sbi"
 	"github.com/qcore-project/qcore/pkg/subscriber"
+	"github.com/qcore-project/qcore/pkg/suci"
 )
 
 // fakeAuthGen is an AuthGenerator that runs real Milenage / 5G-AKA
@@ -77,13 +78,37 @@ func TestUDM_UEAU_GenerateAuthData(t *testing.T) {
 		AMF:  "8000",
 		SQN:  "000000000001",
 	}
-	gen := &fakeAuthGen{subs: map[string]*subscriber.Subscriber{"001010000000001": sub}}
+	profileASub := &subscriber.Subscriber{
+		IMSI: "274012001002086",
+		Ki:   "465b5ce8b199b49faa5f0a2ee238a6bc",
+		OPc:  "cd63cb71954a9f4e48a5994e37a02baf",
+		AMF:  "8000",
+		SQN:  "000000000001",
+	}
+	gen := &fakeAuthGen{subs: map[string]*subscriber.Subscriber{
+		"001010000000001": sub,
+		"274012001002086": profileASub,
+	}}
 
 	// SDM still needs its own source; UEAU is the one under test here.
 	// Reuse fakeStore from udm_test.go (same package).
-	store := &fakeStore{subs: map[string]*subscriber.Subscriber{"001010000000001": sub}}
+	store := &fakeStore{subs: map[string]*subscriber.Subscriber{
+		"001010000000001": sub,
+		"274012001002086": profileASub,
+	}}
 
-	udm := NewService(NewStoreSource(store), log).WithAuthSource(NewStoreAuthSource(gen))
+	sidfKey, err := suci.ParsePrivateKeyHex(suci.SchemeProfileA, "c53c22208b61860b06c62e5406a7b330c2b577aa5558981510d128247d38bd1d")
+	if err != nil {
+		t.Fatalf("ParsePrivateKeyHex: %v", err)
+	}
+	sidf, err := suci.NewResolver([]suci.HomeNetworkPrivateKey{{ID: 1, Scheme: suci.SchemeProfileA, PrivateKey: sidfKey}})
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+
+	udm := NewService(NewStoreSource(store), log).
+		WithSIDFResolver(sidf).
+		WithAuthSource(NewStoreAuthSource(gen))
 
 	port := pickFreePort(t)
 	srv := sbi.NewServer(sbi.ServerConfig{
@@ -135,6 +160,29 @@ func TestUDM_UEAU_GenerateAuthData(t *testing.T) {
 		}
 		if resp.Supi != "imsi-001010000000001" {
 			t.Errorf("supi: want imsi-001010000000001, got %q", resp.Supi)
+		}
+	})
+
+	t.Run("concealed profile A SUCI returns Av5gHeAka", func(t *testing.T) {
+		const concealedSuci = "" +
+			"f1" + "722410" + "0000" + "01" + "01" +
+			"b2e92f836055a255837debf850b528997ce0201cb82adfe4be1f587d07d8457d" +
+			"cb02352410" +
+			"cddd9e730ef3fa87"
+		req := AuthenticationInfoRequest{ServingNetworkName: "5G:mnc012.mcc274.3gppnetwork.org"}
+		var resp AuthenticationInfoResult
+		err := client.DoJSON(ctx, "POST", "/nudm-ueau/v1/suci-"+concealedSuci+"/security-information/generate-auth-data", &req, &resp)
+		if err != nil {
+			t.Fatalf("DoJSON: %v", err)
+		}
+		if resp.Supi != "imsi-274012001002086" {
+			t.Errorf("supi: want imsi-274012001002086, got %q", resp.Supi)
+		}
+		if resp.AuthenticationVector == nil {
+			t.Fatalf("authenticationVector is nil")
+		}
+		if got, want := decodedLen(t, resp.AuthenticationVector.RAND), 16; got != want {
+			t.Errorf("RAND: want %d bytes, got %d", want, got)
 		}
 	})
 
