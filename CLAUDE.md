@@ -104,6 +104,14 @@ intact); full `go build`/`vet`/`test -race` green in `golang:1.23`. Branch
 `codex/auts-sqn-interop` (crypto slice merged as PR #41). SQN is integer-based with a +32
 advance (not the TS 33.102 array scheme); 4G AUTS resync is a follow-up.
 
+**Phase D adoption — P3.1 scenario authoring + P3.2 CI hooks are SHIPPED (2026-06-15,
+PR #43, audit v1.23).** Author/save/list/re-run simulator scenarios with a deterministic
+PASS/FAIL + trace (`pkg/dashboard/scenario_store.go`, `ScenarioAuthoringPanel`,
+`CompareScenarioOutcome`); a stateless `POST /api/scenarios/run` plus
+`qcore-cli test run --scenario <f> [--json]` give a CI exit-code contract (exit 0 on PASS,
+1 on FAIL), proven against the built CLI. Next in Phase D: P3.3 Learning Mode (low
+priority); the demand-driven protocol gap is P4.1 SUCI Profile A/B (ECIES).
+
 **T10 is shipped for the bundled UERANSIM Docker/cloud-Linux profile.** Broader
 real-RAN/device compatibility still needs per-target replay evidence; do not generalize
 this into a conformance-matrix claim. See `docs/audit-v1.0.md` for the living audit;
