@@ -534,7 +534,16 @@ func (s *Service) handleDeregistrationRequestUEOrig(ctx context.Context, ue *UEC
 		accept = protected
 	}
 	ue.State = StateIdle
-	return ue.gNB.sendDownlinkNAS(ue, accept)
+	if err := ue.gNB.sendDownlinkNAS(ue, accept); err != nil {
+		return err
+	}
+	// UERANSIM deletes its NAS security context before immediately starting
+	// the follow-up registration. Reset counters after the protected
+	// Deregistration Accept so the next Security Mode Command starts the new
+	// context at NAS count 0.
+	ue.DLCount = 0
+	ue.ULCount = 0
+	return nil
 }
 
 // handleULNASTransport processes a UL NAS Transport carrying a PDU Session

@@ -1213,7 +1213,8 @@ func TestHandleDeregistrationRequestUEOrigSendsProtectedAccept(t *testing.T) {
 	))
 
 	assert.Equal(t, StateIdle, ue.State)
-	assert.Equal(t, uint32(5), ue.DLCount, "DL NAS count advances after protected accept")
+	assert.Equal(t, uint32(0), ue.DLCount, "DL NAS count resets for the next registration after protected accept")
+	assert.Equal(t, uint32(0), ue.ULCount, "UL NAS count resets for the next registration after protected accept")
 	require.Len(t, cap.writes, 1, "exactly one DownlinkNASTransport sent")
 
 	pdu, err := ngap.DecodePDU(cap.writes[0])
