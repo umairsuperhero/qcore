@@ -69,6 +69,8 @@ func (s *Service) handleNASPDU(ctx context.Context, ue *UEContext, raw []byte) e
 		return s.handleAuthenticationFailure(ctx, ue, msg.AuthenticationFailure)
 	case msg.SecurityModeComplete != nil:
 		return s.handleSecurityModeComplete(ctx, ue, msg.SecurityModeComplete)
+	case msg.DeregistrationRequest != nil:
+		return s.handleDeregistrationRequestUEOrig(ctx, ue, msg.DeregistrationRequest)
 	case msg.Header.MessageType == nas5g.MsgTypeRegistrationComplete:
 		return s.handleRegistrationComplete(ctx, ue)
 	case msg.Header.MessageType == nas5g.MsgTypeULNASTransport:
@@ -130,6 +132,12 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 	// For null-scheme SUCI (protection scheme=0), the SUPI is recoverable as "imsi-<MSIN>".
 	// For real deployments, SUCI would be sent as-is to AUSF which resolves it via SIDF.
 	supiOrSuci := s.suciToString(ue.SUCI)
+	if supiOrSuci == "" && ue.SUPI != "" {
+		// UERANSIM re-registers with the 5G-GUTI QCore assigned during the
+		// same live UE context. Until QCore has a global GUTI/TMSI index, use
+		// the known SUPI from this context rather than sending an empty AUSF key.
+		supiOrSuci = ue.SUPI
+	}
 
 	s.emitter.Emit(events.Event{
 		JourneyID: ue.JourneyID,
@@ -180,8 +188,12 @@ func (s *Service) handleRegistrationRequest(ctx context.Context, ue *UEContext, 
 		return err
 	}
 
-	ue.AuthCtxURL = stripBaseURL(confirmURL)
-	ue.SUPI = authCtx.Links["5g-aka"].Href // real SUPI comes in ConfirmationDataResponse; store URL for now
+	if strings.HasPrefix(supiOrSuci, "imsi-") {
+		// Keep SUPI as subscriber identity. The AUSF confirmation endpoint is
+		// tracked separately in AuthCtxURL; mixing the two breaks AUTS/SQN
+		// resync because it happens before RES* confirmation can return SUPI.
+		ue.SUPI = supiOrSuci
+	}
 
 	// Decode RAND and AUTN from AUSF response
 	randBytes, err := hex.DecodeString(authCtx.Av5gAuthData.RAND)
@@ -260,6 +272,9 @@ func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext
 			s.log.WithField("supi", ue.SUPI).Info("amf: attempting SQN resynchronization")
 
 			supiOrSuci := s.suciToString(ue.SUCI)
+			if supiOrSuci == "" && ue.SUPI != "" {
+				supiOrSuci = ue.SUPI
+			}
 			ausfReq := &ausf.AuthenticationInfo{
 				SupiOrSuci:         supiOrSuci,
 				ServingNetworkName: s.cfg.ServingNetworkName,
@@ -274,8 +289,9 @@ func (s *Service) handleAuthenticationFailure(ctx context.Context, ue *UEContext
 			if err != nil {
 				s.log.WithError(err).Error("amf: AUSF resync auth failed")
 			} else {
-				ue.AuthCtxURL = stripBaseURL(confirmURL)
-				ue.SUPI = authCtx.Links["5g-aka"].Href
+				if strings.HasPrefix(supiOrSuci, "imsi-") {
+					ue.SUPI = supiOrSuci
+				}
 
 				randBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.RAND)
 				autnBytes, _ := hex.DecodeString(authCtx.Av5gAuthData.AUTN)
@@ -498,6 +514,35 @@ func (s *Service) handleSecurityModeComplete(ctx context.Context, ue *UEContext,
 // handleRegistrationComplete — UE acknowledged Registration Accept.
 func (s *Service) handleRegistrationComplete(ctx context.Context, ue *UEContext) error {
 	s.log.WithField("supi", ue.SUPI).Info("amf: Registration Complete — UE fully registered")
+	return nil
+}
+
+// handleDeregistrationRequestUEOrig accepts a UE-originated deregistration.
+// This is intentionally small: it supports the UERANSIM CLI-driven re-auth
+// trigger used by the SQN-resync interop gate without broad deregistration
+// cleanup semantics.
+func (s *Service) handleDeregistrationRequestUEOrig(ctx context.Context, ue *UEContext, req *nas5g.DeregistrationRequestUEOrig) error {
+	s.log.WithField("supi", ue.SUPI).Info("amf: UE-originated Deregistration Request received")
+
+	accept := nas5g.EncodeDeregistrationAcceptUEOrig()
+	if len(ue.KNASint) == 16 {
+		protected, err := WrapNAS5G(ue.KNASint, ue.DLCount, SecHdrIntegrityProtected, accept)
+		if err != nil {
+			return err
+		}
+		ue.DLCount++
+		accept = protected
+	}
+	ue.State = StateIdle
+	if err := ue.gNB.sendDownlinkNAS(ue, accept); err != nil {
+		return err
+	}
+	// UERANSIM deletes its NAS security context before immediately starting
+	// the follow-up registration. Reset counters after the protected
+	// Deregistration Accept so the next Security Mode Command starts the new
+	// context at NAS count 0.
+	ue.DLCount = 0
+	ue.ULCount = 0
 	return nil
 }
 
@@ -791,24 +836,6 @@ func nullSchemeSUCItoSUPI(mobileID []byte) string {
 	}
 
 	return "imsi-" + mcc + mnc + msin.String()
-}
-
-// stripBaseURL extracts the path portion from a full URL (e.g. from Location header).
-// AUSF returns a full URL; the client needs just the path for relative requests.
-func stripBaseURL(u string) string {
-	// Find path after scheme://host
-	for i := 0; i < len(u)-1; i++ {
-		if u[i] == '/' && u[i+1] == '/' {
-			// skip scheme://host
-			rest := u[i+2:]
-			idx := strings.IndexByte(rest, '/')
-			if idx >= 0 {
-				return rest[idx:]
-			}
-			return "/"
-		}
-	}
-	return u // already a path
 }
 
 func tmsiFromID(id uint64) [4]byte {

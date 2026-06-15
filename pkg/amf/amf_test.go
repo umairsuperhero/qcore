@@ -304,10 +304,10 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 		MSIN:             hd("0000000010"), // MSIN = 0000000001 in BCD (pairs, lo-nibble-first)
 	})
 	regReq := nas5g.EncodeRegistrationRequest(&nas5g.RegistrationRequest{
-		RegistrationType: nas5g.RegistrationTypeInitialRegistration,
-		FollowOnRequest:  false,
-		NASKeySetID:      7,
-		MobileIdentity:   suci,
+		RegistrationType:     nas5g.RegistrationTypeInitialRegistration,
+		FollowOnRequest:      false,
+		NASKeySetID:          7,
+		MobileIdentity:       suci,
 		UESecurityCapability: []byte{0xE0, 0x00, 0xC0, 0x00}, // NIA2+NIA1, NEA2+NEA0
 	})
 
@@ -322,6 +322,12 @@ func TestAMF_RegistrationFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, authMsg.AuthenticationRequest, "expected AuthenticationRequest")
 	t.Logf("Auth Request received: RAND=%x", authMsg.AuthenticationRequest.RAND)
+	amfSvc.mu.RLock()
+	ueCtx := amfSvc.ues[amfID]
+	amfSvc.mu.RUnlock()
+	require.NotNil(t, ueCtx)
+	assert.Equal(t, "imsi-"+imsi, ueCtx.SUPI, "SUPI must remain subscriber identity during auth challenge")
+	assert.Contains(t, ueCtx.AuthCtxURL, "/5g-aka-confirmation", "AUSF confirmation URL belongs in AuthCtxURL, not SUPI")
 
 	// Step 4: Simulate UE computing RES* using the RAND received in the Auth Request.
 	// Must use Generate5GAuthVectorWithRAND so the same RAND feeds Milenage,
@@ -407,9 +413,9 @@ func TestAMF_UnprovisionedIMSI(t *testing.T) {
 	}
 
 	const (
-		imsi      = "001010000000001"
-		snName    = "5G:mnc001.mcc001.3gppnetwork.org"
-		badIMSI   = "001019999999999" // provisioned subscriber is imsi, badIMSI is not
+		imsi    = "001010000000001"
+		snName  = "5G:mnc001.mcc001.3gppnetwork.org"
+		badIMSI = "001019999999999" // provisioned subscriber is imsi, badIMSI is not
 	)
 
 	sub := &subscriber.Subscriber{
@@ -555,7 +561,7 @@ func TestAMF_NASWrap(t *testing.T) {
 	// the function runs without error and returns the inner plain NAS.
 	_, err = VerifyNAS5GUplink(kNASint, 0, wrapped)
 	// MAC will mismatch (DL vs UL direction bits), but we confirm the function parses.
-	_ = err // mismatch is expected here
+	_ = err                                  // mismatch is expected here
 	assert.Equal(t, uint8(0x7E), wrapped[0]) // unchanged
 }
 
@@ -601,11 +607,11 @@ func startMinimalAMF(t *testing.T, supportList []ngap.PLMNSupportItem) (port int
 	port = pickPort(t)
 	plmn := ngap.PLMNFromMCCMNC("001", "01")
 	cfg := Config{
-		NGAPAddr: "127.0.0.1:" + strconv.Itoa(port),
-		NGAPMode: sctp.ModeTCP,
-		AMFName:  "QCore-AMF-test",
-		GUAMI:    ngap.GUAMI{PLMN: plmn, AMFRegionID: 1, AMFSetID: 1, AMFPointer: 0},
-		PLMNSupportList: supportList,
+		NGAPAddr:           "127.0.0.1:" + strconv.Itoa(port),
+		NGAPMode:           sctp.ModeTCP,
+		AMFName:            "QCore-AMF-test",
+		GUAMI:              ngap.GUAMI{PLMN: plmn, AMFRegionID: 1, AMFSetID: 1, AMFPointer: 0},
+		PLMNSupportList:    supportList,
 		ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org",
 	}
 	// ausfCli is unused for NG Setup tests; a nil-safe stub suffices.
@@ -1179,4 +1185,51 @@ func TestSendPDUSessionAccept_RejectsWithoutKey(t *testing.T) {
 	ue := &UEContext{gNB: gnb, KNASint: nil, DLCount: 2}
 	require.Error(t, s.sendPDUSessionEstablishmentAccept(ue, 5, 1, [4]byte{10, 45, 0, 2}),
 		"must refuse to send without a NAS integrity key")
+}
+
+func TestHandleDeregistrationRequestUEOrigSendsProtectedAccept(t *testing.T) {
+	s := &Service{log: logger.New("error", "text")}
+	cap := &captureAssoc{}
+	gnb := &gNBSession{conn: cap, amf: s, log: logger.New("error", "text")}
+
+	kNASint := make([]byte, 16)
+	for i := range kNASint {
+		kNASint[i] = 0x22
+	}
+	ue := &UEContext{
+		AMFUENGAPID: 1,
+		RANUENGAPID: 1,
+		gNB:         gnb,
+		KNASint:     kNASint,
+		DLCount:     4,
+		SUPI:        "imsi-001010000000001",
+		State:       StateRegistered,
+	}
+
+	require.NoError(t, s.handleDeregistrationRequestUEOrig(
+		context.Background(),
+		ue,
+		&nas5g.DeregistrationRequestUEOrig{Raw: []byte{0x01}},
+	))
+
+	assert.Equal(t, StateIdle, ue.State)
+	assert.Equal(t, uint32(0), ue.DLCount, "DL NAS count resets for the next registration after protected accept")
+	assert.Equal(t, uint32(0), ue.ULCount, "UL NAS count resets for the next registration after protected accept")
+	require.Len(t, cap.writes, 1, "exactly one DownlinkNASTransport sent")
+
+	pdu, err := ngap.DecodePDU(cap.writes[0])
+	require.NoError(t, err)
+	ies, err := ngap.DecodeIEContainer(pdu.Value)
+	require.NoError(t, err)
+	dl, err := ngap.DecodeDownlinkNASTransport(ies)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(dl.NASPDU), 10)
+	assert.Equal(t, uint8(0x7E), dl.NASPDU[0], "5GMM EPD")
+	assert.Equal(t, uint8(0x01), dl.NASPDU[1], "integrity-protected NAS container")
+	assert.Equal(t, uint8(4), dl.NASPDU[6], "SN octet = DL NAS count used before increment")
+
+	inner := dl.NASPDU[7:]
+	hdr, err := nas5g.DecodeHeader(inner)
+	require.NoError(t, err)
+	assert.Equal(t, nas5g.MsgTypeDeregistrationAcceptUEOrig, hdr.MessageType)
 }
