@@ -172,7 +172,8 @@ func (s *Service) postUEAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	udmResp, err := s.udm.GenerateAuthData(r.Context(), req.SupiOrSuci, &udm.AuthenticationInfoRequest{
-		ServingNetworkName: req.ServingNetworkName,
+		ServingNetworkName:    req.ServingNetworkName,
+		ResynchronizationInfo: req.ResynchronizationInfo,
 	})
 	if err != nil {
 		s.emitter.Emit(events.Event{

@@ -76,6 +76,10 @@ func (f *fakeAuthStore) Generate5GAuthVector(_ context.Context, imsi, snName str
 	return av, nil
 }
 
+func (f *fakeAuthStore) Resync5GAuthVector(_ context.Context, imsi, snName, randHex, autsHex string) (*subscriber.AuthVector5G, error) {
+	return nil, fmt.Errorf("fakeAuthStore: Resync5GAuthVector not implemented")
+}
+
 // mockGNB is a minimal NGAP client that simulates a gNB over TCP.
 type mockGNB struct {
 	conn sctp.Association

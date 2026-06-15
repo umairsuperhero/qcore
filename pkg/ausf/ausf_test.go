@@ -39,6 +39,10 @@ func (f *fakeAuthGen) Generate5GAuthVector(_ context.Context, imsi, snName strin
 	return av, nil
 }
 
+func (f *fakeAuthGen) Resync5GAuthVector(_ context.Context, imsi, snName, randHex, autsHex string) (*subscriber.AuthVector5G, error) {
+	return nil, fmt.Errorf("fakeAuthGen: Resync5GAuthVector not implemented")
+}
+
 // TestAUSF_EndToEnd spins AUSF + UDM on two loopback h2c servers and
 // drives the full 5G-AKA flow: POST ue-authentications → extract XRES*
 // from the stored UDM vector (test back door) → PUT

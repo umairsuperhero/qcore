@@ -54,6 +54,16 @@ func (f *fakeAuthGen) Generate5GAuthVector(_ context.Context, imsi, snName strin
 	return av, nil
 }
 
+func (f *fakeAuthGen) Resync5GAuthVector(ctx context.Context, imsi, snName, randHex, autsHex string) (*subscriber.AuthVector5G, error) {
+	sub, ok := f.subs[imsi]
+	if !ok {
+		return nil, fmt.Errorf("subscriber %s not found", imsi)
+	}
+	_ = sub.IncrementSQN()
+	_ = sub.IncrementSQN()
+	return f.Generate5GAuthVector(ctx, imsi, snName)
+}
+
 // TestUDM_UEAU_GenerateAuthData drives Nudm_UEAU generate-auth-data over
 // a real pkg/sbi h2c server. Happy path + missing servingNetworkName
 // (400) + unknown SUPI (404) + resync attempt (501).
@@ -160,7 +170,7 @@ func TestUDM_UEAU_GenerateAuthData(t *testing.T) {
 		}
 	})
 
-	t.Run("resync request returns 501", func(t *testing.T) {
+	t.Run("resync request succeeds", func(t *testing.T) {
 		req := AuthenticationInfoRequest{
 			ServingNetworkName: "5G:mnc001.mcc001.3gppnetwork.org",
 			ResynchronizationInfo: &ResynchronizationInfo{
@@ -168,13 +178,16 @@ func TestUDM_UEAU_GenerateAuthData(t *testing.T) {
 				AUTS: "0000000000000000000000000000",
 			},
 		}
-		err := client.DoJSON(ctx, "POST", path, &req, nil)
-		pd, ok := err.(*sbi.ProblemDetails)
-		if !ok {
-			t.Fatalf("want *sbi.ProblemDetails, got %T: %v", err, err)
+		var resp AuthenticationInfoResult
+		err := client.DoJSON(ctx, "POST", path, &req, &resp)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if pd.Status != http.StatusNotImplemented {
-			t.Errorf("status: want 501, got %d", pd.Status)
+		if resp.AuthType != AuthType5GAka {
+			t.Errorf("authType: want 5G_AKA, got %s", resp.AuthType)
+		}
+		if resp.AuthenticationVector == nil {
+			t.Fatal("expected authenticationVector in response")
 		}
 	})
 }

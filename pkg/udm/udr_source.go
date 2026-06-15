@@ -123,6 +123,10 @@ func (u *udrAuthSource) GenerateAv(ctx context.Context, supi, snName string) (*A
 	}, nil
 }
 
+func (u *udrAuthSource) ResyncAndGenerateAv(ctx context.Context, supi, snName, randHex, autsHex string) (*Av5gHeAka, error) {
+	return nil, fmt.Errorf("SQN resynchronization not implemented for UDR backend")
+}
+
 func decode16Hex(s, field string) ([16]byte, error) {
 	b, err := hex.DecodeString(s)
 	if err != nil || len(b) != 16 {

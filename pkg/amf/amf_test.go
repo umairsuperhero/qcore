@@ -69,6 +69,10 @@ func (f *fakeAuthStore) Generate5GAuthVector(_ context.Context, imsi, snName str
 	return av, nil
 }
 
+func (f *fakeAuthStore) Resync5GAuthVector(_ context.Context, imsi, snName, randHex, autsHex string) (*subscriber.AuthVector5G, error) {
+	return nil, fmt.Errorf("fakeAuthStore: Resync5GAuthVector not implemented")
+}
+
 type fakeSubscriberStore struct {
 	subs map[string]*subscriber.Subscriber
 }
@@ -996,7 +1000,7 @@ func TestRegistration_AuthMACFailure(t *testing.T) {
 	amfID, _ := gNB.recvDownlinkNAS(t)
 
 	// UE sends Authentication Failure (MAC failure) instead of Authentication Response.
-	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure)
+	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure, nil)
 	gNB.sendUplinkNAS(t, amfID, ranID, authFail)
 
 	// AMF must send a Registration Reject.
@@ -1092,7 +1096,7 @@ func TestRegistration_DistinguishUnknownVsMAC(t *testing.T) {
 	gNB2 := connectGNB(t, port2)
 	ranID2 := sendRegistrationRequest(t, gNB2, makeSUCI(sub.IMSI))
 	amfID2, _ := gNB2.recvDownlinkNAS(t) // get Auth Request
-	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure)
+	authFail := nas5g.EncodeAuthenticationFailure(nas5g.Cause5GMMMACFailure, nil)
 	gNB2.sendUplinkNAS(t, amfID2, ranID2, authFail)
 	assertRegistrationReject(t, gNB2)
 	time.Sleep(40 * time.Millisecond)

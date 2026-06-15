@@ -81,6 +81,13 @@ func F1(k, opc, randVal [16]byte, sqn [6]byte, amf [2]byte) (macA [8]byte, macS 
 	return macA, macS, nil
 }
 
+// F1Star computes the resync MAC-S.
+// Per 3GPP TS 35.206 Section 4.1, it is the MAC-S output of F1.
+func F1Star(k, opc, randVal [16]byte, sqn [6]byte, amf [2]byte) (macS [8]byte, err error) {
+	_, macS, err = F1(k, opc, randVal, sqn, amf)
+	return macS, err
+}
+
 // F2345 computes RES, CK, IK, AK in parallel.
 // Per 3GPP TS 35.206 Section 4.1.
 func F2345(k, opc, randVal [16]byte) (res [8]byte, ck, ik [16]byte, ak [6]byte, err error) {

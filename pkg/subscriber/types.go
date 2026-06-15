@@ -109,6 +109,23 @@ func IncrementSQNHex(sqn string) (string, error) {
 	return fmt.Sprintf("%012x", val), nil
 }
 
+// AdvanceSQNHex advances the SQN past the provided SQN_MS per 3GPP resync.
+// The new SQN is calculated from SQN_MS to ensure it stays ahead.
+func AdvanceSQNHex(sqnMS string) (string, error) {
+	val, err := strconv.ParseUint(sqnMS, 16, 48)
+	if err != nil {
+		return "", fmt.Errorf("parsing SQN_MS: %w", err)
+	}
+	// For simplicity in resync, we just increment SQN_MS by an offset (e.g., 32)
+	// to ensure it's ahead of the UE, as TS 33.102 §6.3.2 specifies array-based SQN.
+	// Since we are using an integer SQN without array elements for now, just jump ahead.
+	val += 32
+	if val > 0xffffffffffff {
+		val = val % 0x1000000000000
+	}
+	return fmt.Sprintf("%012x", val), nil
+}
+
 func decodeHex16(s string) ([16]byte, error) {
 	b, err := hex.DecodeString(s)
 	if err != nil {

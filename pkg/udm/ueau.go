@@ -70,12 +70,14 @@ type Av5gHeAka struct {
 // v0.5 QCore reads directly from pkg/subscriber.
 type AuthSource interface {
 	GenerateAv(ctx context.Context, supi, servingNetworkName string) (*Av5gHeAka, error)
+	ResyncAndGenerateAv(ctx context.Context, supi, snName, randHex, autsHex string) (*Av5gHeAka, error)
 }
 
 // AuthGenerator is the slice of pkg/subscriber.Service that the direct
 // auth source adapter needs. pkg/subscriber.Service satisfies this as-is.
 type AuthGenerator interface {
 	Generate5GAuthVector(ctx context.Context, imsi, snName string) (*subscriber.AuthVector5G, error)
+	Resync5GAuthVector(ctx context.Context, imsi, snName, randHex, autsHex string) (*subscriber.AuthVector5G, error)
 }
 
 // NewStoreAuthSource wraps an AuthGenerator (e.g. pkg/subscriber.Service)
@@ -96,6 +98,27 @@ func (s *storeAuthSource) GenerateAv(ctx context.Context, supi, snName string) (
 	if err != nil {
 		// Mirror the string-matching convention pkg/subscriber uses —
 		// same rationale as in storeSource.GetAmData.
+		if strings.Contains(err.Error(), "not found") {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &Av5gHeAka{
+		AvType:   "5G_HE_AKA",
+		RAND:     av.RAND,
+		XResStar: av.XRESStar,
+		AUTN:     av.AUTN,
+		KAUSF:    av.KAUSF,
+	}, nil
+}
+
+func (s *storeAuthSource) ResyncAndGenerateAv(ctx context.Context, supi, snName, randHex, autsHex string) (*Av5gHeAka, error) {
+	imsi, err := parseIMSISupi(supi)
+	if err != nil {
+		return nil, err
+	}
+	av, err := s.gen.Resync5GAuthVector(ctx, imsi, snName, randHex, autsHex)
+	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return nil, ErrNotFound
 		}
@@ -153,19 +176,16 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	var av *Av5gHeAka
+	var err error
+	journeyID := events.JourneyIDFromContext(r.Context())
+
 	if req.ResynchronizationInfo != nil {
-		// Resync requires running Milenage in reverse from AUTS to recover
-		// the MS SQN, then re-issuing. Real work, not in v0.5 scope.
-		sbi.WriteProblem(w, &sbi.ProblemDetails{
-			Status: http.StatusNotImplemented,
-			Title:  "Not Implemented",
-			Detail: "SQN resync (resynchronizationInfo) not supported yet",
-		})
-		return
+		av, err = s.auth.ResyncAndGenerateAv(r.Context(), supi, req.ServingNetworkName, req.ResynchronizationInfo.RAND, req.ResynchronizationInfo.AUTS)
+	} else {
+		av, err = s.auth.GenerateAv(r.Context(), supi, req.ServingNetworkName)
 	}
 
-	journeyID := events.JourneyIDFromContext(r.Context())
-	av, err := s.auth.GenerateAv(r.Context(), supi, req.ServingNetworkName)
 	if err != nil {
 		s.emitter.Emit(events.Event{
 			JourneyID: journeyID,
@@ -194,6 +214,13 @@ func (s *Service) generateAuthData(w http.ResponseWriter, r *http.Request) {
 				Title:  "Not Found",
 				Detail: err.Error(),
 				Cause:  "USER_NOT_FOUND",
+			})
+		case strings.Contains(err.Error(), "MAC-S verification failed"):
+			sbi.WriteProblem(w, &sbi.ProblemDetails{
+				Status: http.StatusForbidden,
+				Title:  "Forbidden",
+				Detail: err.Error(),
+				Cause:  "MAC_S_FAILURE",
 			})
 		default:
 			s.log.WithError(err).WithField("supi", supi).Error("udm: generate auth vector failed")
