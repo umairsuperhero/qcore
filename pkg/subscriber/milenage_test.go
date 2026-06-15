@@ -203,6 +203,89 @@ func TestF5Star(t *testing.T) {
 	}
 }
 
+// resyncAMF is the dummy AMF (all zeros) used when computing/verifying the
+// resync MAC-S, per 3GPP TS 33.102 §6.3.3.
+var resyncAMF = [2]byte{0x00, 0x00}
+
+// buildAUTS constructs the 14-byte AUTS exactly as a UE does on SQN failure
+// (TS 33.102 §6.3.3): AUTS = Conc(SQN_MS) || MAC-S, where
+// Conc(SQN_MS) = SQN_MS XOR f5*(K,RAND) and MAC-S = f1*(K,RAND,SQN_MS,AMF=0).
+func buildAUTS(t *testing.T, k, opc, rand [16]byte, sqnMS [6]byte) []byte {
+	t.Helper()
+	akStar, err := F5Star(k, opc, rand)
+	require.NoError(t, err)
+	macS, err := F1Star(k, opc, rand, sqnMS, resyncAMF)
+	require.NoError(t, err)
+	auts := make([]byte, 14)
+	for i := 0; i < 6; i++ {
+		auts[i] = sqnMS[i] ^ akStar[i]
+	}
+	copy(auts[6:], macS[:])
+	return auts
+}
+
+// TestResyncAUTSRoundTrip validates the reverse-Milenage math that
+// Service.Resync5GAuthVector relies on: given an AUTS built by a UE for a
+// known SQN_MS, the network must recover that exact SQN_MS via
+// AUTS[0:6] XOR f5*(K,RAND) and re-verify MAC-S against AUTS[6:14].
+// Driven by the official 3GPP TS 35.208 test vectors. This is the crypto
+// de-risk for the SQN resync flow; the Service-level orchestration
+// (SQN advance/persist/re-issue) and the AMF control-plane path are
+// covered separately and require a DB-backed Service.
+func TestResyncAUTSRoundTrip(t *testing.T) {
+	for _, tt := range officialTestSets {
+		t.Run(tt.name, func(t *testing.T) {
+			k := hexDecode16(t, tt.k)
+			opc := hexDecode16(t, tt.opc)
+			rand := hexDecode16(t, tt.rand)
+			// SQN_MS is the UE's stored SQN; use the vector's own SQN as a
+			// concrete, deterministic value to round-trip.
+			sqnMS := hexDecode6(t, tt.sqn)
+
+			auts := buildAUTS(t, k, opc, rand, sqnMS)
+			require.Len(t, auts, 14)
+
+			// Network side: recover SQN_MS = AUTS[0:6] XOR f5*(K,RAND).
+			akStar, err := F5Star(k, opc, rand)
+			require.NoError(t, err)
+			var recovered [6]byte
+			for i := 0; i < 6; i++ {
+				recovered[i] = auts[i] ^ akStar[i]
+			}
+			assert.Equal(t, sqnMS, recovered, "recovered SQN_MS must equal the UE SQN_MS")
+
+			// Network side: re-verify MAC-S = f1*(K,RAND,SQN_MS,AMF=0).
+			macS, err := F1Star(k, opc, rand, recovered, resyncAMF)
+			require.NoError(t, err)
+			assert.Equal(t, auts[6:14], macS[:], "recomputed MAC-S must match AUTS MAC-S")
+		})
+	}
+}
+
+// TestResyncAUTSRejectsTamperedMACS confirms a corrupted AUTS MAC-S is
+// detected — the network must NOT accept a resync whose MAC-S does not
+// verify (guards against forged AUTS / replay).
+func TestResyncAUTSRejectsTamperedMACS(t *testing.T) {
+	tt := officialTestSets[0]
+	k := hexDecode16(t, tt.k)
+	opc := hexDecode16(t, tt.opc)
+	rand := hexDecode16(t, tt.rand)
+	sqnMS := hexDecode6(t, tt.sqn)
+
+	auts := buildAUTS(t, k, opc, rand, sqnMS)
+	auts[13] ^= 0xFF // tamper the last MAC-S byte
+
+	akStar, err := F5Star(k, opc, rand)
+	require.NoError(t, err)
+	var recovered [6]byte
+	for i := 0; i < 6; i++ {
+		recovered[i] = auts[i] ^ akStar[i]
+	}
+	macS, err := F1Star(k, opc, rand, recovered, resyncAMF)
+	require.NoError(t, err)
+	assert.NotEqual(t, auts[6:14], macS[:], "tampered MAC-S must fail verification")
+}
+
 func TestGenerateAuthVector(t *testing.T) {
 	k := hexDecode16(t, "465b5ce8b199b49faa5f0a2ee238a6bc")
 	opc := hexDecode16(t, "cd63cb71954a9f4e48a5994e37a02baf")
