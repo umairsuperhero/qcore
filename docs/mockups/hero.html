@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QCore — hero screen mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css" />
+<style>
+  :root{
+    --bg:#0A0B0D; --surface:#121419; --surface-2:#1A1D24; --border:#252A33;
+    --text:#E8EAED; --muted:#9099A6; --faint:#5B6472;
+    --signal:#22D3EE; --signal-dim:#0E7490; --success:#34D399; --warn:#FBBF24; --fail:#F87171; --data:#A78BFA;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:Inter,-apple-system,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#050608;color:var(--text);font-family:var(--sans);
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;}
+  .device{width:680px;max-width:100%;background:var(--bg);border:1px solid var(--border);
+          border-radius:14px;overflow:hidden;}
+  .bar{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--border);background:var(--surface);}
+  .dot{width:10px;height:10px;border-radius:50%;background:#3A3F49;}
+  .pill{font-family:var(--mono);color:var(--faint);font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;}
+  .mono{font-family:var(--mono);}
+  .label{color:var(--faint);font-size:12px;letter-spacing:.08em;text-transform:uppercase;}
+  .chip{flex:1;border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:var(--surface-2);}
+  .btn{background:var(--signal-dim);color:#E6FBFF;border:1px solid var(--signal);border-radius:8px;
+       padding:9px 16px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;}
+  .swatch{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+  <div class="device" role="img"
+       aria-label="QCore dashboard hero: a connected gNB shown in green with monospace protocol values, the three hero states, a named-error diagnosis, and a live signaling trace.">
+
+    <div class="bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span style="color:var(--text);font-weight:500;font-size:13px;margin-left:6px;letter-spacing:.04em;">QCORE</span>
+      <span class="pill">localhost:3000</span>
+      <span style="margin-left:auto;color:var(--success);font-size:12px;display:inline-flex;align-items:center;gap:6px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--success);"></span>connected</span>
+    </div>
+
+    <div style="padding:26px 22px 20px;">
+      <div class="label" style="margin-bottom:14px;">Is your gNB connected?</div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="width:42px;height:42px;border-radius:50%;border:2px solid var(--success);display:flex;align-items:center;justify-content:center;color:var(--success);"><i class="ti ti-check" style="font-size:24px;"></i></span>
+        <div style="font-size:30px;font-weight:600;line-height:1.1;">gNB connected <span style="color:var(--faint);font-weight:400;">— Nokia AirScale</span></div>
+      </div>
+      <div class="mono" style="font-size:13px;color:var(--muted);margin:14px 0 0 56px;">
+        PLMN <span style="color:var(--success);">001/01</span> confirmed · TAC <span style="color:var(--text);">1</span> · <span style="color:var(--data);">eMBB</span> slice negotiated
+      </div>
+      <div style="margin:18px 0 0 56px;">
+        <button class="btn">Register a UE <i class="ti ti-arrow-right" style="font-size:15px;vertical-align:-2px;"></i></button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;padding:0 22px 18px;">
+      <div class="chip"><div style="color:var(--faint);font-size:11px;">● Waiting</div><div style="color:var(--muted);font-size:12px;margin-top:3px;">point gNB here</div></div>
+      <div class="chip" style="background:#10231C;border-color:var(--success);"><div style="color:var(--success);font-size:11px;">● Connected</div><div style="color:var(--text);font-size:12px;margin-top:3px;">latch closed</div></div>
+      <div class="chip" style="background:#241516;border-color:#3a2426;"><div style="color:var(--fail);font-size:11px;">● Failed</div><div style="color:var(--muted);font-size:12px;margin-top:3px;">cause + fix</div></div>
+    </div>
+
+    <div style="margin:0 22px 18px;border:1px solid #3a2426;border-radius:10px;background:#160F10;padding:13px 15px;">
+      <div style="display:flex;align-items:center;gap:8px;color:var(--fail);font-size:13px;font-weight:500;"><i class="ti ti-alert-triangle" style="font-size:16px;"></i>NG Setup rejected</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:6px;line-height:1.6;">Your gNB sent PLMN <span class="mono" style="color:var(--fail);">310/260</span>. QCore is configured for <span class="mono" style="color:var(--text);">001/01</span>.</div>
+      <div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap;">
+        <div style="color:var(--faint);font-size:12px;">Fix on gNB &nbsp;<span class="mono" style="color:var(--text);">MCC=001 MNC=01</span></div>
+        <div style="color:var(--faint);font-size:12px;">Fix on QCore &nbsp;<span style="color:var(--signal);">Change to 310/260 →</span></div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);background:#0C0D10;padding:11px 22px 14px;">
+      <div class="label" style="font-size:11px;margin-bottom:8px;display:flex;align-items:center;gap:6px;"><i class="ti ti-activity" style="font-size:13px;"></i>Live signaling</div>
+      <div class="mono" style="font-size:12px;line-height:1.9;color:var(--muted);">
+        <div><span style="color:var(--faint);">12:40:07.114</span> &nbsp;<span style="color:var(--signal);">NGAP</span> &nbsp;NGSetupRequest <span style="color:var(--faint);">→</span> <span style="color:var(--success);">NGSetupResponse</span></div>
+        <div><span style="color:var(--faint);">12:40:07.241</span> &nbsp;<span style="color:var(--signal);">NGAP</span> &nbsp;InitialUEMessage <span style="color:var(--faint);">·</span> SUCI <span style="color:var(--faint);">001-01-…-0</span></div>
+        <div><span style="color:var(--faint);">12:40:07.389</span> &nbsp;<span style="color:var(--data);">NAS</span> &nbsp;&nbsp;Authentication Request <span style="color:var(--faint);">·</span> 5G-AKA</div>
+        <div style="color:var(--faint);">12:40:07.5&nbsp;&nbsp;&nbsp;<span style="color:var(--signal);">▌</span> streaming…</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 22px 16px;border-top:1px solid var(--border);">
+      <span class="label" style="font-size:11px;">Tokens</span>
+      <span class="swatch" style="background:var(--bg);" title="--bg"></span>
+      <span class="swatch" style="background:var(--surface);" title="--surface"></span>
+      <span class="swatch" style="background:var(--signal);" title="--signal"></span>
+      <span class="swatch" style="background:var(--success);" title="--success"></span>
+      <span class="swatch" style="background:var(--warn);" title="--warn"></span>
+      <span class="swatch" style="background:var(--fail);" title="--fail"></span>
+      <span class="swatch" style="background:var(--data);" title="--data"></span>
+    </div>
+
+  </div>
+</body>
+</html>
