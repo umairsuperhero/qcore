@@ -151,6 +151,7 @@ type DashboardConfig struct {
 	AMFNGAPAddr  string `mapstructure:"amf_ngap_addr"` // host:port for the built-in 5G simulator
 	SPGWURL      string `mapstructure:"spgw_url"`
 	CollectorURL string `mapstructure:"collector_url"`
+	ScenarioDir  string `mapstructure:"scenario_dir"` // file-backed authored scenario store
 }
 
 type DatabaseConfig struct {
@@ -273,6 +274,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("dashboard.amf_ngap_addr", "localhost:38412")
 	v.SetDefault("dashboard.spgw_url", "http://localhost:8082")
 	v.SetDefault("dashboard.collector_url", "http://localhost:9099")
+	v.SetDefault("dashboard.scenario_dir", "scenarios")
 }
 
 func Load(path string) (*Config, error) {

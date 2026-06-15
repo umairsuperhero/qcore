@@ -124,6 +124,7 @@ services:
       QCORE_AMF_SCTP_MODE: ${QCORE_AMF_SCTP_MODE:-sctp}
       QCORE_DASHBOARD_SPGW_URL: http://spgw:8082
       QCORE_DASHBOARD_COLLECTOR_URL: http://collector:9099
+      QCORE_DASHBOARD_SCENARIO_DIR: /var/lib/qcore/scenarios
       QCORE_LOGGING_FORMAT: json
       # Diagnostic AI backend. Default is the offline SLM sidecar (no key); it
       # only escalates to a model after the deterministic catalog misses, and if
@@ -134,6 +135,9 @@ services:
       QCORE_AI_LOCAL_URL: ${QCORE_AI_LOCAL_URL:-http://qcore-slm:8088/v1}
       QCORE_AI_MODEL: ${QCORE_AI_MODEL:-qwen2.5-1.5b-instruct}
       QCORE_AI_API_KEY: ${QCORE_AI_API_KEY:-}
+    volumes:
+      # Persist authored scenarios across container recreation (make down/up).
+      - qcore-scenarios:/var/lib/qcore/scenarios
 
   # 5G SA NFs — NRF → UDR → UDM → AUSF → AMF (startup dependency order).
   # All 5G services are behind the "5g" Compose profile so the default
@@ -377,3 +381,4 @@ services:
 
 volumes:
   pgdata:
+  qcore-scenarios:
