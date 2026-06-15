@@ -52,8 +52,8 @@ func NewIPPool(cidr, gateway string) (*IPPool, error) {
 	p := &IPPool{
 		network:  ipnet,
 		gateway:  gw,
-		netStart: base + 1,       // skip network address
-		netEnd:   broadcast - 1,  // skip broadcast
+		netStart: base + 1,      // skip network address
+		netEnd:   broadcast - 1, // skip broadcast
 		next:     base + 1,
 		inUse:    make(map[uint32]struct{}),
 	}

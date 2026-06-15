@@ -6,12 +6,12 @@
 // needs to find a peer.
 //
 // Scope of this package:
-//	- NFProfile / NFService / NFStatus types (a subset of TS 29.510 §6.1)
-//	- Client interface: Register / Deregister / Discover / Heartbeat
-//	- Two implementations:
-//	    * InMemory — single-process registry, ideal for unit tests and for
-//	      the single-binary `qcore dev` posture we want in v0.8.
-//	    * HTTP — thin wrapper around pkg/sbi.Client for a real network NRF.
+//   - NFProfile / NFService / NFStatus types (a subset of TS 29.510 §6.1)
+//   - Client interface: Register / Deregister / Discover / Heartbeat
+//   - Two implementations:
+//   - InMemory — single-process registry, ideal for unit tests and for
+//     the single-binary `qcore dev` posture we want in v0.8.
+//   - HTTP — thin wrapper around pkg/sbi.Client for a real network NRF.
 //
 // A full NRF server implementation (exposing Nnrf_NFManagement +
 // Nnrf_NFDiscovery over SBI) is intentionally *not* here — it belongs in
@@ -30,8 +30,8 @@ import (
 type NFStatus string
 
 const (
-	StatusRegistered   NFStatus = "REGISTERED"
-	StatusSuspended    NFStatus = "SUSPENDED"
+	StatusRegistered     NFStatus = "REGISTERED"
+	StatusSuspended      NFStatus = "SUSPENDED"
 	StatusUndiscoverable NFStatus = "UNDISCOVERABLE"
 )
 
@@ -40,14 +40,14 @@ const (
 type NFType string
 
 const (
-	NFTypeAMF NFType = "AMF"
-	NFTypeSMF NFType = "SMF"
-	NFTypeUPF NFType = "UPF"
+	NFTypeAMF  NFType = "AMF"
+	NFTypeSMF  NFType = "SMF"
+	NFTypeUPF  NFType = "UPF"
 	NFTypeAUSF NFType = "AUSF"
-	NFTypeUDM NFType = "UDM"
-	NFTypeUDR NFType = "UDR"
-	NFTypePCF NFType = "PCF"
-	NFTypeNRF NFType = "NRF"
+	NFTypeUDM  NFType = "UDM"
+	NFTypeUDR  NFType = "UDR"
+	NFTypePCF  NFType = "PCF"
+	NFTypeNRF  NFType = "NRF"
 )
 
 // NFService describes one service-based interface exposed by an NF. An NF may

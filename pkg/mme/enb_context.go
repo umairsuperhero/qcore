@@ -39,8 +39,8 @@ const (
 
 // SupportedTA represents a Tracking Area supported by an eNodeB.
 type SupportedTA struct {
-	TAC       uint16
-	PLMNs     [][3]byte
+	TAC   uint16
+	PLMNs [][3]byte
 }
 
 // PagingDRX is the default paging DRX cycle length.

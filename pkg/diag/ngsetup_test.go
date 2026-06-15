@@ -32,8 +32,8 @@ func buildReq(mcc, mnc string, tac [3]byte, sst uint8) *ngap.NGSetupRequest {
 // amfConfig001_01 is a representative AMF config for PLMN 001/01, TAC 0x000001, SST 1.
 func amfConfig001_01() AMFConfig {
 	return AMFConfig{
-		SupportedPLMNs: []ngap.PLMN{ngap.PLMN(ident.EncodePLMN("001", "01"))},
-		SupportedTACs:  [][3]byte{{0x00, 0x00, 0x01}},
+		SupportedPLMNs:   []ngap.PLMN{ngap.PLMN(ident.EncodePLMN("001", "01"))},
+		SupportedTACs:    [][3]byte{{0x00, 0x00, 0x01}},
 		SupportedSNSSAIs: []ngap.SNSSAI{{SST: 1}},
 	}
 }
@@ -186,10 +186,10 @@ func TestDiagnoseNGSetup_AnySliceAccepted(t *testing.T) {
 // Deutsche Telekom field encoding.
 func TestNGSetupPLMNCodec_RealGNBEncoding(t *testing.T) {
 	cases := []struct {
-		name     string
-		rawPLMN  [3]byte // bytes as a real gNB would send on the wire
-		wantMCC  string
-		wantMNC  string
+		name    string
+		rawPLMN [3]byte // bytes as a real gNB would send on the wire
+		wantMCC string
+		wantMNC string
 	}{
 		{
 			// UERANSIM default: MCC=001, MNC=01

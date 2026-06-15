@@ -86,7 +86,8 @@ func appendLen(s []byte, l int) []byte {
 // WrapNAS5G wraps a plain 5G NAS PDU with integrity protection.
 // Uses NIA2 (AES-CMAC) with the given KNASint.
 // secHdrType: SecurityHeaderIntegrityProtectedNewCtx (0x03) for SMC,
-//             SecurityHeaderIntegrityProtected (0x01) for subsequent messages.
+//
+//	SecurityHeaderIntegrityProtected (0x01) for subsequent messages.
 func WrapNAS5G(kNASint []byte, dlCount uint32, secHdrType nas5gSecHdr, plainNAS []byte) ([]byte, error) {
 	sn := uint8(dlCount & 0xFF)
 
@@ -103,9 +104,9 @@ func WrapNAS5G(kNASint []byte, dlCount uint32, secHdrType nas5gSecHdr, plainNAS 
 
 	// 5G NAS security header: EPD(0x7E) | SecHdr(1B) | MAC(4B) | SN(1B) | plainNAS
 	result := make([]byte, 0, 7+len(plainNAS))
-	result = append(result, 0x7E)         // EPD = 5GMM
+	result = append(result, 0x7E) // EPD = 5GMM
 	result = append(result, uint8(secHdrType))
-	result = append(result, mac...)       // 4-byte MAC
+	result = append(result, mac...) // 4-byte MAC
 	result = append(result, sn)
 	result = append(result, plainNAS...)
 	return result, nil

@@ -31,10 +31,10 @@ type Egress interface {
 // LogEgress is a no-op egress that just logs packet metadata. It drops all
 // uplink and never emits downlink. Safe default for CI and Windows dev.
 type LogEgress struct {
-	log     logger.Logger
-	count   uint64 // atomic
-	done    chan struct{}
-	closed  bool
+	log    logger.Logger
+	count  uint64 // atomic
+	done   chan struct{}
+	closed bool
 }
 
 // NewLogEgress creates a log-only egress.

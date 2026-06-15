@@ -8,10 +8,10 @@ import (
 type EMMState int
 
 const (
-	EMMDeregistered         EMMState = iota
-	EMMRegisterInitiated             // Attach in progress
-	EMMRegistered                    // Attached
-	EMMDeregisterInitiated           // Detach in progress
+	EMMDeregistered        EMMState = iota
+	EMMRegisterInitiated            // Attach in progress
+	EMMRegistered                   // Attached
+	EMMDeregisterInitiated          // Detach in progress
 )
 
 func (s EMMState) String() string {
@@ -33,7 +33,7 @@ func (s EMMState) String() string {
 type ECMState int
 
 const (
-	ECMIdle      ECMState = iota
+	ECMIdle ECMState = iota
 	ECMConnected
 )
 
@@ -50,13 +50,13 @@ func (s ECMState) String() string {
 
 // SecurityContext holds the derived keys for a UE session.
 type SecurityContext struct {
-	KASME    []byte // 32 bytes
-	KNASenc  []byte // 16 bytes — NAS encryption key
-	KNASint  []byte // 16 bytes — NAS integrity key
-	KeNB     []byte // 32 bytes — eNodeB key
-	NASAlg   NASAlgorithm
-	ULCount  uint32 // Uplink NAS COUNT
-	DLCount  uint32 // Downlink NAS COUNT
+	KASME   []byte // 32 bytes
+	KNASenc []byte // 16 bytes — NAS encryption key
+	KNASint []byte // 16 bytes — NAS integrity key
+	KeNB    []byte // 32 bytes — eNodeB key
+	NASAlg  NASAlgorithm
+	ULCount uint32 // Uplink NAS COUNT
+	DLCount uint32 // Downlink NAS COUNT
 }
 
 // NASAlgorithm identifies the selected NAS security algorithms.
@@ -74,10 +74,10 @@ type UEContext struct {
 	JourneyID string
 
 	// Identity
-	IMSI    string
-	GUTI    string // allocated by MME (e.g., "001-01-1-01-00000001")
-	TMSI    uint32 // M-TMSI component of GUTI (non-zero once allocated)
-	MSISDN  string
+	IMSI   string
+	GUTI   string // allocated by MME (e.g., "001-01-1-01-00000001")
+	TMSI   uint32 // M-TMSI component of GUTI (non-zero once allocated)
+	MSISDN string
 
 	// S1AP IDs
 	MMEUES1APID uint32
@@ -97,8 +97,8 @@ type UEContext struct {
 	AUTN []byte
 
 	// NAS layer
-	NASStreamID        uint16 // SCTP stream for NAS transport
-	NASdlCount         uint32 // NAS downlink count (for MAC computation)
+	NASStreamID         uint16 // SCTP stream for NAS transport
+	NASdlCount          uint32 // NAS downlink count (for MAC computation)
 	UENetworkCapability []byte // replayed in Security Mode Command
 
 	// Network

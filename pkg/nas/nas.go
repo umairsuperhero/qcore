@@ -12,10 +12,10 @@ import "fmt"
 type SecurityHeaderType uint8
 
 const (
-	SecurityHeaderPlainNAS                  SecurityHeaderType = 0
-	SecurityHeaderIntegrityProtected        SecurityHeaderType = 1
-	SecurityHeaderIntegrityProtectedCiphered SecurityHeaderType = 2
-	SecurityHeaderIntegrityProtectedNewCtx  SecurityHeaderType = 3
+	SecurityHeaderPlainNAS                         SecurityHeaderType = 0
+	SecurityHeaderIntegrityProtected               SecurityHeaderType = 1
+	SecurityHeaderIntegrityProtectedCiphered       SecurityHeaderType = 2
+	SecurityHeaderIntegrityProtectedNewCtx         SecurityHeaderType = 3
 	SecurityHeaderIntegrityProtectedNewCtxCiphered SecurityHeaderType = 4
 )
 
@@ -127,11 +127,11 @@ func ParseHeader(data []byte) (Header, int, error) {
 type IdentityType uint8
 
 const (
-	IdentityIMSI  IdentityType = 1
-	IdentityIMEI  IdentityType = 2
+	IdentityIMSI   IdentityType = 1
+	IdentityIMEI   IdentityType = 2
 	IdentityIMEISV IdentityType = 3
-	IdentityTMSI  IdentityType = 4
-	IdentityGUTI  IdentityType = 6
+	IdentityTMSI   IdentityType = 4
+	IdentityGUTI   IdentityType = 6
 )
 
 // DecodeIMSI extracts an IMSI from BCD-encoded EPS Mobile Identity IE.

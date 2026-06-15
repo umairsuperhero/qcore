@@ -102,9 +102,9 @@ func runTest() {
 				fmt.Println("✅ Scenario PASS")
 			} else {
 				fmt.Println("❌ Scenario FAIL")
-				fmt.Printf("   Expected: result=%s cause=%s failed_step=%s\n", 
+				fmt.Printf("   Expected: result=%s cause=%s failed_step=%s\n",
 					result.Expected.Result, result.Expected.Cause, result.Expected.FailedStep)
-				fmt.Printf("   Actual:   result=%s cause=%s failed_step=%s\n", 
+				fmt.Printf("   Actual:   result=%s cause=%s failed_step=%s\n",
 					result.Actual.Result, result.Actual.Cause, result.Actual.FailedStep)
 			}
 		} else {

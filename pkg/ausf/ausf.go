@@ -47,10 +47,10 @@ type AuthenticationInfo struct {
 // UEAuthenticationCtx — TS 29.509 §6.1.6.2.3. 201 Created response body.
 // Location header carries the same URL as _links["5g-aka"].href.
 type UEAuthenticationCtx struct {
-	AuthType           AuthType         `json:"authType"`
-	Av5gAuthData       Av5gAka          `json:"5gAuthData"`
-	Links              map[string]Link  `json:"_links"`
-	ServingNetworkName string           `json:"servingNetworkName,omitempty"`
+	AuthType           AuthType        `json:"authType"`
+	Av5gAuthData       Av5gAka         `json:"5gAuthData"`
+	Links              map[string]Link `json:"_links"`
+	ServingNetworkName string          `json:"servingNetworkName,omitempty"`
 }
 
 // Av5gAka — TS 29.509 §6.1.6.2.4. The 5G-AKA vector AUSF hands to AMF.
@@ -380,9 +380,9 @@ type authCtx struct {
 	snName   string
 }
 
-func newCtxStore() *ctxStore                     { return &ctxStore{ctxs: make(map[string]*authCtx)} }
-func (s *ctxStore) put(id string, c *authCtx)    { s.mu.Lock(); s.ctxs[id] = c; s.mu.Unlock() }
-func (s *ctxStore) del(id string)                { s.mu.Lock(); delete(s.ctxs, id); s.mu.Unlock() }
+func newCtxStore() *ctxStore                  { return &ctxStore{ctxs: make(map[string]*authCtx)} }
+func (s *ctxStore) put(id string, c *authCtx) { s.mu.Lock(); s.ctxs[id] = c; s.mu.Unlock() }
+func (s *ctxStore) del(id string)             { s.mu.Lock(); delete(s.ctxs, id); s.mu.Unlock() }
 func (s *ctxStore) get(id string) *authCtx {
 	s.mu.Lock()
 	defer s.mu.Unlock()

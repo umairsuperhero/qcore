@@ -10,6 +10,9 @@ bin/
 *.out
 coverage.html
 
+# CI evidence / artifact downloads (gh run download, ueransim-interop logs)
+artifacts/
+
 # Dependencies
 vendor/
 

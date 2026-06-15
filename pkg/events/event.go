@@ -164,12 +164,12 @@ type GNBConnectedPayload struct {
 // NGSetupReceivedPayload fires after DecodeNGSetupRequest succeeds — the raw
 // fields the gNB advertised, decoded with the canonical ident codec.
 type NGSetupReceivedPayload struct {
-	GNBAssocID  string     `json:"gnb_assoc_id"`
-	GNBName     string     `json:"gnb_name,omitempty"`
-	GNBID       uint64     `json:"gnb_id"`
-	GNBMCC      string     `json:"gnb_mcc"` // decoded from GlobalRANNodeID PLMN
-	GNBMNC      string     `json:"gnb_mnc"`
-	OfferedTACs []string   `json:"offered_tacs"` // hex TAC strings
+	GNBAssocID     string       `json:"gnb_assoc_id"`
+	GNBName        string       `json:"gnb_name,omitempty"`
+	GNBID          uint64       `json:"gnb_id"`
+	GNBMCC         string       `json:"gnb_mcc"` // decoded from GlobalRANNodeID PLMN
+	GNBMNC         string       `json:"gnb_mnc"`
+	OfferedTACs    []string     `json:"offered_tacs"` // hex TAC strings
 	OfferedSNSSAIs []SNSSAIDesc `json:"offered_snssais"`
 }
 
@@ -189,16 +189,16 @@ type NGSetupPayload struct {
 	TAC        string `json:"tac,omitempty"`  // hex of first TAC
 	Success    bool   `json:"success"`
 	// On failure:
-	FailureCause    string `json:"failure_cause,omitempty"`    // e.g. "plmn_mismatch"
-	FailureExplain  string `json:"failure_explain,omitempty"`  // plain English
-	FixGNBSide      string `json:"fix_gnb_side,omitempty"`
-	FixQCoreSide    string `json:"fix_qcore_side,omitempty"`
+	FailureCause   string `json:"failure_cause,omitempty"`   // e.g. "plmn_mismatch"
+	FailureExplain string `json:"failure_explain,omitempty"` // plain English
+	FixGNBSide     string `json:"fix_gnb_side,omitempty"`
+	FixQCoreSide   string `json:"fix_qcore_side,omitempty"`
 }
 
 // RegistrationRequestPayload carries NAS 5G Registration Request fields.
 type RegistrationRequestPayload struct {
-	SUCI         string `json:"suci,omitempty"`
-	RegType      int    `json:"reg_type"`
+	SUCI           string   `json:"suci,omitempty"`
+	RegType        int      `json:"reg_type"`
 	RequestedNSSAI []string `json:"requested_nssai,omitempty"`
 }
 
@@ -270,9 +270,9 @@ type NFDiscoveredPayload struct {
 // it to plain-language explanation + fix. This is the SINGLE failure event
 // the frontend traces against — do not emit generic error events for reg failures.
 type RegistrationFailurePayload struct {
-	SUPI  string `json:"supi,omitempty"`  // resolved SUPI if available, else empty
-	SUCI  string `json:"suci,omitempty"`  // raw SUCI string if SUPI not resolved
-	Cause string `json:"cause"`           // machine tag: see pkg/diag/registration.go for the full list
+	SUPI  string `json:"supi,omitempty"` // resolved SUPI if available, else empty
+	SUCI  string `json:"suci,omitempty"` // raw SUCI string if SUPI not resolved
+	Cause string `json:"cause"`          // machine tag: see pkg/diag/registration.go for the full list
 	// Detail carries the raw error string for debugging; not shown to end users.
 	Detail string `json:"detail,omitempty"`
 }

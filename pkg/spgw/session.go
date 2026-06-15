@@ -17,23 +17,23 @@ import (
 type Bearer struct {
 	IMSI string
 	// S1-U: eNB ↔ SGW. The SGW allocates the DL TEID; the eNB allocates the UL.
-	SGWTEID  uint32 // DL TEID (eNB encapsulates with this on UL; SGW receives and decapsulates)
-	SGWAddr  net.IP // SGW S1-U bind address (what we advertise to the MME)
-	ENBTEID  uint32 // UL TEID (SGW encapsulates with this on DL; eNB receives)
-	ENBAddr  net.IP // eNB S1-U address
-	UEIP     net.IP // allocated UE IP
-	EBI      uint8  // EPS Bearer ID (e.g. 5 for default bearer)
-	APN      string
+	SGWTEID   uint32 // DL TEID (eNB encapsulates with this on UL; SGW receives and decapsulates)
+	SGWAddr   net.IP // SGW S1-U bind address (what we advertise to the MME)
+	ENBTEID   uint32 // UL TEID (SGW encapsulates with this on DL; eNB receives)
+	ENBAddr   net.IP // eNB S1-U address
+	UEIP      net.IP // allocated UE IP
+	EBI       uint8  // EPS Bearer ID (e.g. 5 for default bearer)
+	APN       string
 	CreatedAt time.Time
 }
 
 // SessionStore holds all active bearers, indexed by every key we need to look
 // them up by. It's safe for concurrent use.
 type SessionStore struct {
-	mu       sync.RWMutex
-	byIMSI   map[string]*Bearer
+	mu        sync.RWMutex
+	byIMSI    map[string]*Bearer
 	bySGWTEID map[uint32]*Bearer
-	byUEIP   map[string]*Bearer
+	byUEIP    map[string]*Bearer
 }
 
 // NewSessionStore creates an empty session store.

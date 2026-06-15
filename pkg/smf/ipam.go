@@ -13,10 +13,10 @@ var (
 
 // IPAM assigns IPv4 addresses from a configured subnet to UEs.
 type IPAM struct {
-	mu      sync.Mutex
-	ipNet   *net.IPNet
-	nextIP  net.IP
-	inUse   map[string]bool // string representation of net.IP
+	mu     sync.Mutex
+	ipNet  *net.IPNet
+	nextIP net.IP
+	inUse  map[string]bool // string representation of net.IP
 }
 
 // NewIPAM creates an IPAM for the given CIDR.
@@ -25,10 +25,10 @@ func NewIPAM(cidr string) (*IPAM, error) {
 	if err != nil {
 		return nil, ErrInvalidPool
 	}
-	
+
 	// Start with the first usable IP
 	startIP := nextIP(ip.Mask(ipNet.Mask))
-	
+
 	return &IPAM{
 		ipNet:  ipNet,
 		nextIP: startIP,
@@ -40,10 +40,10 @@ func NewIPAM(cidr string) (*IPAM, error) {
 func (m *IPAM) Allocate() (net.IP, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	start := make(net.IP, len(m.nextIP))
 	copy(start, m.nextIP)
-	
+
 	for {
 		if !m.ipNet.Contains(m.nextIP) {
 			// Wrap around to the first usable address of the configured pool.
@@ -53,22 +53,22 @@ func (m *IPAM) Allocate() (net.IP, error) {
 			// hand out addresses outside the pool.
 			m.nextIP = nextIP(m.ipNet.IP.Mask(m.ipNet.Mask))
 		}
-		
+
 		candidate := make(net.IP, len(m.nextIP))
 		copy(candidate, m.nextIP)
-		
+
 		m.nextIP = nextIP(m.nextIP)
-		
+
 		// Skip broadcast address roughly
 		if candidate[len(candidate)-1] == 255 {
 			continue
 		}
-		
+
 		if !m.inUse[candidate.String()] {
 			m.inUse[candidate.String()] = true
 			return candidate, nil
 		}
-		
+
 		if m.nextIP.Equal(start) {
 			return nil, ErrPoolExhausted
 		}

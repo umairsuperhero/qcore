@@ -49,10 +49,10 @@ type ResynchronizationInfo struct {
 
 // AuthenticationInfoResult — TS 29.503 §6.3.6.2.3.
 type AuthenticationInfoResult struct {
-	AuthType              AuthType    `json:"authType"`
-	AuthenticationVector  *Av5gHeAka  `json:"authenticationVector,omitempty"`
-	Supi                  string      `json:"supi,omitempty"`
-	SupportedFeatures     string      `json:"supportedFeatures,omitempty"`
+	AuthType             AuthType   `json:"authType"`
+	AuthenticationVector *Av5gHeAka `json:"authenticationVector,omitempty"`
+	Supi                 string     `json:"supi,omitempty"`
+	SupportedFeatures    string     `json:"supportedFeatures,omitempty"`
 }
 
 // Av5gHeAka — TS 29.503 §6.3.6.2.7. The 5G Home Environment AKA vector.

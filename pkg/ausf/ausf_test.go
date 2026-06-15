@@ -312,4 +312,3 @@ func pickFreePort(t *testing.T) int {
 	_ = l.Close()
 	return port
 }
-

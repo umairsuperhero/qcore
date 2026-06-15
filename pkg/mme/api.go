@@ -49,7 +49,7 @@ type enbInfo struct {
 	RemoteAddr string   `json:"remote_addr"`
 	ENBName    string   `json:"enb_name,omitempty"`
 	GlobalID   string   `json:"global_enb_id,omitempty"` // hex
-	PLMN       string   `json:"plmn,omitempty"`           // hex
+	PLMN       string   `json:"plmn,omitempty"`          // hex
 	TACs       []uint16 `json:"tacs,omitempty"`
 }
 
@@ -148,8 +148,8 @@ func (a *API) pagingTrigger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
-		"imsi":         imsi,
-		"enbs_paged":   count,
+		"imsi":       imsi,
+		"enbs_paged": count,
 	})
 }
 

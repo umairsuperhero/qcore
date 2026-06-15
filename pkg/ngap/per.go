@@ -244,7 +244,7 @@ func (d *PERDecoder) GetPrintableString(lb, ub int, ext bool) (string, error) {
 			return "", err
 		}
 	}
-	
+
 	// Characters are 8 bits each, so align before reading
 	d.align()
 	b, err := d.GetBytes(length)
@@ -472,7 +472,7 @@ func (e *PEREncoder) PutOctetString(data []byte) error {
 func (e *PEREncoder) PutPrintableString(s string, lb, ub int, ext bool) error {
 	b := []byte(s)
 	l := len(b)
-	
+
 	if ext {
 		isExt := l < lb || l > ub
 		isExtBit := uint8(0)
@@ -502,7 +502,7 @@ func (e *PEREncoder) PutPrintableString(s string, lb, ub int, ext bool) error {
 			}
 		}
 	}
-	
+
 	e.align()
 	e.PutBytes(b)
 	return nil

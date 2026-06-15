@@ -13,9 +13,9 @@ func TestAESCMAC_RFC4493(t *testing.T) {
 	key, _ := hex.DecodeString("2b7e151628aed2a6abf7158809cf4f3c")
 
 	tests := []struct {
-		name    string
-		msg     string
-		want    string
+		name string
+		msg  string
+		want string
 	}{
 		{
 			name: "empty message",

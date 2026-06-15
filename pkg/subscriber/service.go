@@ -231,7 +231,7 @@ func (s *Service) Resync5GAuthVector(ctx context.Context, imsi, snName, randHex,
 	if err != nil {
 		return nil, fmt.Errorf("decoding OPc: %w", err)
 	}
-	
+
 	randBytes, err := hex.DecodeString(randHex)
 	if err != nil || len(randBytes) != 16 {
 		return nil, fmt.Errorf("invalid RAND")
@@ -267,7 +267,7 @@ func (s *Service) Resync5GAuthVector(ctx context.Context, imsi, snName, randHex,
 	}
 
 	sqnMSHex := hex.EncodeToString(sqnMS[:])
-	
+
 	// Advance SQN past the UE's SQN
 	newSQN, err := AdvanceSQNHex(sqnMSHex)
 	if err != nil {
@@ -279,7 +279,7 @@ func (s *Service) Resync5GAuthVector(ctx context.Context, imsi, snName, randHex,
 	}
 
 	s.log.Infof("SQN resynchronized for IMSI=%s to %s", imsi, sub.SQN)
-	
+
 	// Issue a fresh vector with the new SQN
 	return s.Generate5GAuthVector(ctx, imsi, snName)
 }
@@ -405,6 +405,7 @@ func (s *Service) SetSQN(ctx context.Context, imsi, newSQN string) error {
 //	Octet 1: MCC digit 2 | MCC digit 1
 //	Octet 2: MNC digit 3 (0xF for 2-digit MNC) | MCC digit 3
 //	Octet 3: MNC digit 2 | MNC digit 1
+//
 // ParsePLMN parses a 5- or 6-digit PLMN string (e.g. "00101") into the 3-byte
 // BCD format defined by TS 24.008 §10.5.1.13. Delegates to pkg/ident so the
 // encoding is guaranteed identical to ngap.PLMNFromMCCMNC.
