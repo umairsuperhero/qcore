@@ -17,7 +17,7 @@ jobs:
       COMPOSE: "docker compose -f deployments/docker/docker-compose.yml"
       QCORE_AMF_TRACE_NGAP_HEX: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Load kernel modules (SCTP + TUN)
         run: |
@@ -194,7 +194,7 @@ jobs:
 
       - name: Upload T10 evidence artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ueransim-t10-evidence
           path: artifacts/ueransim
