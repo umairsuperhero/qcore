@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QCore · Is your gNB connected?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0A0B0D;
+    --surface: #121419;
+    --surface-2: #1A1D24;
+    --code: #0C0E12;
+    --cyan: #22D3EE;
+    --green: #34D399;
+    --amber: #FBBF24;
+    --red: #F87171;
+    --violet: #A78BFA;
+    --ink: #E8EAED;
+    --ink-soft: #C7CED7;
+    --muted: #9099A6;
+    --faint: #5B6472;
+    --hair: #252A33;
+    --hair-strong: #2F353F;
+    --hair-soft: rgba(255, 255, 255, 0.045);
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* faint vignette so the center reads as the light source */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 36%, rgba(22, 26, 33, 0.5) 0%, rgba(10, 11, 13, 0) 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px clamp(20px, 5vw, 64px) 64px;
+  }
+
+  /* ───────────────────────── top chrome ───────────────────────── */
+  .topbar {
+    width: 100%;
+    max-width: 980px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: clamp(36px, 9vh, 96px);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .brand .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    animation: livePulse 3.4s ease-out infinite;
+  }
+  body.failed .brand .dot { background: var(--red); animation: none; }
+  body:not(.connected):not(.failed) .brand .dot { background: var(--amber); }
+  @keyframes livePulse {
+    0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.45); }
+    70%,100% { box-shadow: 0 0 0 7px rgba(52,211,153,0); }
+  }
+  .brand b { color: var(--ink); font-weight: 700; letter-spacing: 0.06em; }
+
+  .nf-toggle {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 13px 7px 11px;
+    border: 1px solid var(--hair);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.012);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: border-color .25s ease, color .25s ease, background .25s ease;
+  }
+  .nf-toggle:hover { border-color: var(--hair-strong); color: var(--ink-soft); background: rgba(255,255,255,0.03); }
+  .nf-toggle .grid-ico { display: grid; grid-template-columns: repeat(3, 3px); gap: 2px; }
+  .nf-toggle .grid-ico i { width: 3px; height: 3px; background: currentColor; border-radius: 0.5px; display: block; }
+  .nf-toggle .chev { transition: transform .3s ease; font-size: 9px; opacity: .7; }
+  .nf-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .nf-toggle[aria-expanded="true"] { color: var(--cyan); border-color: rgba(34,211,238,0.3); }
+
+  /* ───────────────────────── hero ───────────────────────── */
+  .hero {
+    width: 100%;
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .eyebrow {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: clamp(26px, 5vh, 44px);
+  }
+
+  /* the latch emblem */
+  .emblem-wrap {
+    position: relative;
+    width: 132px; height: 132px;
+    margin-bottom: 38px;
+    cursor: pointer;
+  }
+  .emblem-wrap::after {
+    content: "replay";
+    position: absolute;
+    left: 50%; bottom: -22px;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--faint);
+    opacity: 0;
+    transition: opacity .25s ease;
+    pointer-events: none;
+  }
+  .emblem-wrap:hover::after { opacity: 1; }
+
+  .emblem { width: 132px; height: 132px; display: block; overflow: visible; }
+  .emblem .ring-bg { fill: none; stroke: var(--hair); stroke-width: 4; }
+  .emblem .glow { fill: rgba(52, 211, 153, 0); transition: fill 0.6s ease 0.3s; }
+
+  /* inner ring that seats on contact */
+  .emblem .lock-ring {
+    fill: none; stroke: var(--green); stroke-width: 1.5;
+    opacity: 0;
+    transform-origin: 66px 66px; transform: scale(0.72);
+    transition: opacity .5s ease .46s, transform .6s cubic-bezier(0.34,1.4,0.5,1) .46s, stroke .4s ease;
+  }
+  .emblem .ring-half {
+    fill: none; stroke: var(--green); stroke-width: 4; stroke-linecap: round;
+    transform-origin: 66px 66px;
+    transition: transform 0.62s cubic-bezier(0.34, 1.42, 0.5, 1), opacity 0.4s ease, stroke 0.45s ease;
+  }
+  /* the seam where the two halves meet, flashes at the moment of contact */
+  .emblem .seam { stroke: var(--green); stroke-width: 0; stroke-linecap: round; opacity: 0; }
+  .emblem .check {
+    fill: none; stroke: var(--green); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 64; stroke-dashoffset: 64; opacity: 0;
+    transition: stroke-dashoffset 0.42s cubic-bezier(0.65,0,0.35,1) 0.36s, opacity 0.2s ease 0.36s;
+  }
+  .emblem .xmark {
+    fill: none; stroke: var(--red); stroke-width: 4.5; stroke-linecap: round;
+    stroke-dasharray: 42; stroke-dashoffset: 42; opacity: 0;
+    transition: stroke-dashoffset 0.3s cubic-bezier(0.65,0,0.35,1), opacity 0.2s ease;
+  }
+  .emblem .pulse { fill: none; stroke: var(--green); stroke-width: 2; opacity: 0; transform-origin: 66px 66px; }
+
+  /* WAITING, jaws open, amber, slow breathing */
+  body:not(.connected):not(.failed) .ring-left  { transform: rotate(-26deg); opacity: 0.6; stroke: var(--amber); }
+  body:not(.connected):not(.failed) .ring-right { transform: rotate(26deg);  opacity: 0.6; stroke: var(--amber); }
+  body:not(.connected):not(.failed) .emblem { animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: 0.82; } 50% { opacity: 1; } }
+
+  /* CONNECTED, halves swing shut and latch */
+  body.connected .ring-left  { transform: rotate(0deg); opacity: 1; }
+  body.connected .ring-right { transform: rotate(0deg); opacity: 1; }
+  body.connected .check { stroke-dashoffset: 0; opacity: 1; }
+  body.connected .glow { fill: rgba(52, 211, 153, 0.08); }
+  body.connected .lock-ring { opacity: 0.28; transform: scale(1); }
+  body.connected .seam { animation: seamFlash 0.55s ease-out 0.5s; }
+  body.connected .emblem { animation: latchSettle 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s; }
+  body.connected .pulse { animation: latchPulse 0.85s ease-out 0.52s; }
+  @keyframes seamFlash { 0% { opacity: 0; stroke-width: 0; } 35% { opacity: 0.85; stroke-width: 3; } 100% { opacity: 0; stroke-width: 1; } }
+  @keyframes latchSettle { 0% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+  @keyframes latchPulse { 0% { transform: scale(0.62); opacity: 0.5; } 100% { transform: scale(1.72); opacity: 0; } }
+
+  /* FAILED, halves try to close, recoil ajar, turn red, X strikes in */
+  body.failed .ring-left  { transform: rotate(-9deg); opacity: 1; stroke: var(--red); }
+  body.failed .ring-right { transform: rotate(9deg);  opacity: 1; stroke: var(--red); }
+  body.failed .glow { fill: rgba(248, 113, 113, 0.07); }
+  body.failed .xmark { stroke-dashoffset: 0; opacity: 1; transition-delay: 0.34s; }
+  body.failed .emblem { animation: failShake 0.5s cubic-bezier(0.36,0.07,0.19,0.97) 0.14s; }
+  @keyframes failShake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); } 40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); } 80% { transform: translateX(2px); }
+  }
+
+  /* headline, swaps between the three states */
+  .headline {
+    font-size: clamp(34px, 5.4vw, 58px);
+    font-weight: 600;
+    line-height: 1.04;
+    letter-spacing: -0.025em;
+    margin-bottom: 22px;
+    min-height: 1.04em;
+  }
+  .headline .dim { color: var(--muted); font-weight: 400; white-space: nowrap; }
+  .headline .state-txt { display: none; }
+  body.connected .headline .connected-txt { display: inline; }
+  body.failed .headline .failed-txt { display: inline; }
+  body:not(.connected):not(.failed) .headline .waiting-txt { display: inline; }
+
+  /* sublines */
+  .sub { margin-bottom: clamp(30px, 5vh, 46px); min-height: 22px; }
+  .sub .state-sub { display: none; }
+  body.connected .sub .connected-sub { display: flex; }
+  body.failed .sub .failed-sub { display: flex; }
+  body:not(.connected):not(.failed) .sub .waiting-sub { display: flex; }
+
+  .state-sub {
+    font-family: var(--mono);
+    font-size: clamp(13px, 1.5vw, 15.5px);
+    letter-spacing: -0.01em;
+    color: var(--ink-soft);
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0 14px;
+  }
+  .state-sub .sep { color: var(--faint); }
+  .state-sub .val { color: var(--violet); }
+  .state-sub .bad { color: var(--red); }
+
+  .waiting-sub {
+    flex-direction: column;
+    gap: 8px !important;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .waiting-sub .wrow { display: flex; gap: 12px; align-items: baseline; white-space: nowrap; }
+  .waiting-sub .k { color: var(--faint); letter-spacing: 0.08em; font-size: 11px; text-transform: uppercase; width: 46px; text-align: right; }
+  .waiting-sub .v { color: var(--cyan); }
+
+  /* actions area */
+  .actions { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; justify-content: center; min-height: 50px; }
+  .actions .state-act { display: none; align-items: center; gap: 22px; flex-wrap: wrap; justify-content: center; }
+  body.connected .actions .connected-act { display: flex; }
+  body.failed .actions .failed-act { display: flex; }
+
+  .btn-primary {
+    font-family: var(--sans);
+    font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+    color: #04181B;
+    background: var(--cyan);
+    border: none; border-radius: 11px;
+    padding: 15px 26px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 10px;
+    text-decoration: none;
+    box-shadow: 0 8px 30px -10px rgba(34, 211, 238, 0.55);
+    transition: transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease, background .2s ease, color .2s ease;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 0 4px rgba(34,211,238,0.12), 0 12px 36px -10px rgba(34,211,238,0.7); }
+  .btn-primary:active { transform: translateY(0) scale(0.98); }
+  .btn-primary .arrow { transition: transform .25s ease; }
+  .btn-primary:hover .arrow { transform: translateX(3px); }
+  .btn-primary[disabled] { opacity: .55; pointer-events: none; }
+  .btn-primary.done {
+    background: rgba(52,211,153,0.12); color: var(--green); opacity: 1;
+    box-shadow: inset 0 0 0 1px rgba(52,211,153,0.4); cursor: default;
+  }
+
+  .btn-ghost {
+    background: none; border: none;
+    color: var(--muted);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.02em;
+    cursor: pointer; padding: 8px 4px; white-space: nowrap; text-decoration: none;
+    transition: color .2s ease;
+  }
+  .btn-ghost:hover { color: var(--ink-soft); }
+
+  /* three-state model chips */
+  .chips {
+    display: flex; gap: 8px;
+    margin-top: clamp(30px, 5vh, 48px);
+    padding: 5px;
+    border: 1px solid var(--hair);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.012);
+  }
+  .chip {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 15px;
+    border: none; border-radius: 999px;
+    background: none;
+    color: var(--muted);
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: background .22s ease, color .22s ease;
+  }
+  .chip .d { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); transition: background .22s ease, box-shadow .22s ease; }
+  .chip:hover { color: var(--ink-soft); }
+  .chip[data-state="connected"].on { color: var(--green); background: rgba(52,211,153,0.1); }
+  .chip[data-state="connected"].on .d { background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.7); }
+  .chip[data-state="waiting"].on { color: var(--amber); background: rgba(251,191,36,0.1); }
+  .chip[data-state="waiting"].on .d { background: var(--amber); box-shadow: 0 0 8px rgba(251,191,36,0.7); }
+  .chip[data-state="failed"].on { color: var(--red); background: rgba(248,113,113,0.1); }
+  .chip[data-state="failed"].on .d { background: var(--red); box-shadow: 0 0 8px rgba(248,113,113,0.7); }
+
+  /* ───────────────────────── live signaling trace ───────────────────────── */
+  .trace {
+    width: 100%; max-width: 760px;
+    margin-top: clamp(44px, 8vh, 92px);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .6s ease .3s, transform .6s ease .3s;
+  }
+  body.connected .trace, body.failed .trace { opacity: 1; transform: none; }
+
+  .trace-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 2px 12px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .trace-title { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .trace-title .live { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); animation: livePulseCyan 1.8s ease-out infinite; }
+  body.failed .trace-title .live { background: var(--red); animation: none; }
+  @keyframes livePulseCyan { 0% { box-shadow: 0 0 0 0 rgba(34,211,238,0.5); } 70%,100% { box-shadow: 0 0 0 6px rgba(34,211,238,0); } }
+  .trace-full { font-family: var(--mono); font-size: 11px; color: var(--faint); text-decoration: none; transition: color .2s ease; }
+  .trace-full:hover { color: var(--cyan); }
+
+  .trace-list { list-style: none; }
+  .trace-row {
+    display: grid;
+    grid-template-columns: 102px 56px 1fr auto;
+    align-items: baseline;
+    gap: 16px;
+    padding: 11px 8px 11px 6px;
+    border-bottom: 1px solid var(--hair-soft);
+    font-size: 13.5px;
+    animation: rowIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .trace-row.has-detail, .trace-row.fail { cursor: pointer; }
+  .trace-row.has-detail:hover, .trace-row.fail:hover { background: rgba(255,255,255,0.02); }
+  .trace-row .ts { font-family: var(--mono); font-size: 12px; color: var(--violet); letter-spacing: -0.02em; white-space: nowrap; }
+  .trace-row .proto { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-align: center; padding: 2.5px 0; border-radius: 5px; border: 1px solid currentColor; }
+  .trace-row .proto.ngap { color: var(--cyan); }
+  .trace-row .proto.nas  { color: var(--violet); }
+  .trace-row .msg { color: var(--ink-soft); }
+  .trace-row .msg .arr { color: var(--faint); margin: 0 6px; }
+  .trace-row .msg .peer { color: var(--muted); }
+  .trace-row.ok .msg .tag { color: var(--green); }
+  .trace-row.fail { border-left: 2px solid var(--red); padding-left: 12px; margin-left: -6px; }
+  .trace-row.fail .msg { color: var(--ink); }
+  .trace-row.fail .msg .tag { color: var(--red); }
+  .trace-row .caret { font-family: var(--mono); font-size: 11px; color: var(--faint); transition: transform .25s ease, color .2s ease; justify-self: end; }
+  .trace-row.has-detail.open .caret { transform: rotate(90deg); color: var(--cyan); }
+  .trace-row.fail .caret { color: var(--red); }
+
+  .trace-detail {
+    grid-column: 1 / -1;
+    margin: 10px 0 4px;
+    padding: 14px 16px;
+    background: var(--code);
+    border: 1px solid var(--hair);
+    border-radius: 9px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.85;
+    color: var(--muted); overflow-x: auto;
+  }
+  .trace-detail .hx { color: var(--ink-soft); }
+  .trace-detail .cm { color: var(--faint); }
+  .trace-detail .ky { color: var(--cyan); }
+  .trace-detail .vl { color: var(--violet); }
+  .trace-detail .bd { color: var(--red); }
+
+  .trace-foot {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding-top: 18px;
+    font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: 0.04em;
+  }
+  .trace-foot .keep { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+  .trace-foot a { color: var(--cyan); text-decoration: none; }
+  .trace-foot a:hover { text-decoration: underline; }
+
+  /* ───────────────────────── NF disclosure panel ───────────────────────── */
+  .nf-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(420px, 92vw);
+    background: var(--surface);
+    border-left: 1px solid var(--hair-strong);
+    box-shadow: -30px 0 80px -30px rgba(0,0,0,0.8);
+    z-index: 30;
+    transform: translateX(100%);
+    transition: transform .42s cubic-bezier(0.4, 0, 0.1, 1);
+    display: flex; flex-direction: column;
+    padding: 26px 26px 30px;
+  }
+  .nf-panel.open { transform: none; }
+  .nf-scrim { position: fixed; inset: 0; background: rgba(5,6,8,0.55); backdrop-filter: blur(2px); z-index: 29; opacity: 0; pointer-events: none; transition: opacity .42s ease; }
+  .nf-scrim.open { opacity: 1; pointer-events: auto; }
+  .nf-panel-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 4px; }
+  .nf-panel-head h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .nf-panel-head .psub { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+  .nf-close { background: none; border: 1px solid var(--hair); color: var(--muted); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all .2s ease; }
+  .nf-close:hover { color: var(--ink); border-color: var(--hair-strong); }
+  .nf-grid { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; overflow-y: auto; }
+  .nf-cell { border: 1px solid var(--hair); border-radius: 10px; padding: 13px 14px; background: rgba(255,255,255,0.012); display: flex; flex-direction: column; gap: 7px; }
+  .nf-cell .top { display: flex; align-items: center; justify-content: space-between; }
+  .nf-cell .nm { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: 0.02em; }
+  .nf-cell .st { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-family: var(--mono); color: var(--green); letter-spacing: 0.03em; }
+  .nf-cell .st .d { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,0.6); }
+  .nf-cell.idle .st { color: var(--muted); }
+  .nf-cell.idle .st .d { background: var(--faint); box-shadow: none; }
+  .nf-cell .desc { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+  .nf-note { margin-top: 16px; font-family: var(--mono); font-size: 11px; color: var(--faint); line-height: 1.6; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-height: 740px) {
+    .trace { margin-top: 40px; }
+    .emblem-wrap, .emblem { width: 104px; height: 104px; margin-bottom: 26px; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700</head>family=JetBrains+Mono:wght@400;500</head>display=swap" rel="stylesheet"></head>
+<body>
+  <main class="stage" data-screen-label="gNB Hero">
+    <header class="topbar">
+      <div class="brand"><span class="dot"></span><b>QCore</b> &nbsp;core online</div>
+      <button class="nf-toggle" id="nfToggle" aria-expanded="false" aria-label="Show network functions">
+        <span class="grid-ico"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        12 functions
+        <span class="chev">▾</span>
+      </button>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">Is your gNB connected?</p>
+
+      <div class="emblem-wrap" id="emblemWrap" title="Replay the connection">
+        <svg class="emblem" viewBox="0 0 132 132" aria-hidden="true">
+          <circle class="ring-bg" cx="66" cy="66" r="52"></circle>
+          <circle class="glow" cx="66" cy="66" r="50"></circle>
+          <circle class="lock-ring" cx="66" cy="66" r="39"></circle>
+          <path class="ring-half ring-left"  d="M66,14 A52,52 0 0 0 66,118"></path>
+          <path class="ring-half ring-right" d="M66,14 A52,52 0 0 1 66,118"></path>
+          <line class="seam" x1="66" y1="22" x2="66" y2="110"></line>
+          <path class="check" d="M44,67 L60,83 L90,49"></path>
+          <path class="xmark" d="M52,52 L80,80"></path>
+          <path class="xmark" d="M80,52 L52,80"></path>
+          <circle class="pulse" cx="66" cy="66" r="52"></circle>
+        </svg>
+      </div>
+
+      <h1 class="headline">
+        <span class="state-txt waiting-txt"><span class="dim">Waiting for</span> gNB…</span>
+        <span class="state-txt connected-txt">gNB connected <span class="dim">· Nokia AirScale</span></span>
+        <span class="state-txt failed-txt">gNB rejected <span class="dim">· PLMN mismatch</span></span>
+      </h1>
+
+      <div class="sub">
+        <p class="state-sub connected-sub">
+          <span>PLMN <span class="val">001/01</span> confirmed</span>
+          <span class="sep">·</span>
+          <span>TAC <span class="val">1</span></span>
+          <span class="sep">·</span>
+          <span><span class="val">eMBB</span> slice negotiated</span>
+        </p>
+        <p class="state-sub failed-sub">
+          <span>gNB sent PLMN <span class="bad">310/260</span></span>
+          <span class="sep">·</span>
+          <span>core expects <span class="val">001/01</span></span>
+        </p>
+        <div class="state-sub waiting-sub">
+          <div class="wrow"><span class="k">AMF</span><span class="v">192.168.1.50 : 38412</span><span style="color:var(--faint)">SCTP</span></div>
+          <div class="wrow"><span class="k">PLMN</span><span class="v">001 / 01</span></div>
+          <div class="wrow"><span class="k">TAC</span><span class="v">1</span></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="state-act connected-act">
+          <a class="btn-primary" id="registerBtn" href="#">Register a UE <span class="arrow">→</span></a>
+          <a class="btn-ghost" href="QCore Signaling.html">Open live trace</a>
+        </div>
+        <div class="state-act failed-act">
+          <a class="btn-primary" href="QCore Diagnosis.html">Open full diagnosis <span class="arrow">→</span></a>
+          <a class="btn-ghost" id="retryBtn" href="#">Retry NG Setup</a>
+        </div>
+      </div>
+
+      <div class="chips" id="chips" role="tablist" aria-label="Connection state">
+        <button class="chip" data-state="connected"><span class="d"></span>Connected</button>
+        <button class="chip" data-state="waiting"><span class="d"></span>Waiting</button>
+        <button class="chip" data-state="failed"><span class="d"></span>Failed</button>
+      </div>
+    </section>
+
+    <section class="trace" aria-label="Live signaling trace">
+      <div class="trace-head">
+        <div class="trace-title"><span class="live"></span>Live signaling</div>
+        <a class="trace-full" href="QCore Signaling.html">full trace →</a>
+      </div>
+      <ul class="trace-list" id="traceList"></ul>
+      <div class="trace-foot" id="traceFoot"><span class="keep"></span><span id="footText">NG link healthy · keepalive every 30s</span></div>
+    </section>
+  </main>
+
+  <div class="nf-scrim" id="nfScrim"></div>
+  <aside class="nf-panel" id="nfPanel" aria-hidden="true">
+    <div class="nf-panel-head">
+      <div>
+        <h2>The core</h2>
+        <p class="psub">12 network functions · one conceptual core</p>
+      </div>
+      <button class="nf-close" id="nfClose" aria-label="Close">✕</button>
+    </div>
+    <div class="nf-grid" id="nfGrid"></div>
+    <p class="nf-note">Everything QCore runs to make one connection happen. Hidden by default · the connection is the only thing you need to watch.</p>
+  </aside>
+
+<script>
+(function () {
+  "use strict";
+
+  var body = document.body;
+  var list = document.getElementById("traceList");
+  var footText = document.getElementById("footText");
+
+  // ── clock: ascending millisecond timestamps ──
+  var base = new Date(); base.setHours(14, 22, 1, 142);
+  function pad(n, w) { n = String(n); while (n.length < w) n = "0" + n; return n; }
+  function fmt(d) { return pad(d.getHours(),2)+":"+pad(d.getMinutes(),2)+":"+pad(d.getSeconds(),2)+"."+pad(d.getMilliseconds(),3); }
+  var cursor = new Date(base.getTime());
+  function stamp(deltaMs) { cursor = new Date(cursor.getTime() + deltaMs); return fmt(cursor); }
+
+  function addRow(o) {
+    var li = document.createElement("li");
+    li.className = "trace-row" + (o.ok ? " ok" : "") + (o.fail ? " fail" : "") + (o.detail ? " has-detail" : "");
+    li.innerHTML =
+      '<span class="ts">' + o.ts + '</span>' +
+      '<span class="proto ' + o.proto.toLowerCase() + '">' + o.proto + '</span>' +
+      '<span class="msg">' + o.msg + '</span>' +
+      '<span class="caret">' + (o.fail ? "→" : (o.detail ? "›" : "")) + '</span>';
+    if (o.fail) {
+      li.addEventListener("click", function () { window.location.href = "QCore Diagnosis.html"; });
+    } else if (o.detail) {
+      li.addEventListener("click", function () {
+        var open = li.classList.toggle("open");
+        var ex = li.querySelector(".trace-detail");
+        if (open && !ex) {
+          var d = document.createElement("div");
+          d.className = "trace-detail"; d.innerHTML = o.detail; li.appendChild(d);
+        } else if (ex) { ex.remove(); }
+      });
+    }
+    list.appendChild(li);
+    while (list.children.length > 9) list.removeChild(list.firstChild);
+  }
+
+  // ── authentic-looking payload snippets ──
+  var DET = {
+    ngsetupReq:
+      '<span class="cm"># NGAP / SCTP ppid=60 · stream 0</span>\n' +
+      '<span class="ky">procedureCode</span>: 21 (NGSetup) · initiatingMessage\n' +
+      '<span class="ky">globalRANNodeID</span>: gNB-ID <span class="vl">0x000A1</span>\n' +
+      '<span class="ky">rANNodeName</span>: "<span class="vl">Nokia AirScale</span>"\n' +
+      '<span class="ky">supportedTAList</span>: TAC <span class="vl">0x000001</span> · PLMN <span class="vl">001/01</span>\n' +
+      '<span class="hx">00 15 00 2a 00 00 04 00 1b 00 09 00 00 a1 …</span>',
+    ngsetupResp:
+      '<span class="cm"># NGAP successfulOutcome</span>\n' +
+      '<span class="ky">procedureCode</span>: 21 (NGSetup)\n' +
+      '<span class="ky">aMFName</span>: "<span class="vl">QCore-AMF</span>"\n' +
+      '<span class="ky">servedGUAMIList</span>: PLMN <span class="vl">001/01</span> · region 0x80 · ptr 0x01\n' +
+      '<span class="ky">pLMNSupportList</span>: S-NSSAI sst=<span class="vl">1 (eMBB)</span>\n' +
+      '<span class="hx">20 15 00 24 00 00 03 00 01 00 09 …</span>',
+    ngsetupReqBad:
+      '<span class="cm"># NGAP / SCTP ppid=60 · stream 0</span>\n' +
+      '<span class="ky">procedureCode</span>: 21 (NGSetup) · initiatingMessage\n' +
+      '<span class="ky">rANNodeName</span>: "<span class="vl">Nokia AirScale</span>"\n' +
+      '<span class="ky">supportedTAList</span>: TAC 0x000001 · PLMN <span class="bd">310/260</span>\n' +
+      '<span class="hx">00 15 00 2a 00 00 04 00 1b … <span class="bd">13 00 62</span></span>',
+    ngsetupFail:
+      '<span class="cm"># NGAP unsuccessfulOutcome</span>\n' +
+      '<span class="ky">procedureCode</span>: 21 (NGSetup)\n' +
+      '<span class="ky">cause</span>: radioNetwork · <span class="bd">unknown-PLMN-or-TAC</span>\n' +
+      '<span class="ky">served PLMN</span>: <span class="vl">001/01</span> · <span class="ky">received</span>: <span class="bd">310/260</span>\n' +
+      '<span class="hx">40 15 00 13 00 00 02 00 0f 40 02 …</span>',
+    regReq:
+      '<span class="cm"># NGAP InitialUEMessage → NAS 5GMM</span>\n' +
+      '<span class="ky">messageType</span>: Registration Request (0x41)\n' +
+      '<span class="ky">5GS mobile identity</span>: SUCI · type=<span class="vl">0</span> (IMSI)\n' +
+      '<span class="ky">SUPI</span>: imsi-<span class="vl">001010000000001</span>\n' +
+      '<span class="hx">7e 00 41 79 00 0d 01 00 f1 10 …</span>',
+    authReq:
+      '<span class="cm"># NAS 5GMM · DownlinkNASTransport</span>\n' +
+      '<span class="ky">messageType</span>: Authentication Request (0x56)\n' +
+      '<span class="ky">ngKSI</span>: 0 · ABBA <span class="vl">0x0000</span>\n' +
+      '<span class="ky">RAND</span>: <span class="hx">9f c8 1a 0b … 5e</span> · <span class="ky">AUTN</span>: <span class="hx">d2 41 7e … 88</span>',
+    secMode:
+      '<span class="cm"># NAS 5GMM</span>\n' +
+      '<span class="ky">messageType</span>: Security Mode Command (0x5d)\n' +
+      '<span class="ky">selected NAS security</span>: <span class="vl">5G-EA2 / 5G-IA2</span>',
+    regAccept:
+      '<span class="cm"># NGAP InitialContextSetupRequest + NAS</span>\n' +
+      '<span class="ky">messageType</span>: Registration Accept (0x42)\n' +
+      '<span class="ky">5G-GUTI</span>: <span class="vl">001-01-8001-00-00000001</span>\n' +
+      '<span class="ky">allowed NSSAI</span>: sst=<span class="vl">1 (eMBB)</span>'
+  };
+
+  var SETUP = [
+    { d: 0,   proto: "NGAP", msg: 'SCTP association established <span class="arr">·</span> <span class="peer">192.168.1.50:38412</span>' },
+    { d: 14,  proto: "NGAP", msg: 'NG Setup Request <span class="arr">←</span> <span class="peer">Nokia AirScale</span>', detail: DET.ngsetupReq },
+    { d: 9,   proto: "NGAP", msg: 'NG Setup Response <span class="arr">→</span> <span class="tag">gNB accepted</span>', ok: true, detail: DET.ngsetupResp },
+    { d: 6,   proto: "NGAP", msg: 'PLMN 001/01 · TAC 1 · slice <span class="tag">eMBB</span> negotiated', ok: true }
+  ];
+
+  var SETUP_FAIL = [
+    { d: 0,   proto: "NGAP", msg: 'SCTP association established <span class="arr">·</span> <span class="peer">192.168.1.50:38412</span>' },
+    { d: 16,  proto: "NGAP", msg: 'NG Setup Request <span class="arr">←</span> PLMN <span style="color:var(--red)">310/260</span>', detail: DET.ngsetupReqBad },
+    { d: 11,  proto: "NGAP", msg: 'NG Setup Failure <span class="arr">→</span> <span class="tag">PLMN not served</span>', fail: true }
+  ];
+
+  var REGISTER = [
+    { d: 120, proto: "NAS",  msg: 'Registration Request <span class="arr">←</span> <span class="peer">imsi-001010000000001</span>', detail: DET.regReq },
+    { d: 38,  proto: "NAS",  msg: 'Authentication Request <span class="arr">→</span> RAND / AUTN', detail: DET.authReq },
+    { d: 52,  proto: "NAS",  msg: 'Authentication Response <span class="arr">←</span> RES* <span class="tag">verified</span>', ok: true },
+    { d: 24,  proto: "NAS",  msg: 'Security Mode Command <span class="arr">→</span> 5G-EA2 / 5G-IA2', detail: DET.secMode },
+    { d: 31,  proto: "NAS",  msg: 'Security Mode Complete <span class="arr">←</span> <span class="tag">ciphered</span>', ok: true },
+    { d: 18,  proto: "NGAP", msg: 'Initial Context Setup <span class="arr">→</span> UE context created' },
+    { d: 22,  proto: "NAS",  msg: 'Registration Accept <span class="arr">→</span> 5G-GUTI assigned', ok: true, detail: DET.regAccept }
+  ];
+
+  // varied keepalive so "alive" never reads as "repetitive"
+  var KEEPALIVES = [
+    { proto: "NGAP", msg: 'NG heartbeat <span class="arr">⇄</span> <span class="peer">AMF · echo 18ms</span>' },
+    { proto: "NAS",  msg: 'Periodic registration update <span class="arr">←</span> <span class="peer">imsi-…0001</span>', skipIfNoUE: true },
+    { proto: "NGAP", msg: 'Measurement report <span class="arr">←</span> <span class="peer">RSRP −82 dBm · RSRQ −9 dB</span>' },
+    { proto: "NGAP", msg: 'UE context kept <span class="arr">·</span> <span class="peer">N2 link healthy</span>' }
+  ];
+
+  var timers = [], keepTimer = null, keepIdx = 0, ueRegistered = false;
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  function stopKeepalive() { if (keepTimer) { clearTimeout(keepTimer); keepTimer = null; } }
+
+  function startKeepalive() {
+    stopKeepalive();
+    function tick() {
+      var k = KEEPALIVES[keepIdx % KEEPALIVES.length];
+      keepIdx++;
+      if (k.skipIfNoUE && !ueRegistered) { tick(); return; }
+      addRow({ ts: stamp(30000 + Math.floor(Math.random()*4000)), proto: k.proto, msg: k.msg });
+      keepTimer = setTimeout(tick, 5200 + Math.random()*3600);
+    }
+    keepTimer = setTimeout(tick, 4200);
+  }
+
+  function streamSeq(seq, startDelay, onDone) {
+    var t = startDelay || 0;
+    seq.forEach(function (row, i) {
+      t += row.d;
+      timers.push(setTimeout(function () {
+        addRow(row);
+        if (i === seq.length - 1 && onDone) onDone();
+      }, t));
+    });
+    return t;
+  }
+
+  function resetRegisterBtn() {
+    var reg = document.getElementById("registerBtn");
+    reg.classList.remove("done");
+    reg.querySelector(".arrow").textContent = "→";
+    reg.childNodes[0].nodeValue = "Register a UE ";
+  }
+
+  function setChips(state) {
+    document.querySelectorAll(".chip").forEach(function (c) {
+      c.classList.toggle("on", c.dataset.state === state);
+    });
+  }
+
+  // ── the state machine ──
+  function toWaiting() {
+    clearTimers(); stopKeepalive();
+    body.classList.remove("connected", "failed");
+    cursor = new Date(base.getTime());
+    list.innerHTML = "";
+    ueRegistered = false;
+    setChips("waiting");
+    footText.textContent = "Listening on 192.168.1.50:38412 · no gNB yet";
+  }
+
+  function toConnected(fromWaiting) {
+    clearTimers(); stopKeepalive();
+    body.classList.remove("failed");
+    if (fromWaiting) { body.classList.remove("connected"); cursor = new Date(base.getTime()); list.innerHTML = ""; }
+    setChips("connected");
+    resetRegisterBtn();
+    ueRegistered = false;
+    footText.textContent = "NG link healthy · keepalive every 30s";
+    // latch closes ~600ms after the halves begin to meet
+    timers.push(setTimeout(function () {
+      body.classList.add("connected");
+      var after = streamSeq(SETUP, 560);
+      timers.push(setTimeout(startKeepalive, after + 1500));
+    }, fromWaiting ? 60 : 0));
+  }
+
+  function toFailed() {
+    clearTimers(); stopKeepalive();
+    body.classList.remove("connected");
+    cursor = new Date(base.getTime());
+    list.innerHTML = "";
+    ueRegistered = false;
+    body.classList.add("failed");
+    setChips("failed");
+    footText.innerHTML = 'NG Setup rejected · <a href="QCore Diagnosis.html">open diagnosis →</a>';
+    streamSeq(SETUP_FAIL, 540);
+  }
+
+  // first paint: feel the latch, start in waiting, then connect
+  toWaiting();
+  timers.push(setTimeout(function () { toConnected(false); body.classList.add("connected");
+    clearTimers();
+    var after = streamSeq(SETUP, 560);
+    timers.push(setTimeout(startKeepalive, after + 1500));
+    setChips("connected");
+  }, 1100));
+
+  // chips drive the three states; connected/waiting re-run the latch motion
+  document.getElementById("chips").addEventListener("click", function (e) {
+    var btn = e.target.closest(".chip"); if (!btn) return;
+    var s = btn.dataset.state;
+    if (s === "connected") { toWaiting(); setChips("connected"); timers.push(setTimeout(function(){ toConnected(true); }, 360)); }
+    else if (s === "waiting") { toWaiting(); }
+    else if (s === "failed") { toFailed(); }
+  });
+
+  // emblem click replays whichever state is active (default: reconnect)
+  document.getElementById("emblemWrap").addEventListener("click", function () {
+    if (body.classList.contains("failed")) { toFailed(); }
+    else { toWaiting(); setChips("connected"); timers.push(setTimeout(function(){ toConnected(true); }, 420)); }
+  });
+
+  // Register a UE → stream the NAS registration into the trace
+  document.getElementById("registerBtn").addEventListener("click", function (e) {
+    e.preventDefault();
+    if (!body.classList.contains("connected")) return;
+    var btn = this;
+    if (btn.classList.contains("done")) return;
+    stopKeepalive();
+    btn.childNodes[0].nodeValue = "Registering UE ";
+    btn.querySelector(".arrow").textContent = "…";
+    footText.textContent = "UE 001010000000001 attaching…";
+    streamSeq(REGISTER, 60, function () {
+      btn.childNodes[0].nodeValue = "UE registered ";
+      btn.querySelector(".arrow").textContent = "✓";
+      btn.classList.add("done");
+      ueRegistered = true;
+      footText.textContent = "1 UE registered · session idle · keepalive 30s";
+      timers.push(setTimeout(startKeepalive, 2600));
+    });
+  });
+
+  document.getElementById("retryBtn").addEventListener("click", function (e) {
+    e.preventDefault();
+    toWaiting(); setChips("connected");
+    timers.push(setTimeout(function(){ toConnected(true); }, 500));
+  });
+
+  // ── NF disclosure ──
+  var NFS = [
+    { nm: "AMF", desc: "Access & Mobility Mgmt · handled this NG Setup", live: true },
+    { nm: "SMF", desc: "Session Management · awaiting first PDU session", live: true },
+    { nm: "UPF", desc: "User Plane · data path armed, idle", live: true },
+    { nm: "AUSF", desc: "Authentication Server · ready", live: true },
+    { nm: "UDM", desc: "Unified Data Mgmt · 1 subscriber", live: true },
+    { nm: "UDR", desc: "Unified Data Repository · backing UDM", live: true },
+    { nm: "NRF", desc: "NF Repository · 12 functions registered", live: true },
+    { nm: "NSSF", desc: "Slice Selection · eMBB available", live: true },
+    { nm: "PCF", desc: "Policy Control · default policy loaded", live: true },
+    { nm: "NEF", desc: "Network Exposure · no external apps", live: false },
+    { nm: "BSF", desc: "Binding Support · idle until session", live: false },
+    { nm: "SEPP", desc: "Edge Protection · single-PLMN, idle", live: false }
+  ];
+  var grid = document.getElementById("nfGrid");
+  NFS.forEach(function (nf) {
+    var c = document.createElement("div");
+    c.className = "nf-cell" + (nf.live ? "" : " idle");
+    c.innerHTML = '<div class="top"><span class="nm">' + nf.nm + '</span><span class="st"><span class="d"></span>' + (nf.live ? "active" : "idle") + '</span></div><div class="desc">' + nf.desc + '</div>';
+    grid.appendChild(c);
+  });
+
+  var panel = document.getElementById("nfPanel"), scrim = document.getElementById("nfScrim"), toggle = document.getElementById("nfToggle");
+  function openNF() { panel.classList.add("open"); scrim.classList.add("open"); toggle.setAttribute("aria-expanded","true"); panel.setAttribute("aria-hidden","false"); }
+  function closeNF() { panel.classList.remove("open"); scrim.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); panel.setAttribute("aria-hidden","true"); }
+  toggle.addEventListener("click", function () { panel.classList.contains("open") ? closeNF() : openNF(); });
+  document.getElementById("nfClose").addEventListener("click", closeNF);
+  scrim.addEventListener("click", closeNF);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeNF(); });
+})();
+</script>
+</body>
+</html>
