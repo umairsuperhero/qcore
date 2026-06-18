@@ -1,0 +1,59 @@
+name: Real RAN report
+description: Share a real gNB/eNB/UE run, whether it passed or failed.
+title: "[real-ran] "
+labels: ["real-ran", "evidence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing QCore against real RAN. A failed attach is useful if it has evidence.
+        Please scrub private subscriber secrets before uploading artifacts.
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: gNB/eNB/UE make, model, software version, or simulator version.
+      placeholder: "srsRAN Project 24.x, Amarisoft, UERANSIM v3.2.8, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - 5G SA
+        - 4G EPC
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: ttfc
+    attributes:
+      label: TTFC
+      description: Time from core up to first connection, or "never connected".
+      placeholder: "78s"
+  - type: input
+    id: ttrc
+    attributes:
+      label: TTRC
+      description: Time from failure to useful diagnosis, or "no useful diagnosis".
+      placeholder: "4s"
+  - type: textarea
+    id: divergence
+    attributes:
+      label: Where reality diverged
+      description: First step that did not match what QCore expected.
+      placeholder: "NGSetup passed, Authentication failed with ..."
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Evidence bundle
+      description: Paste summary.md or link/upload the bundle from scripts/ci/real-ran-capture.sh.
+      render: markdown
+  - type: textarea
+    id: verdict
+    attributes:
+      label: Would QCore save time next time?
+      description: One honest sentence.

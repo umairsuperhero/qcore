@@ -1,0 +1,41 @@
+name: Attach failure
+description: QCore failed during attach/registration and you need diagnosis help.
+title: "[attach-failure] "
+labels: ["attach-failure", "diagnostics"]
+body:
+  - type: dropdown
+    id: path
+    attributes:
+      label: Path
+      options:
+        - Bundled simulator
+        - Bundled UERANSIM
+        - Real 5G gNB/UE
+        - Real 4G eNB/UE
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: qcore_summary
+    attributes:
+      label: QCore diagnosis or trace summary
+      description: Paste the Diagnosis screen text, summary.md, or key trace rows.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: External RAN/UE logs
+      description: Paste only the relevant lines. Scrub IMSI/Ki/OPc/private keys.
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+    validations:
+      required: true

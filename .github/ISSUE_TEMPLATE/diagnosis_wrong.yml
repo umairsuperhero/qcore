@@ -1,0 +1,31 @@
+name: Diagnosis wrong or unhelpful
+description: The Diagnosis screen named the wrong cause or missed the useful fix.
+title: "[diagnosis] "
+labels: ["diagnosis-gap", "catalog"]
+body:
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: QCore's diagnosis
+      description: Paste the Root Cause, Explanation, and Fix.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: actual_cause
+    attributes:
+      label: Actual cause
+      description: What was the real cause once you debugged it?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link/upload the evidence bundle or paste trace/log lines.
+      render: text
+  - type: textarea
+    id: better_fix
+    attributes:
+      label: Better fix text
+      description: If you know what QCore should have said, write it here.

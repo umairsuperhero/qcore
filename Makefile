@@ -1,4 +1,4 @@
-.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up up-5g up-ai down web measure verify-fast verify-full verify-t10 fact-check docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
+.PHONY: build build-hss build-mme build-spgw build-collector build-dashboard build-all test test-short lint clean run run-mme run-spgw run-collector run-dashboard up up-5g up-ai down web measure capture-real-ran adoption-report verify-fast verify-full verify-t10 fact-check docker-build docker-build-hss docker-build-mme docker-build-spgw docker-build-collector docker-build-dashboard docker-up docker-down coverage
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -29,6 +29,12 @@ web:
 
 measure:
 	./scripts/measure-ttfc-ttrc.sh
+
+capture-real-ran:
+	./scripts/ci/real-ran-capture.sh
+
+adoption-report:
+	python3 scripts/adoption-report.py --output artifacts/adoption/report.md --json-output artifacts/adoption/report.json
 
 verify-fast:
 	./scripts/verify-fast.sh

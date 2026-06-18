@@ -1,0 +1,32 @@
+name: Compatibility target request
+description: Ask QCore to prioritize a specific gNB, UE, simulator, or RAN stack.
+title: "[compat] "
+labels: ["compatibility", "request"]
+body:
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      placeholder: "srsRAN gNB, OAI, Amarisoft, Quectel modem, ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Can you help test it?
+      options:
+        - Yes, I can run QCore against it
+        - Yes, I can share logs/config
+        - No, just requesting
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup details
+      description: Host OS, Docker/Linux availability, RAN/UE versions, and what you are trying to prove.
+  - type: textarea
+    id: pain
+    attributes:
+      label: What failure are you trying to debug?
+      description: The more concrete the pain, the easier it is to prioritize.

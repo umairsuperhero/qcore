@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Try QCore with the bundled simulator
+    url: https://github.com/umairsuperhero/qcore/blob/main/docs/try-qcore.md
+    about: Start here if you do not have a real gNB/eNB yet.
+  - name: Try QCore with your own RAN
+    url: https://github.com/umairsuperhero/qcore/blob/main/docs/try-qcore-real-ran.md
+    about: Use this path for real gNB, UE, eNB, or srsRAN testing.

@@ -164,6 +164,13 @@ jobs:
       - name: Validate — SQN resync recovers a live UERANSIM UE
         run: bash scripts/ci/ueransim-sqn-resync.sh
 
+      - name: Capture real-RAN evidence bundle (bundled UERANSIM self-test)
+        run: |
+          TARGET_NAME=bundled-ueransim \
+          RAN_KIND=ueransim \
+          MODE=5g \
+          scripts/ci/real-ran-capture.sh --no-up --timeout 180
+
       - name: Capture logs and crash evidence (always)
         if: always()
         run: |
@@ -198,6 +205,14 @@ jobs:
         with:
           name: ueransim-t10-evidence
           path: artifacts/ueransim
+          if-no-files-found: warn
+
+      - name: Upload real-RAN capture artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-ran-capture
+          path: artifacts/real-ran
           if-no-files-found: warn
 
       - name: Teardown
