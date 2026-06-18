@@ -122,3 +122,16 @@ them deliberately:
   point and fix it before recruiting the next batch.
 - **Monthly**: reconcile against goals here, refresh the vision-2030 scorecard, and
   re-bump this doc's "Last updated" date.
+
+## Automation now in repo
+
+- `scripts/ci/real-ran-capture.sh` creates a structured evidence bundle for a
+  simulator, bundled UERANSIM, or external RAN run.
+- `docs/adoption-tracker.csv` is the lightweight CRM/funnel source of truth.
+- `make adoption-report` summarizes the tracker into `artifacts/adoption/report.md`
+  and `report.json`.
+- `.github/ISSUE_TEMPLATE/*` routes external users into evidence-first reports.
+- `.github/workflows/adoption-loop.yml` runs the adoption report weekly so the next
+  operating question stays visible.
+
+See [docs/digital-growth-loop.md](digital-growth-loop.md) for the agent cadence.

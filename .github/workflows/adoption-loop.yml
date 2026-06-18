@@ -1,0 +1,22 @@
+name: adoption-loop
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 15 * * 1"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build adoption report
+        run: make adoption-report
+
+      - name: Upload adoption report
+        uses: actions/upload-artifact@v7
+        with:
+          name: qcore-adoption-report
+          path: artifacts/adoption
+          if-no-files-found: error
