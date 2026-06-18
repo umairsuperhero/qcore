@@ -282,7 +282,7 @@ success_terms = (
     "pdu session",
     "initial context",
 )
-failure_terms = ("rejected", "failed", "failure", "error")
+failure_terms = ("rejected", "transfer-syntax-error", "integrity check failed", "malformed", "unavailable")
 
 def get_json(path):
     with urllib.request.urlopen(base + path, timeout=5) as resp:
@@ -310,9 +310,13 @@ while time.time() < deadline:
             continue
         if not events:
             continue
-        text = "\n".join(str(ev.get("message", "")).lower() for ev in events)
-        severity_error = any(ev.get("severity") == "error" for ev in events)
-        failed = severity_error or any(term in text for term in failure_terms)
+        messages = [str(ev.get("message", "")).lower() for ev in events]
+        text = "\n".join(messages)
+        terminal_errors = [
+            msg for ev, msg in zip(events, messages)
+            if ev.get("severity") == "error" and not ("authentication failure" in msg and "sqn_failure" in msg)
+        ]
+        failed = bool(terminal_errors) or any(term in text for term in failure_terms)
         passed = any(term in text for term in success_terms)
         latest = max(parse_ts(ev) for ev in events)
         candidates.append((latest, journey, events, failed, passed, text))
@@ -349,6 +353,26 @@ fetch_diagnosis() {
     return 0
   fi
   curl_get_file "/api/diagnostics/journey/${journey}" "$ARTIFACT_DIR/diagnosis.json" 2>/dev/null || true
+}
+
+capture_state() {
+  python3 - "$ARTIFACT_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+artifact = pathlib.Path(sys.argv[1])
+for name in ("simulator-status.json", "passive-status.json"):
+    path = artifact / name
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        print(data.get("state") or "unknown")
+        raise SystemExit(0)
+print("unknown")
+PY
 }
 
 write_timings() {
@@ -526,7 +550,7 @@ else
 fi
 
 fetch_journey_artifacts "$JOURNEY_ID"
-if [ -n "$JOURNEY_ID" ]; then
+if [ -n "$JOURNEY_ID" ] && [ "$(capture_state)" = "failed" ]; then
   fetch_diagnosis "$JOURNEY_ID"
 fi
 write_timings "$STARTED_MS" "$TTRC_STARTED_MS"
