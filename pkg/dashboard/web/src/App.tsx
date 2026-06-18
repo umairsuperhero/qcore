@@ -3,15 +3,17 @@ import HealthView from "./components/HealthView";
 import SubscribersView from "./components/SubscribersView";
 import LiveTraceView from "./components/LiveTraceView";
 import GNBHeroScreen from "./components/GNBHeroScreen";
+import DiagnosisView from "./components/DiagnosisView";
 import { useConnectionStore } from "./stores/connectionStore";
 
-type Tab = "ran" | "health" | "subscribers" | "trace";
+type Tab = "ran" | "health" | "subscribers" | "trace" | "diagnosis";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "ran", label: "gNB Connection" },
   { id: "health", label: "System Health" },
   { id: "subscribers", label: "Subscribers" },
   { id: "trace", label: "Live Trace" },
+  { id: "diagnosis", label: "Diagnosis" },
 ];
 
 export default function App() {
@@ -36,14 +38,20 @@ export default function App() {
     traceState.activeScenario !== null ||
     traceState.journeyId !== null;
   const canShowTrace = isConnected || hasTraceActivity;
+  const canShowDiagnosis = connection.state === "failed" || traceState.diagnostic !== null;
 
   // Keep post-connection tabs gated, but allow an active simulator run to
   // navigate straight to Live Trace before setup flips the connection state.
   useEffect(() => {
-    if (!isConnected && tab !== "ran" && !(tab === "trace" && hasTraceActivity)) {
+    if (
+      !isConnected &&
+      tab !== "ran" &&
+      !(tab === "trace" && hasTraceActivity) &&
+      !(tab === "diagnosis" && canShowDiagnosis)
+    ) {
       setTab("ran");
     }
-  }, [hasTraceActivity, isConnected, tab]);
+  }, [canShowDiagnosis, hasTraceActivity, isConnected, tab]);
 
   return (
     <div className="min-h-screen bg-darkbg-950 text-slate-100 flex flex-col font-sans">
@@ -86,7 +94,8 @@ export default function App() {
           <nav className="flex gap-2 -mb-px">
             {TABS.map((t) => {
               if (t.id === "trace" && !canShowTrace) return null;
-              if (t.id !== "ran" && t.id !== "trace" && !isConnected) return null;
+              if (t.id === "diagnosis" && !canShowDiagnosis) return null;
+              if (t.id !== "ran" && t.id !== "trace" && t.id !== "diagnosis" && !isConnected) return null;
 
               return (
                 <button
@@ -112,6 +121,7 @@ export default function App() {
           <GNBHeroScreen 
             onRegisterUE={() => setTab("subscribers")} 
             onStartTrace={() => setTab("trace")}
+            onOpenDiagnosis={() => setTab("diagnosis")}
           />
         )}
         {isConnected && (
@@ -121,6 +131,9 @@ export default function App() {
           </>
         )}
         {tab === "trace" && canShowTrace && <LiveTraceView />}
+        {tab === "diagnosis" && canShowDiagnosis && (
+          <DiagnosisView onBack={() => setTab("ran")} onOpenTrace={() => setTab("trace")} />
+        )}
       </main>
 
       {/* Footer Info */}

@@ -269,6 +269,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const activeScenario = scenario || "happy_path";
     get().clearTrace();
     set((state) => ({
+      connection: {
+        ...state.connection,
+        state: "waiting",
+      },
       traceState: {
         ...state.traceState,
         streaming: true,
@@ -293,6 +297,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         const status = await api.simulatorStatus();
         if (status.state === "success" || status.state === "failed") {
           set((state) => ({
+            connection: simulatorConnectionFromStatus(state.connection, status),
             traceState: {
               ...state.traceState,
               streaming: false,
@@ -384,3 +389,28 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     }));
   },
 }));
+
+function simulatorConnectionFromStatus(connection: GNBConnectionData, status: import("../api/types").SimulatorStatus): GNBConnectionData {
+  if (status.state === "success") {
+    return {
+      ...connection,
+      state: "connected",
+      gnbName: connection.gnbName || "QCore simulator RAN",
+      negotiatedPlmn: connection.negotiatedPlmn || connection.configuredPlmn,
+      negotiatedTac: connection.negotiatedTac || connection.configuredTac,
+      negotiatedSlice: connection.negotiatedSlice || "eMBB",
+      failReason: undefined,
+      sentPlmn: undefined,
+      fixGnb: undefined,
+      fixQCore: undefined,
+    };
+  }
+
+  return {
+    ...connection,
+    state: "failed",
+    failReason: status.last_cause || status.failed_step || "Setup rejected",
+    fixGnb: connection.fixGnb || "Check RAN/device configuration against QCore.",
+    fixQCore: connection.fixQCore || "Review QCore PLMN, TAC, subscriber, and simulator mode.",
+  };
+}
