@@ -36,6 +36,9 @@ capture-real-ran:
 adoption-report:
 	python3 scripts/adoption-report.py --output artifacts/adoption/report.md --json-output artifacts/adoption/report.json
 
+adoption-draft:
+	python3 scripts/adoption/draft-weekly-update.py
+
 verify-fast:
 	./scripts/verify-fast.sh
 
