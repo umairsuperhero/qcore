@@ -121,6 +121,21 @@ not a conformance matrix. Real-RAN testers welcome.
 
 https://github.com/umairsuperhero/qcore
 
+## Screenshots → Which Post
+
+The redesigned hero (PR #52, now on `main`) gives three post-ready visuals. Export
+them from the running dashboard into `docs/outreach/assets/` (or via a future
+`make screenshots` target) before posting:
+
+| Asset | State shown | How to reach it | Use in |
+|---|---|---|---|
+| `waiting-hero.png` | "Waiting for gNB…" — open amber latch ring | `make up-5g`, open dashboard | X launch post |
+| `failed-hero.png` | "gNB rejected · Authentication failure" — red latch + X, both fix CTAs above the fold | inject `wrong_ki`, gNB Connection tab | X launch / failure-led post |
+| `diagnosis.png` | "QCore diagnosis" — CONNECTION BLOCKED → cause → RAN-sent vs QCore-expects | inject `wrong_ki`, Diagnosis tab | X failure-led post |
+
+A picture of the failed hero + the diagnosis screen *is* the pitch ("it told me
+the cause and the fix") — lead the failure-led post with those two.
+
 ## Response Routing
 
 - Simulator run: send [`try-qcore.md`](try-qcore.md).
