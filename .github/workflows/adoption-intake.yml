@@ -1,0 +1,60 @@
+name: adoption-intake
+
+# When a tester files a Real RAN report / Attach failure / Diagnosis-gap issue,
+# parse the form and upsert one row into docs/adoption-tracker.csv (keyed by issue
+# URL, so edits update in place). This automates the "record every outcome" step.
+# Only product evidence + the public issue link are stored — no private contact data.
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: adoption-intake-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    if: >-
+      contains(github.event.issue.labels.*.name, 'real-ran') ||
+      contains(github.event.issue.labels.*.name, 'attach-failure') ||
+      contains(github.event.issue.labels.*.name, 'diagnosis-gap')
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Upsert tracker row from issue
+        id: sync
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_CREATED: ${{ github.event.issue.created_at }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: python3 scripts/adoption/issue_to_tracker.py
+
+      - name: Commit tracker update
+        if: steps.sync.outputs.action == 'added' || steps.sync.outputs.action == 'updated'
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/adoption-tracker.csv
+          if git diff --cached --quiet; then
+            echo "no tracker change"; exit 0
+          fi
+          git commit -m "chore(adoption): log tester outcome from #${ISSUE_NUMBER} [skip ci]"
+          git pull --rebase origin main
+          git push
+
+      - name: Thank + confirm on the issue
+        if: steps.sync.outputs.action == 'added' || steps.sync.outputs.action == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" --body "Thanks — this run is logged in the adoption tracker (\`docs/adoption-tracker.csv\`). The single biggest friction point here will become a fix, a diagnostic-catalog rule, or a documented caveat. 🙏"

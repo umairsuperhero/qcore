@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install X client deps
-        run: pip install --quiet requests requests_oauthlib
+        run: pip install --quiet requests==2.32.3 requests-oauthlib==2.0.0
 
       - name: Publish to X
         env:
