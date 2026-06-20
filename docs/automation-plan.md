@@ -19,9 +19,20 @@ unreviewed bot post is pure downside. So the boundary between "drafted" and
 | Tier | What | Trigger | Risk | Status |
 |---|---|---|---|---|
 | 0 | `make adoption-report` → funnel report artifact | `adoption-loop.yml`, Mon 15:00 UTC | none | ✅ live |
-| 1 | Weekly claim-safe draft → **review-queue issue** | `social-draft.yml`, Fri 15:00 UTC | none (drafts only) | ✅ this PR |
+| 0 | **Intake:** tester issue → upsert row in `adoption-tracker.csv` | `adoption-intake.yml`, on labeled issue | none (own-repo) | ✅ live |
+| 1 | Weekly claim-safe draft → **review-queue issue** | `social-draft.yml`, Fri 15:00 UTC | none (drafts only) | ✅ live |
 | 2 | LLM judgment: polish the post + triage tester friction into fix/rule/caveat | optional Claude routine (see below) | low | ⚙️ opt-in |
 | 3 | Publish one approved post to X | `post-to-x.yml`, **manual dispatch only** | public | ✅ scaffolded, needs secrets |
+
+## Tier 0 — auto-intake (no setup)
+
+`adoption-intake.yml` fires when a tester files a `real-ran` / `attach-failure` /
+`diagnosis-gap` issue. `scripts/adoption/issue_to_tracker.py` parses the issue-form
+body, extracts TTFC/TTRC/setup/friction, and **upserts** one row in
+`docs/adoption-tracker.csv` keyed by the issue URL (edits update in place). It records
+only product evidence + the public issue link — never private contact data — and
+sanitizes all free-text against CSV/formula injection. The tester gets an automatic
+thank-you comment. This is what makes the funnel self-populating.
 
 ## Tier 1 — auto-draft to a queue (no setup)
 
