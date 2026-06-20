@@ -6,7 +6,7 @@
 > that number — and how we keep score honestly. Rule from the vision doc:
 > **adoption before monetization.**
 
-_Last updated: 2026-06-18._
+_Last updated: 2026-06-19._
 
 ## North Star
 
@@ -122,6 +122,15 @@ them deliberately:
   point and fix it before recruiting the next batch.
 - **Monthly**: reconcile against goals here, refresh the vision-2030 scorecard, and
   re-bump this doc's "Last updated" date.
+
+The reusable email, X posts, follow-up, response routing, and claim-safe language
+live in [docs/outreach-kit.md](outreach-kit.md). Use that kit for the first five
+runs so the message stays consistent and the results remain comparable.
+
+Round one is tracked publicly in
+[GitHub issue #56](https://github.com/umairsuperhero/qcore/issues/56). Keep private
+contact details outside the issue; use anonymous tester slots and record only
+product evidence in the repository.
 
 ## Automation now in repo
 

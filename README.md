@@ -4,11 +4,29 @@
 
 **The open-source 4G/5G core network that's actually easy to use.**
 
-> Updated: 2026-06-15
+> Updated: 2026-06-19
 
 QCore is a development and test environment for cellular networks — **not** a 5G core competing on protocol features. Primary user: the RAN/device developer who needs a core to test against. QCore wins on experience: fast start, deep observability, and AI that explains failures.
 
 See the [Product Experience Charter](docs/experience-charter.md) for the full vision, persona, and North Star. **Read it before any product or design work.**
+
+---
+
+## Help test QCore
+
+QCore is ready for external cold runs. We are looking for RAN/device developers,
+researchers, and telecom engineers who can spend about 15 minutes trying the
+golden path and telling us where it becomes confusing or breaks.
+
+- **Simulator-only:** follow [`docs/try-qcore.md`](docs/try-qcore.md).
+- **Your own gNB, UE, eNB, or srsRAN:** follow
+  [`docs/try-qcore-real-ran.md`](docs/try-qcore-real-ran.md).
+- **Report a run or failure:** use the
+  [evidence-first issue forms](https://github.com/umairsuperhero/qcore/issues/new/choose).
+
+The useful result is not necessarily "it worked." A captured failure, the time it
+took to understand it, and one honest sentence about whether QCore saved time are
+exactly the evidence we need.
 
 ---
 
