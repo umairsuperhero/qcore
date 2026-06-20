@@ -1,0 +1,53 @@
+name: social-draft
+
+# Tier 1 of the growth loop's publish path: every Friday, assemble a claim-safe
+# weekly draft from the real tracker + git history and drop it into a review queue
+# issue. This NEVER posts anything public — it only drafts. A human reviews the
+# queue issue and decides what (if anything) ships. See docs/automation-plan.md.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 15 * * 5" # Friday 15:00 UTC
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history so the "what shipped this week" git log works
+
+      - name: Generate weekly draft
+        run: |
+          mkdir -p artifacts/adoption
+          python3 scripts/adoption/draft-weekly-update.py --output artifacts/adoption/weekly-draft.md
+          echo "----- draft preview -----"
+          cat artifacts/adoption/weekly-draft.md
+
+      - name: Post draft to review queue issue (human-gated)
+        run: |
+          set -euo pipefail
+          # Ensure the queue label exists.
+          gh label create social-queue --color FBBF24 \
+            --description "Auto-drafted social/update posts awaiting human review" 2>/dev/null || true
+
+          ISSUE=$(gh issue list --label social-queue --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          if [ -z "$ISSUE" ]; then
+            URL=$(gh issue create \
+              --title "📣 Social + update queue" \
+              --label social-queue \
+              --body "Auto-drafted weekly posts land here as comments. **Nothing is published from this issue automatically.** Review, edit, then publish manually or via the \`post-to-x\` workflow (Actions tab → post-to-x → Run workflow).")
+            ISSUE=$(echo "$URL" | awk -F/ '{print $NF}')
+          fi
+
+          gh issue comment "$ISSUE" --body-file artifacts/adoption/weekly-draft.md
+          echo "Draft posted to issue #$ISSUE"

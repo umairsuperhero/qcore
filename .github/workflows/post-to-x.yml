@@ -1,0 +1,39 @@
+name: post-to-x
+
+# Tier 3: publish ONE approved post to X. Manual dispatch only — deliberately no
+# schedule, so nothing ever auto-fires to a public account. The operator pastes the
+# text they already reviewed in the social queue, then clicks Run. Requires the four
+# X_* secrets (see docs/automation-plan.md); without them this exits with a clear
+# "not configured" message instead of posting.
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "Exact, already-approved post text (<=280 chars)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    environment: social-publish # optional: add a required reviewer here for a 2nd gate
+    env:
+      X_API_KEY: ${{ secrets.X_API_KEY }}
+      X_API_SECRET: ${{ secrets.X_API_SECRET }}
+      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+      X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install X client deps
+        run: pip install --quiet requests requests_oauthlib
+
+      - name: Publish to X
+        env:
+          POST_TEXT: ${{ inputs.text }}
+        run: |
+          printf '%s' "$POST_TEXT" | python3 scripts/adoption/post_to_x.py
