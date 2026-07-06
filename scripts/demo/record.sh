@@ -155,11 +155,33 @@ if [ "$START_STACK" -eq 1 ]; then
   {
     echo "$ make up-5g"
     echo "[capture] real command output follows; long Docker build/startup may be time-compressed in the video."
+    echo "[capture] CI uses the same 5G compose profile with retry around startup races."
   } > "$TERMINAL_LOG"
   if [ "$COLD_START" -eq 1 ]; then
     docker compose -f deployments/docker/docker-compose.yml --profile 5g down >>"$TERMINAL_LOG" 2>&1 || true
   fi
-  make up-5g 2>&1 | tee -a "$TERMINAL_LOG"
+  COMPOSE="docker compose -f deployments/docker/docker-compose.yml"
+  COMPOSE_PROFILES=5g $COMPOSE build 2>&1 | tee -a "$TERMINAL_LOG"
+  ok=0
+  for attempt in 1 2 3 4 5 6; do
+    echo "[demo] compose up attempt ${attempt}" | tee -a "$TERMINAL_LOG"
+    if COMPOSE_PROFILES=5g $COMPOSE up -d 2>&1 | tee -a "$TERMINAL_LOG"; then
+      ok=1
+      break
+    fi
+    echo "[demo] compose up attempt ${attempt} failed; retrying after dependency startup settles" | tee -a "$TERMINAL_LOG"
+    COMPOSE_PROFILES=5g $COMPOSE ps -a 2>&1 | tee -a "$TERMINAL_LOG" || true
+    sleep 10
+  done
+  if [ "$ok" != 1 ]; then
+    echo "5G compose stack failed to start after retries" >&2
+    exit 1
+  fi
+  {
+    echo ""
+    echo "QCore 4G + 5G stack starting. Dashboard: http://localhost:3000"
+    echo "Tear down everything with: make down"
+  } | tee -a "$TERMINAL_LOG"
 else
   {
     echo "$ make up-5g"
