@@ -190,7 +190,9 @@ async function main() {
 
     await clickFirst(page, [
       page.getByRole("button", { name: /Open full diagnosis/i }),
+      page.getByRole("button", { name: /^Diagnosis$/i }),
       page.locator("button").filter({ hasText: /Open.*diagnosis/i }),
+      page.locator("nav button").filter({ hasText: /^Diagnosis$/i }),
     ]);
     await waitForAnyText(page, [/Connection blocked/i, /QCore diagnosis/i, /Fix on gNB/i, /Root Cause/i], 30000);
     const diagnosisText = await page.locator("body").innerText();

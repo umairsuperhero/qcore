@@ -37,6 +37,7 @@ jobs:
           name: readme-demo-recording
           path: |
             docs/outreach/assets/qcore-demo.*
+            docs/outreach/assets/qcore-demo-*
           if-no-files-found: warn
 
       - name: Teardown
