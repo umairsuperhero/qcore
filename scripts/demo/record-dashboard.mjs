@@ -1,7 +1,11 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "playwright";
+
+const require = createRequire(import.meta.url);
+const playwrightPackage = process.env.QCORE_DEMO_PLAYWRIGHT_PACKAGE || "playwright";
+const { chromium } = require(playwrightPackage);
 
 const dashboardURL = process.env.QCORE_DASHBOARD_URL || "http://localhost:3000";
 const outputDir = process.env.QCORE_DEMO_OUTPUT_DIR || "docs/outreach/assets";

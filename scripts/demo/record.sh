@@ -174,7 +174,7 @@ QCORE_DASHBOARD_URL="$DASHBOARD_URL" \
 QCORE_DEMO_OUTPUT_DIR="$OUTPUT_DIR" \
 QCORE_DEMO_TERMINAL_LOG="$TERMINAL_LOG" \
 QCORE_DEMO_EVIDENCE_JSON="$EVIDENCE_JSON" \
-NODE_PATH="$PW_DIR/node_modules" \
+QCORE_DEMO_PLAYWRIGHT_PACKAGE="$PW_DIR/node_modules/playwright" \
   node scripts/demo/record-dashboard.mjs
 
 if [ ! -f "$RAW_WEBM" ]; then
