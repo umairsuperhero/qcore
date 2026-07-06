@@ -1,0 +1,42 @@
+name: demo-recording
+
+on:
+  workflow_dispatch:
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROFILES: "5g"
+      QCORE_DEMO_OUTPUT_DIR: "docs/outreach/assets"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install recording dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Load kernel modules (SCTP + TUN)
+        run: |
+          sudo modprobe sctp
+          sudo modprobe tun
+          ls -l /dev/net/tun
+          [ -e /proc/net/sctp ] && echo "SCTP ready" || (echo "no SCTP" && exit 1)
+
+      - name: Record README demo from real dashboard run
+        run: make demo-recording
+
+      - name: Upload demo assets
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: readme-demo-recording
+          path: |
+            docs/outreach/assets/qcore-demo.*
+          if-no-files-found: warn
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f deployments/docker/docker-compose.yml --profile 5g down -v || true
