@@ -26,6 +26,18 @@ const evidence = {
   dashboard_url: dashboardURL,
   platform,
   native_sctp_tun_claim: linuxNative,
+  github: process.env.GITHUB_RUN_ID
+    ? {
+        run_id: process.env.GITHUB_RUN_ID,
+        run_url:
+          process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
+            ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+            : null,
+        repository: process.env.GITHUB_REPOSITORY || null,
+        sha: process.env.GITHUB_SHA || null,
+        ref: process.env.GITHUB_REF_NAME || null,
+      }
+    : null,
   source: linuxNative
     ? "real QCore dashboard/simulator run on Linux; eligible for native SCTP/TUN evidence if run in the interop environment"
     : "real QCore dashboard/simulator run on non-Linux; do not cite as native SCTP/TUN evidence",
