@@ -179,6 +179,7 @@ async function main() {
 
   const page = await context.newPage();
   const video = page.video();
+  let contextClosed = false;
 
   try {
     await page.goto(`data:text/html;charset=utf-8,${encodeURIComponent(terminalIntroHTML())}`);
@@ -244,11 +245,16 @@ async function main() {
   } finally {
     evidence.finished_at = new Date().toISOString();
     await context.close();
-    await browser.close();
+    contextClosed = true;
   }
 
-  if (video) {
-    await video.saveAs(rawWebm);
+  try {
+    if (video && contextClosed) {
+      const sourceVideo = await video.path();
+      fs.copyFileSync(sourceVideo, rawWebm);
+    }
+  } finally {
+    await browser.close();
   }
   fs.rmSync(videoDir, { recursive: true, force: true });
 
