@@ -148,6 +148,24 @@ async function clickFirst(page, selectors) {
   throw new Error("no clickable selector matched");
 }
 
+async function waitForSimulatorState(page, expected, timeout = 30000) {
+  const deadline = Date.now() + timeout;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await page
+      .evaluate(async () => {
+        const response = await fetch("/api/simulator/status");
+        return response.json();
+      })
+      .catch((error) => ({ state: "error", error: String(error) }));
+    if (last?.state === expected) {
+      return last;
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`timed out waiting for simulator state ${expected}; last=${JSON.stringify(last)}`);
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -176,6 +194,7 @@ async function main() {
       page.getByRole("button", { name: /Run happy path/i }),
       page.getByRole("button", { name: /Start simulator/i }),
     ]);
+    await waitForSimulatorState(page, "success", 30000);
     await waitForAnyText(page, [/gNB connected/i, /RAN connected/i, /connected ·/i], 30000);
     evidence.beats.push({ name: "happy path connected", status: "captured", screenshot: path.basename(await snapshot(page, "connected")) });
     await page.waitForTimeout(2400);
@@ -184,16 +203,31 @@ async function main() {
       page.getByRole("button", { name: /Wrong Ki/i }),
       page.locator("button").filter({ hasText: /Wrong Ki/i }),
     ]);
-    await waitForAnyText(page, [/gNB rejected/i, /authentication/i, /wrong_ki/i, /setup rejected/i], 30000);
+    const failureStatus = await waitForSimulatorState(page, "failed", 30000);
+    evidence.failure_status = failureStatus;
+    await waitForAnyText(page, [/gNB rejected/i, /authentication/i, /setup rejected/i, /SETUP MISMATCH/i, /^Diagnosis$/i], 30000);
     evidence.beats.push({ name: "wrong_ki injected", status: "captured", screenshot: path.basename(await snapshot(page, "failed")) });
     await page.waitForTimeout(1600);
 
-    await clickFirst(page, [
-      page.getByRole("button", { name: /Open full diagnosis/i }),
-      page.getByRole("button", { name: /^Diagnosis$/i }),
-      page.locator("button").filter({ hasText: /Open.*diagnosis/i }),
-      page.locator("nav button").filter({ hasText: /^Diagnosis$/i }),
-    ]);
+    try {
+      await clickFirst(page, [
+        page.getByRole("button", { name: /Open full diagnosis/i }),
+        page.getByRole("button", { name: /^Diagnosis$/i }),
+        page.locator("button").filter({ hasText: /Open.*diagnosis/i }),
+        page.locator("nav button").filter({ hasText: /^Diagnosis$/i }),
+      ]);
+    } catch {
+      await clickFirst(page, [
+        page.getByRole("button", { name: /gNB Connection/i }),
+        page.locator("nav button").filter({ hasText: /gNB Connection/i }),
+      ]);
+      await clickFirst(page, [
+        page.getByRole("button", { name: /Open full diagnosis/i }),
+        page.getByRole("button", { name: /^Diagnosis$/i }),
+        page.locator("button").filter({ hasText: /Open.*diagnosis/i }),
+        page.locator("nav button").filter({ hasText: /^Diagnosis$/i }),
+      ]);
+    }
     await waitForAnyText(page, [/Connection blocked/i, /QCore diagnosis/i, /Fix on gNB/i, /Root Cause/i], 30000);
     const diagnosisText = await page.locator("body").innerText();
     evidence.beats.push({
