@@ -1,0 +1,62 @@
+{
+  "beats": [
+    {
+      "name": "make up-5g",
+      "screenshot": null,
+      "status": "captured"
+    },
+    {
+      "name": "dashboard loaded",
+      "screenshot": "qcore-demo-waiting.png",
+      "status": "captured"
+    },
+    {
+      "name": "happy path connected",
+      "screenshot": "qcore-demo-connected.png",
+      "status": "captured"
+    },
+    {
+      "name": "wrong_ki injected",
+      "screenshot": "qcore-demo-failed.png",
+      "status": "captured"
+    },
+    {
+      "contains_cause_and_fix": true,
+      "name": "diagnosis shown",
+      "screenshot": "qcore-demo-diagnosis.png",
+      "status": "captured"
+    }
+  ],
+  "dashboard_url": "http://localhost:3000",
+  "failure_status": {
+    "ended_at": "2026-07-06T17:42:57.182434622Z",
+    "failed_step": "security_mode_command",
+    "last_cause": "wrong_ki",
+    "last_error": "read timed out after 3s",
+    "last_journey": "j-87a743fe-7dfc-4291-8f2a-ca4fb5a91632",
+    "last_scenario": "wrong_ki",
+    "mode": "5g",
+    "started_at": "2026-07-06T17:42:54.173141533Z",
+    "state": "failed"
+  },
+  "finished_at": "2026-07-06T17:43:04.182Z",
+  "github": {
+    "ref": "codex/readme-demo-recording",
+    "repository": "umairsuperhero/qcore",
+    "run_id": "28811067742",
+    "run_url": "https://github.com/umairsuperhero/qcore/actions/runs/28811067742",
+    "sha": "52fb1ae5d592f01809c1e625656d89e5ca212918"
+  },
+  "native_sctp_tun_claim": true,
+  "outputs": {
+    "gif": "qcore-demo.gif",
+    "gif_bytes": 2337159,
+    "mp4": "qcore-demo.mp4",
+    "mp4_bytes": 852467,
+    "webm": "qcore-demo.webm"
+  },
+  "platform": "Linux 6.17.0-1018-azure x64",
+  "schema": "qcore.demo_recording.v1",
+  "source": "real QCore dashboard/simulator run on Linux; eligible for native SCTP/TUN evidence if run in the interop environment",
+  "started_at": "2026-07-06T17:42:43.953Z"
+}
